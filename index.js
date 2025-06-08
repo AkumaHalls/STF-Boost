@@ -46,7 +46,6 @@ app.post('/start', (req, res) => {
     res.status(200).json({ message: 'Tentativa de login iniciada.' });
 });
 
-// NOVA Rota para parar o processo
 app.post('/stop', (req, res) => {
     console.log('Recebido pedido para parar o boost.');
     serverState.status = "Parando...";
@@ -55,8 +54,10 @@ app.post('/stop', (req, res) => {
 });
 
 app.post('/submit-guard', (req, res) => {
+    const { code } = req.body;
     if (steamGuardCallback) {
-        steamGuardCallback(req.body.code);
+        console.log(`Recebido código do Steam Guard: ${code}`);
+        steamGuardCallback(code);
         steamGuardCallback = null;
         res.status(200).json({ message: 'Código enviado.' });
     } else {
