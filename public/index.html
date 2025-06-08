@@ -10,6 +10,7 @@
     <div class="control-panel">
         <header>
             <h1>STF Steam Boost</h1>
+            <button id="addAccountButton">Adicionar Conta</button>
         </header>
         <div class="accounts-table">
             <table>
@@ -17,182 +18,119 @@
                     <tr>
                         <th>Usuário</th>
                         <th>Status</th>
-                        <th>Iniciar/Parar</th>
-                        <th>Steam Guard</th>
-                        <th>Jogos</th>
+                        <th>Tempo Ativo</th>
+                        <th>Ações</th>
                     </tr>
                 </thead>
-                <tbody>
-                    <tr>
-                        <td id="accountNameCell">Carregando...</td>
-                        <td id="statusCell" class="status-stopped">Carregando...</td>
-                        <td><button id="startStopButton" class="start-btn">Iniciar</button></td>
-                        <td><button id="guardButton" class="enter-btn">Inserir</button></td>
-                        <td><button id="manageGamesButton" class="manage-btn" disabled>Gerir</button></td>
-                    </tr>
-                </tbody>
+                <tbody id="accountsTableBody">
+                    </tbody>
             </table>
-        </div>
-    </div>
-
-    <div id="gamesModal" class="modal">
-        <div class="modal-content">
-            <h2>Gerir Jogos</h2>
-            <p>Selecione os jogos que deseja impulsionar.</p>
-            <div id="selectedGames"></div>
-            <input type="text" id="searchInput" placeholder="Pesquisar jogos por nome...">
-            <ul id="resultsList"></ul>
-            <button id="saveGamesButton">Salvar</button>
-            <button id="closeModalButton">Cancelar</button>
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Elementos da UI principal
-            const startStopButton = document.getElementById('startStopButton');
-            const guardButton = document.getElementById('guardButton');
-            const manageGamesButton = document.getElementById('manageGamesButton');
-            const statusCell = document.getElementById('statusCell');
+            const addAccountButton = document.getElementById('addAccountButton');
+            const accountsTableBody = document.getElementById('accountsTableBody');
 
-            // Elementos da Modal
-            const gamesModal = document.getElementById('gamesModal');
-            const closeModalButton = document.getElementById('closeModalButton');
-            const searchInput = document.getElementById('searchInput');
-            const resultsList = document.getElementById('resultsList');
-            const selectedGamesContainer = document.getElementById('selectedGames');
-            const saveGamesButton = document.getElementById('saveGamesButton');
-
-            let selectedGames = [];
+            function formatUptime(ms) {
+                if (ms <= 0) return '00:00:00';
+                const totalSeconds = Math.floor(ms / 1000);
+                const hours = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
+                const minutes = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+                const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+                return `${hours}:${minutes}:${seconds}`;
+            }
 
             async function updateUI() {
                 try {
                     const response = await fetch('/status');
-                    const state = await response.json();
+                    const data = await response.json();
+                    const accounts = data.accounts;
+                    
+                    accountsTableBody.innerHTML = '';
 
-                    document.getElementById('accountNameCell').textContent = state.accountName;
-                    statusCell.textContent = state.status;
-                    statusCell.className = '';
-
-                    if (state.status === "Rodando") {
-                        startStopButton.textContent = "Parar";
-                        startStopButton.className = 'stop-btn';
-                    } else {
-                        startStopButton.textContent = "Iniciar";
-                        startStopButton.className = 'start-btn';
+                    if (Object.keys(accounts).length === 0) {
+                        accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Nenhuma conta adicionada. Clique em "Adicionar Conta".</td></tr>`;
                     }
 
-                    guardButton.classList.remove('pulse-attention');
-                    if (state.status === "Rodando") {
-                        statusCell.classList.add('status-running');
-                    } else if (state.status === "Parado") {
-                        statusCell.classList.add('status-stopped');
-                    } else {
-                        statusCell.classList.add('status-pending');
-                        if (state.status === "Pendente: Steam Guard") {
-                            guardButton.classList.add('pulse-attention');
-                        }
+                    for (const username in accounts) {
+                        const acc = accounts[username];
+                        const row = document.createElement('tr');
+
+                        // Célula do Usuário
+                        const userCell = document.createElement('td');
+                        userCell.textContent = acc.username;
+
+                        // Célula do Status
+                        const statusCell = document.createElement('td');
+                        statusCell.textContent = acc.status;
+                        statusCell.className = '';
+                        if (acc.status === "Rodando") statusCell.classList.add('status-running');
+                        else if (acc.status === "Parado") statusCell.classList.add('status-stopped');
+                        else statusCell.classList.add('status-pending');
+
+                        // Célula do Tempo Ativo
+                        const uptimeCell = document.createElement('td');
+                        uptimeCell.textContent = formatUptime(acc.uptime);
+
+                        // Célula das Ações
+                        const actionsCell = document.createElement('td');
+                        actionsCell.className = 'actions-cell';
+                        
+                        const startStopBtn = document.createElement('button');
+                        startStopBtn.textContent = (acc.status === "Rodando") ? "Parar" : "Iniciar";
+                        startStopBtn.className = (acc.status === "Rodando") ? 'stop-btn' : 'start-btn';
+                        startStopBtn.onclick = () => {
+                            const action = (acc.status === "Rodando") ? 'stop' : 'start';
+                            fetch(`/${action}/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
+                        };
+                        
+                        const guardBtn = document.createElement('button');
+                        guardBtn.textContent = "Guard";
+                        if (acc.status === "Pendente: Steam Guard") guardBtn.classList.add('pulse-attention');
+                        guardBtn.onclick = () => {
+                            const code = prompt(`Insira o código do Steam Guard para ${acc.username}:`);
+                            if (code) {
+                                fetch(`/submit-guard/${acc.username}`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ code })
+                                }).finally(() => setTimeout(updateUI, 1000));
+                            }
+                        };
+                        
+                        // Adicionar mais botões como 'Gerir Jogos' ou 'Remover' aqui no futuro
+                        
+                        actionsCell.append(startStopBtn, guardBtn);
+                        row.append(userCell, statusCell, uptimeCell, actionsCell);
+                        accountsTableBody.appendChild(row);
+
                     }
-
-                    manageGamesButton.disabled = !state.appListReady;
-                    manageGamesButton.title = state.appListReady ? "" : "Aguarde o carregamento da lista de jogos.";
-                } catch (error) {
-                    statusCell.textContent = "Erro de Conexão";
-                    statusCell.className = 'status-error';
+                } catch(e) {
+                    accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Erro ao carregar dados. Verifique a conexão com o servidor.</td></tr>`;
                 }
             }
 
-            startStopButton.addEventListener('click', () => {
-                const action = startStopButton.textContent === 'Iniciar' ? '/start' : '/stop';
-                fetch(action, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
-            });
+            addAccountButton.addEventListener('click', async () => {
+                const username = prompt("Nome de usuário da nova conta Steam:");
+                if (!username) return;
+                const password = prompt(`Senha para a conta ${username}:`);
+                if (!password) return;
 
-            guardButton.addEventListener('click', () => {
-                const code = prompt('Por favor, insira o código do Steam Guard:');
-                if (code) {
-                    fetch('/submit-guard', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code: code })
-                    }).finally(() => setTimeout(updateUI, 1000));
-                }
-            });
-
-            // --- Lógica da Modal de Jogos ---
-
-            manageGamesButton.addEventListener('click', async () => {
-                const response = await fetch('/status');
-                const state = await response.json();
-                const appIds = state.games;
-                
-                // Para preencher os nomes, teríamos que buscar um por um, o que é lento.
-                // Por enquanto, vamos manter a lógica simples de IDs e buscar ao selecionar.
-                selectedGames = appIds.map(appid => ({ appid, name: `Jogo ${appid}` })); 
-                renderSelectedGames();
-                gamesModal.style.display = 'block';
-            });
-
-            const hideModal = () => gamesModal.style.display = 'none';
-            closeModalButton.addEventListener('click', hideModal);
-            window.addEventListener('click', (event) => {
-                if (event.target == gamesModal) hideModal();
-            });
-
-            searchInput.addEventListener('input', async () => {
-                const query = searchInput.value;
-                resultsList.innerHTML = '';
-                if (query.length < 2) return;
-                
-                const response = await fetch(`/search-games?q=${query}`);
-                const games = await response.json();
-                games.forEach(game => {
-                    const li = document.createElement('li');
-                    li.textContent = `${game.name} (${game.appid})`;
-                    li.onclick = () => selectGame(game);
-                    resultsList.appendChild(li);
-                });
-            });
-
-            function selectGame(game) {
-                if (!selectedGames.find(g => g.appid === game.appid)) {
-                    selectedGames.push(game);
-                    renderSelectedGames();
-                }
-                searchInput.value = '';
-                resultsList.innerHTML = '';
-            }
-
-            function renderSelectedGames() {
-                selectedGamesContainer.innerHTML = '';
-                selectedGames.forEach(game => {
-                    const pill = document.createElement('div');
-                    pill.className = 'game-pill';
-                    pill.textContent = game.name;
-                    const removeSpan = document.createElement('span');
-                    removeSpan.textContent = 'x';
-                    removeSpan.onclick = () => removeGame(game.appid);
-                    pill.appendChild(removeSpan);
-                    selectedGamesContainer.appendChild(pill);
-                });
-            }
-
-            function removeGame(appid) {
-                selectedGames = selectedGames.filter(g => g.appid !== appid);
-                renderSelectedGames();
-            }
-
-            saveGamesButton.addEventListener('click', () => {
-                const gamesArray = selectedGames.map(g => g.appid);
-                fetch('/set-games', {
+                const response = await fetch('/add-account', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ games: gamesArray })
-                }).then(() => hideModal());
+                    body: JSON.stringify({ username, password })
+                });
+
+                const result = await response.json();
+                alert(result.message);
+                updateUI();
             });
 
-            // Inicialização da UI
             updateUI();
-            setInterval(updateUI, 3000);
+            setInterval(updateUI, 2000);
         });
     </script>
 </body>
