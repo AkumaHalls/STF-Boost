@@ -1,124 +1,100 @@
 const express = require('express');
 const path = require('path');
+const { MongoClient } = require('mongodb'); // Driver do MongoDB
+const crypto = require('crypto');
 const SteamUser = require('steam-user');
-const fetch = require('node-fetch');
 
+// --- CONFIGURAÇÃO ---
 const app = express();
-const client = new SteamUser();
 const PORT = process.env.PORT || 3000;
+const MONGODB_URI = process.env.MONGODB_URI; // A Connection String virá do Render
 
-let steamApps = [];
-let steamGuardCallback = null;
+if (!MONGODB_URI) {
+    console.error("ERRO CRÍTICO: Variável de ambiente MONGODB_URI não definida!");
+    process.exit(1);
+}
 
-// Objeto de estado expandido para uma melhor UI
-let serverState = {
-    status: "Parado",
-    accountName: process.env.STEAM_USER || "N/D",
-    games: (process.env.STEAM_GAMES || "730").split(',').map(Number),
-    appListReady: false // Flag para controlar o carregamento da lista de jogos
-};
+// --- LÓGICA DO BANCO DE DADOS ---
+const mongoClient = new MongoClient(MONGODB_URI);
+let accountsCollection;
 
-// Função para buscar os jogos da Steam
-async function fetchSteamApps() {
+async function connectToDB() {
     try {
-        console.log("A buscar a lista de jogos da Steam...");
-        const response = await fetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
-        const data = await response.json();
-        steamApps = data.applist.apps;
-        serverState.appListReady = true; // Sinaliza que a lista está pronta
-        console.log(`Lista de jogos carregada: ${steamApps.length} apps.`);
-    } catch (error) {
-        console.error("Falha ao buscar a lista de jogos da Steam:", error);
+        await mongoClient.connect();
+        console.log("Conectado ao MongoDB Atlas com sucesso!");
+        const db = mongoClient.db("stf_boost_db"); // Pode dar qualquer nome à sua base de dados
+        accountsCollection = db.collection("accounts");
+    } catch (e) {
+        console.error("Não foi possível conectar ao MongoDB", e);
+        process.exit(1);
     }
 }
 
+// --- Criptografia (sem alterações) ---
+const ALGORITHM = 'aes-256-cbc';
+const SECRET_KEY = process.env.APP_SECRET;
+// ... (cole aqui as funções 'encrypt' e 'decrypt' da resposta anterior) ...
+
+// --- GESTÃO DE CONTAS ---
+let liveAccounts = {}; // Objeto para guardar o estado VIVO das contas (clientes Steam, status, etc.)
+
+async function loadAccountsIntoMemory() {
+    const savedAccounts = await accountsCollection.find({}).toArray();
+    for (const acc of savedAccounts) {
+        liveAccounts[acc.username] = {
+            ...acc,
+            password: decrypt(acc.password),
+            status: 'Parado',
+            client: new SteamUser(),
+            sessionStartTime: null,
+            steamGuardCallback: null
+        };
+        setupListenersForAccount(liveAccounts[acc.username]);
+    }
+    console.log(`${Object.keys(liveAccounts).length} contas carregadas na memória.`);
+}
+
+function setupListenersForAccount(account) {
+    // ... (cole aqui a função setupListenersForAccount da resposta anterior) ...
+}
+
+// --- API ---
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// --- ROTAS DA API ---
-
-app.get('/status', (req, res) => res.status(200).json(serverState));
-
-app.post('/start', (req, res) => {
-    console.log('Recebido pedido para iniciar o boost.');
-    serverState.status = "Iniciando..."; // Novo status de preparação
-    client.logOn({ accountName: process.env.STEAM_USER, password: process.env.STEAM_PASS });
-    res.status(200).json({ message: 'Tentativa de login iniciada.' });
-});
-
-app.post('/stop', (req, res) => {
-    console.log('Recebido pedido para parar o boost.');
-    serverState.status = "Parando...";
-    client.logOff();
-    res.status(200).json({ message: 'Processo de logoff iniciado.' });
-});
-
-app.post('/submit-guard', (req, res) => {
-    const { code } = req.body;
-    if (steamGuardCallback) {
-        console.log(`Recebido código do Steam Guard: ${code}`);
-        steamGuardCallback(code);
-        steamGuardCallback = null;
-        res.status(200).json({ message: 'Código enviado.' });
-    } else {
-        res.status(400).json({ message: 'Nenhum pedido de código estava ativo.' });
+// Rota para adicionar conta (agora no DB)
+app.post('/add-account', async (req, res) => {
+    const { username, password } = req.body;
+    const existing = await accountsCollection.findOne({ username });
+    if (existing) {
+        return res.status(400).json({ message: "Conta já existe." });
     }
-});
-
-app.post('/set-games', (req, res) => {
-    const { games } = req.body;
-    if (games && Array.isArray(games)) {
-        serverState.games = games;
-        if (serverState.status === "Rodando") {
-            client.gamesPlayed(serverState.games);
-        }
-        console.log(`Jogos atualizados para: ${games.join(', ')}`);
-        res.status(200).json({ message: `Jogos atualizados.` });
-    } else {
-        res.status(400).json({ message: 'Formato inválido.' });
-    }
-});
-
-app.get('/search-games', (req, res) => {
-    if (!serverState.appListReady) {
-        return res.json([{ name: "A lista de jogos ainda está a ser carregada, tente novamente em alguns segundos.", appid: 0 }]);
-    }
-    const query = req.query.q ? req.query.q.toLowerCase() : "";
-    if (query.length < 2) return res.json([]);
     
-    const results = steamApps
-        .filter(app => app.name && app.name.toLowerCase().includes(query))
-        .slice(0, 20);
-    res.json(results);
+    const newAccount = {
+        username,
+        password: encrypt(password),
+        games: [730]
+    };
+    await accountsCollection.insertOne(newAccount);
+    
+    // Adiciona à memória também
+    liveAccounts[username] = { ...newAccount, password: password, status: 'Parado', client: new SteamUser() /* ... */ };
+    setupListenersForAccount(liveAccounts[username]);
+
+    res.status(200).json({ message: "Conta adicionada com sucesso." });
 });
 
-// --- OUVINTES DO CLIENTE STEAM ---
+// Outras rotas (/start, /stop, etc.) precisam ser adaptadas para ler de 'liveAccounts'
+// ... (a lógica das outras rotas permanece muito semelhante à da resposta anterior, mas operando sobre 'liveAccounts')
 
-client.on('loggedOn', () => {
-    console.log(`Login efetuado com sucesso!`);
-    serverState.status = "Rodando"; // Status alterado
-    client.setPersona(SteamUser.EPersonaState.Online);
-    client.gamesPlayed(serverState.games);
-    console.log(`Boost iniciado.`);
-});
+// --- INICIALIZAÇÃO ---
+async function startServer() {
+    await connectToDB();
+    await loadAccountsIntoMemory();
+    
+    app.listen(PORT, () => {
+        console.log(`Servidor iniciado na porta ${PORT}`);
+    });
+}
 
-client.on('steamGuard', (domain, callback) => {
-    console.log(`Steam Guard solicitado.`);
-    serverState.status = "Pendente: Steam Guard"; // Novo status para guiar o usuário
-    steamGuardCallback = callback;
-});
-
-client.on('disconnected', (eresult, msg) => {
-    console.log(`Desconectado: ${msg}`);
-    serverState.status = "Parado";
-});
-
-client.on('error', (err) => {
-    console.error(`Erro: ${SteamUser.EResult[err.eresult]}`);
-    serverState.status = "Erro";
-});
-
-app.listen(PORT, () => {
-    console.log(`Servidor iniciado na porta ${PORT}`);
-    fetchSteamApps();
-});
+startServer();
