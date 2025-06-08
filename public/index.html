@@ -8,7 +8,37 @@
 </head>
 <body>
     <div class="control-panel">
+        <header>
+            <h1>STF Steam Boost</h1>
+        </header>
+
+        <div class="accounts-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Usuário</th>
+                        <th>Status</th>
+                        <th>Tempo Restante</th>
+                        <th>Iniciar/Parar</th>
+                        <th>Steam Guard</th>
+                        <th>Jogos</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td id="accountNameCell">Carregando...</td>
+                        <td id="statusCell" class="status-stopped">Carregando...</td>
+                        <td>Ilimitado</td>
+                        <td><button id="startButton" class="start-btn">Iniciar</button></td>
+                        <td><button id="guardButton" class="enter-btn">Inserir</button></td>
+                        <td><button id="manageGamesButton" class="manage-btn">Gerir</button></td>
+                        <td><button class="settings-btn">Configurações</button></td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
+    </div>
 
     <div id="gamesModal" class="modal">
         <div class="modal-content">
@@ -20,96 +50,143 @@
             <button id="saveGamesButton">Salvar</button>
         </div>
     </div>
+
     <script>
-        // --- Todo o JavaScript anterior para botões Iniciar, Steam Guard, e updateStatus ---
-        // ...
+        document.addEventListener('DOMContentLoaded', () => {
+            const startButton = document.getElementById('startButton');
+            const guardButton = document.getElementById('guardButton');
+            const manageGamesButton = document.getElementById('manageGamesButton');
+            const gamesModal = document.getElementById('gamesModal');
+            const searchInput = document.getElementById('searchInput');
+            const resultsList = document.getElementById('resultsList');
+            const selectedGamesContainer = document.getElementById('selectedGames');
+            const saveGamesButton = document.getElementById('saveGamesButton');
 
-        // --- NOVA LÓGICA PARA A JANELA MODAL DE JOGOS ---
+            let selectedGames = [];
 
-        const gamesModal = document.getElementById('gamesModal');
-        const manageGamesButton = document.getElementById('manageGamesButton');
-        const searchInput = document.getElementById('searchInput');
-        const resultsList = document.getElementById('resultsList');
-        const selectedGamesContainer = document.getElementById('selectedGames');
-        const saveGamesButton = document.getElementById('saveGamesButton');
-
-        let selectedGames = []; // Array para guardar os jogos selecionados {appid, name}
-
-        // Abrir a modal
-        manageGamesButton.addEventListener('click', async () => {
-            // Pega a lista de jogos atual do servidor para popular a modal
-            const response = await fetch('/status');
-            const state = await response.json();
-            // Precisamos de um truque aqui, pois só temos os IDs. Vamos assumir que começamos com os nomes vazios.
-            selectedGames = state.games.map(appid => ({ appid, name: `Jogo ${appid}` }));
-            renderSelectedGames();
-            gamesModal.style.display = 'block';
-        });
-        
-        // Fechar a modal (clicando fora)
-        window.addEventListener('click', (event) => {
-            if (event.target == gamesModal) {
-                gamesModal.style.display = 'none';
+            async function updateStatus() {
+                try {
+                    const response = await fetch('/status');
+                    const state = await response.json();
+                    document.getElementById('accountNameCell').textContent = state.accountName;
+                    const statusCell = document.getElementById('statusCell');
+                    statusCell.textContent = state.status;
+                    statusCell.className = '';
+                    if (state.status === 'A Correr') {
+                        statusCell.classList.add('status-running');
+                    } else if (state.status === 'Parado') {
+                        statusCell.classList.add('status-stopped');
+                    } else {
+                        statusCell.classList.add('status-error');
+                    }
+                } catch (error) {
+                    console.error("Não foi possível buscar o status.", error);
+                }
             }
-        });
 
-        // Lógica da pesquisa
-        searchInput.addEventListener('keyup', async () => {
-            const query = searchInput.value;
-            resultsList.innerHTML = ''; // Limpa resultados antigos
-
-            if (query.length < 3) return;
-
-            const response = await fetch(`/search-games?q=${query}`);
-            const games = await response.json();
-            
-            games.forEach(game => {
-                const li = document.createElement('li');
-                li.textContent = `${game.name} (${game.appid})`;
-                li.onclick = () => selectGame(game);
-                resultsList.appendChild(li);
+            startButton.addEventListener('click', () => {
+                fetch('/start', { method: 'POST' }).then(res => res.json()).then(data => {
+                    alert(data.message);
+                    setTimeout(updateStatus, 1000);
+                });
             });
-        });
 
-        function selectGame(game) {
-            if (!selectedGames.find(g => g.appid === game.appid)) {
-                selectedGames.push(game);
+            guardButton.addEventListener('click', () => {
+                const code = prompt('Por favor, insira o código do Steam Guard:');
+                if (code) {
+                    fetch('/submit-guard', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: code })
+                    }).then(res => res.json()).then(data => {
+                        alert(data.message);
+                        setTimeout(updateStatus, 3000);
+                    });
+                }
+            });
+
+            manageGamesButton.addEventListener('click', async () => {
+                try {
+                    const response = await fetch('/status');
+                    const state = await response.json();
+                    const appIds = state.games;
+                    
+                    // Como só temos os IDs, vamos criar objetos placeholder
+                    selectedGames = appIds.map(appid => ({ appid, name: `Jogo ${appid}` }));
+                    
+                    renderSelectedGames();
+                    gamesModal.style.display = 'block';
+                } catch (error) {
+                    console.error("Erro ao obter jogos atuais:", error);
+                }
+            });
+
+            window.addEventListener('click', (event) => {
+                if (event.target == gamesModal) {
+                    gamesModal.style.display = 'none';
+                }
+            });
+
+            searchInput.addEventListener('input', async () => {
+                const query = searchInput.value;
+                resultsList.innerHTML = '';
+                if (query.length < 3) return;
+                try {
+                    const response = await fetch(`/search-games?q=${query}`);
+                    const games = await response.json();
+                    games.forEach(game => {
+                        const li = document.createElement('li');
+                        li.textContent = `${game.name} (${game.appid})`;
+                        li.onclick = () => selectGame(game);
+                        resultsList.appendChild(li);
+                    });
+                } catch (error) {
+                    console.error("Erro na busca de jogos:", error);
+                }
+            });
+
+            function selectGame(game) {
+                if (!selectedGames.find(g => g.appid === game.appid)) {
+                    selectedGames.push(game);
+                    renderSelectedGames();
+                }
+                searchInput.value = '';
+                resultsList.innerHTML = '';
+            }
+
+            function renderSelectedGames() {
+                selectedGamesContainer.innerHTML = '';
+                selectedGames.forEach(game => {
+                    const pill = document.createElement('div');
+                    pill.className = 'game-pill';
+                    pill.textContent = game.name;
+                    const removeSpan = document.createElement('span');
+                    removeSpan.textContent = 'x';
+                    removeSpan.onclick = () => removeGame(game.appid);
+                    pill.appendChild(removeSpan);
+                    selectedGamesContainer.appendChild(pill);
+                });
+            }
+
+            function removeGame(appid) {
+                selectedGames = selectedGames.filter(g => g.appid !== appid);
                 renderSelectedGames();
             }
-            searchInput.value = '';
-            resultsList.innerHTML = '';
-        }
 
-        function renderSelectedGames() {
-            selectedGamesContainer.innerHTML = '';
-            selectedGames.forEach(game => {
-                const pill = document.createElement('div');
-                pill.className = 'game-pill';
-                pill.textContent = game.name;
-                const removeSpan = document.createElement('span');
-                removeSpan.textContent = 'x';
-                removeSpan.onclick = () => removeGame(game.appid);
-                pill.appendChild(removeSpan);
-                selectedGamesContainer.appendChild(pill);
+            saveGamesButton.addEventListener('click', () => {
+                const gamesArray = selectedGames.map(g => g.appid);
+                fetch('/set-games', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ games: gamesArray })
+                }).then(res => res.json()).then(data => {
+                    alert(data.message);
+                    gamesModal.style.display = 'none';
+                });
             });
-        }
 
-        function removeGame(appid) {
-            selectedGames = selectedGames.filter(g => g.appid !== appid);
-            renderSelectedGames();
-        }
-
-        // Salvar os jogos
-        saveGamesButton.addEventListener('click', () => {
-            const gamesArray = selectedGames.map(g => g.appid);
-            fetch('/set-games', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ games: gamesArray })
-            }).then(res => res.json()).then(data => {
-                alert(data.message);
-                gamesModal.style.display = 'none';
-            });
+            updateStatus();
+            setInterval(updateStatus, 5000);
         });
     </script>
 </body>
