@@ -10,7 +10,7 @@
     <div class="control-panel">
         <header>
             <h1>STF Steam Boost</h1>
-            </header>
+        </header>
 
         <div class="accounts-table">
             <table>
@@ -30,7 +30,7 @@
                         <td>minha-conta-steam</td>
                         <td class="status-stopped">Parado</td>
                         <td>Ilimitado</td>
-                        <td><button class="start-btn">Iniciar</button></td>
+                        <td><button id="startButton" class="start-btn">Iniciar</button></td>
                         <td><button class="enter-btn">Inserir</button></td>
                         <td><button class="manage-btn">Gerir</button></td>
                         <td><button class="settings-btn">Configurações</button></td>
@@ -43,5 +43,30 @@
             <p><a href="#">[ Junte-se ao nosso Discord ]</a></p>
         </footer>
     </div>
-</body>
+
+    <script>
+        // 1. Encontrar o botão "Iniciar" na página pelo seu id
+        const startButton = document.getElementById('startButton');
+
+        // 2. Adicionar um "ouvinte" que espera por um clique no botão
+        startButton.addEventListener('click', () => {
+            console.log('Botão Iniciar clicado!');
+            alert('A enviar pedido para iniciar o boost...');
+
+            // 3. Usar a API 'fetch' para enviar um pedido para a nova rota /start no nosso servidor
+            fetch('/start', {
+                method: 'POST' // Usamos o método POST para indicar que estamos a criar/iniciar algo
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Resposta do servidor:', data);
+                alert(data.message); // Mostra a mensagem de resposta do servidor
+            })
+            .catch(error => {
+                console.error('Erro ao contactar o servidor:', error);
+                alert('Ocorreu um erro ao tentar iniciar o boost.');
+            });
+        });
+    </script>
+    </body>
 </html>
