@@ -22,7 +22,8 @@
                         <th>Ações</th>
                     </tr>
                 </thead>
-                <tbody id="accountsTableBody"></tbody>
+                <tbody id="accountsTableBody">
+                    </tbody>
             </table>
         </div>
     </div>
@@ -39,6 +40,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- Seletores de Elementos ---
             const addAccountButton = document.getElementById('addAccountButton');
             const accountsTableBody = document.getElementById('accountsTableBody');
             
@@ -48,75 +50,131 @@
             const saveGamesButton = document.getElementById('saveGamesButton');
             const appIdsInput = document.getElementById('appIdsInput');
 
+            // --- Variáveis de Estado da UI ---
             let currentlyEditingGamesFor = null;
 
-            function formatUptime(ms) { /* ... (função igual à anterior) ... */ }
+            // --- Funções Auxiliares ---
+            function formatUptime(ms) {
+                if (ms <= 0) return '00:00:00';
+                const totalSeconds = Math.floor(ms / 1000);
+                const hours = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
+                const minutes = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+                const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+                return `${hours}:${minutes}:${seconds}`;
+            }
 
+            // --- Função Principal de Renderização ---
             async function updateUI() {
-                const response = await fetch('/status');
-                const data = await response.json();
-                const accounts = data.accounts;
-                accountsTableBody.innerHTML = '';
+                try {
+                    const response = await fetch('/status');
+                    const data = await response.json();
+                    const accounts = data.accounts;
+                    
+                    accountsTableBody.innerHTML = '';
 
-                if (Object.keys(accounts).length === 0) {
-                    accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Nenhuma conta adicionada.</td></tr>`;
-                }
+                    if (Object.keys(accounts).length === 0) {
+                        accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Nenhuma conta adicionada. Clique em "Adicionar Conta".</td></tr>`;
+                    }
 
-                for (const username in accounts) {
-                    const acc = accounts[username];
-                    const row = document.createElement('tr');
-                    row.innerHTML = `<td>${acc.username}</td><td class="status-cell">${acc.status}</td><td>${formatUptime(acc.uptime)}</td><td class="actions-cell"></td>`;
+                    for (const username in accounts) {
+                        const acc = accounts[username];
+                        const row = document.createElement('tr');
 
-                    const statusCell = row.querySelector('.status-cell');
-                    statusCell.className = `status-cell ${acc.status === 'Rodando' ? 'status-running' : (acc.status === 'Parado' ? 'status-stopped' : 'status-pending')}`;
-                    
-                    const actionsCell = row.querySelector('.actions-cell');
-                    
-                    // Botões de Ação
-                    const startStopBtn = document.createElement('button');
-                    startStopBtn.textContent = (acc.status === "Rodando") ? "Parar" : "Iniciar";
-                    startStopBtn.className = (acc.status === "Rodando") ? 'stop-btn' : 'start-btn';
-                    startStopBtn.onclick = () => fetch(`/${acc.status === 'Rodando' ? 'stop' : 'start'}/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
-                    
-                    const guardBtn = document.createElement('button');
-                    guardBtn.textContent = "Guard";
-                    if (acc.status === "Pendente: Steam Guard") guardBtn.classList.add('pulse-attention');
-                    guardBtn.onclick = () => {
-                        const code = prompt(`Insira o código do Steam Guard para ${acc.username}:`);
-                        if (code) fetch(`/submit-guard/${acc.username}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }).finally(() => setTimeout(updateUI, 1000));
-                    };
+                        // Células da Tabela
+                        row.innerHTML = `
+                            <td>${acc.username}</td>
+                            <td class="status-cell">${acc.status}</td>
+                            <td>${formatUptime(acc.uptime)}</td>
+                            <td class="actions-cell"></td>
+                        `;
 
-                    const manageBtn = document.createElement('button');
-                    manageBtn.textContent = "Jogos";
-                    manageBtn.onclick = () => {
-                        currentlyEditingGamesFor = acc.username;
-                        appIdsInput.value = acc.games.join(', '); // Mostra os IDs atuais
-                        gamesModal.style.display = 'block';
-                    };
-                    
-                    const removeBtn = document.createElement('button');
-                    removeBtn.textContent = "Remover";
-                    removeBtn.className = "remove-btn";
-                    removeBtn.onclick = () => {
-                        if (confirm(`Tem a certeza que deseja remover a conta ${acc.username}?`)) {
-                            fetch(`/remove-account/${acc.username}`, { method: 'DELETE' }).finally(() => setTimeout(updateUI, 500));
-                        }
-                    };
-                    
-                    actionsCell.append(startStopBtn, guardBtn, manageBtn, removeBtn);
-                    accountsTableBody.appendChild(row);
+                        const statusCell = row.querySelector('.status-cell');
+                        statusCell.className = `status-cell ${acc.status === 'Rodando' ? 'status-running' : (acc.status === 'Parado' ? 'status-stopped' : 'status-pending')}`;
+                        
+                        const actionsCell = row.querySelector('.actions-cell');
+                        
+                        // Botões de Ação
+                        const startStopBtn = document.createElement('button');
+                        startStopBtn.textContent = (acc.status === "Rodando") ? "Parar" : "Iniciar";
+                        startStopBtn.className = (acc.status === "Rodando") ? 'stop-btn' : 'start-btn';
+                        startStopBtn.onclick = () => {
+                            const action = (acc.status === "Rodando") ? 'stop' : 'start';
+                            fetch(`/${action}/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
+                        };
+                        
+                        const guardBtn = document.createElement('button');
+                        guardBtn.textContent = "Guard";
+                        if (acc.status === "Pendente: Steam Guard") guardBtn.classList.add('pulse-attention');
+                        guardBtn.onclick = () => {
+                            const code = prompt(`Insira o código do Steam Guard para ${acc.username}:`);
+                            if (code) {
+                                fetch(`/submit-guard/${acc.username}`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ code })
+                                }).finally(() => setTimeout(updateUI, 1000));
+                            }
+                        };
+
+                        const manageBtn = document.createElement('button');
+                        manageBtn.textContent = "Jogos";
+                        manageBtn.onclick = () => {
+                            currentlyEditingGamesFor = acc.username;
+                            appIdsInput.value = acc.games.join(', ');
+                            gamesModal.style.display = 'block';
+                        };
+                        
+                        const removeBtn = document.createElement('button');
+                        removeBtn.textContent = "Remover";
+                        removeBtn.className = "remove-btn";
+                        removeBtn.onclick = () => {
+                            if (confirm(`Tem a certeza que deseja remover a conta ${acc.username}? Esta ação é irreversível.`)) {
+                                fetch(`/remove-account/${acc.username}`, { method: 'DELETE' }).finally(() => setTimeout(updateUI, 500));
+                            }
+                        };
+                        
+                        actionsCell.append(startStopBtn, guardBtn, manageBtn, removeBtn);
+                        accountsTableBody.appendChild(row);
+                    }
+                } catch(e) {
+                    accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Erro ao carregar dados. Verifique a conexão com o servidor.</td></tr>`;
                 }
             }
-            
-            // --- Lógica dos Botões e Modal ---
-            addAccountButton.addEventListener('click', async () => { /* ... (lógica igual à anterior) ... */ });
 
-            const hideModal = () => gamesModal.style.display = 'none';
+            // --- Lógica dos Botões e Modal ---
+
+            addAccountButton.addEventListener('click', async () => {
+                const username = prompt("Nome de usuário da nova conta Steam:");
+                if (!username) return;
+                const password = prompt(`Senha para a conta ${username}:`);
+                if (!password) return;
+
+                const response = await fetch('/add-account', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const result = await response.json();
+                alert(result.message);
+                updateUI();
+            });
+
+            const hideModal = () => {
+                gamesModal.style.display = 'none';
+                appIdsInput.value = '';
+                currentlyEditingGamesFor = null;
+            }
             closeModalButton.addEventListener('click', hideModal);
-            window.addEventListener('click', (event) => { if (event.target == gamesModal) hideModal(); });
+            window.addEventListener('click', (event) => {
+                if (event.target == gamesModal) {
+                    hideModal();
+                }
+            });
 
             saveGamesButton.addEventListener('click', () => {
                 if (!currentlyEditingGamesFor) return;
+                
                 const gamesArray = appIdsInput.value.split(',')
                     .map(id => parseInt(id.trim()))
                     .filter(id => !isNaN(id) && id > 0);
@@ -125,12 +183,19 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ games: gamesArray })
-                }).then(res => res.json()).then(data => {
+                })
+                .then(res => res.json())
+                .then(data => {
                     alert(data.message);
                     hideModal();
+                })
+                .catch(err => {
+                    console.error("Erro ao salvar jogos:", err);
+                    alert("Ocorreu um erro ao salvar os jogos.");
                 });
             });
 
+            // --- Inicialização ---
             updateUI();
             setInterval(updateUI, 3000);
         });
