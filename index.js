@@ -1,28 +1,57 @@
 const express = require('express');
 const path = require('path');
-const { MongoClient } = require('mongodb'); // Driver do MongoDB
+const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const SteamUser = require('steam-user');
 
 // --- CONFIGURAÇÃO ---
 const app = express();
 const PORT = process.env.PORT || 3000;
-const MONGODB_URI = process.env.MONGODB_URI; // A Connection String virá do Render
+const MONGODB_URI = process.env.MONGODB_URI;
+const SECRET_KEY = process.env.APP_SECRET;
 
-if (!MONGODB_URI) {
-    console.error("ERRO CRÍTICO: Variável de ambiente MONGODB_URI não definida!");
+if (!MONGODB_URI || !SECRET_KEY) {
+    console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI e APP_SECRET precisam de ser definidas!");
     process.exit(1);
 }
+
+// --- CRIPTOGRAFIA ---
+const ALGORITHM = 'aes-256-cbc';
+const key = crypto.createHash('sha256').update(String(SECRET_KEY)).digest('base64').substr(0, 32);
+
+const encrypt = (text) => {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+    let encrypted = cipher.update(text);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    return `${iv.toString('hex')}:${encrypted.toString('hex')}`;
+};
+
+const decrypt = (text) => {
+    try {
+        const textParts = text.split(':');
+        const iv = Buffer.from(textParts.shift(), 'hex');
+        const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+        const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+        let decrypted = decipher.update(encryptedText);
+        decrypted = Buffer.concat([decrypted, decipher.final()]);
+        return decrypted.toString();
+    } catch (error) {
+        console.error("Erro ao descodificar a senha. Verifique se a APP_SECRET mudou.");
+        return "";
+    }
+};
 
 // --- LÓGICA DO BANCO DE DADOS ---
 const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection;
+let steamApps = [];
 
 async function connectToDB() {
     try {
         await mongoClient.connect();
         console.log("Conectado ao MongoDB Atlas com sucesso!");
-        const db = mongoClient.db("stf_boost_db"); // Pode dar qualquer nome à sua base de dados
+        const db = mongoClient.db("stf_boost_db");
         accountsCollection = db.collection("accounts");
     } catch (e) {
         console.error("Não foi possível conectar ao MongoDB", e);
@@ -30,13 +59,31 @@ async function connectToDB() {
     }
 }
 
-// --- Criptografia (sem alterações) ---
-const ALGORITHM = 'aes-256-cbc';
-const SECRET_KEY = process.env.APP_SECRET;
-// ... (cole aqui as funções 'encrypt' e 'decrypt' da resposta anterior) ...
-
 // --- GESTÃO DE CONTAS ---
-let liveAccounts = {}; // Objeto para guardar o estado VIVO das contas (clientes Steam, status, etc.)
+let liveAccounts = {}; // Objeto para guardar o estado VIVO das contas
+
+function setupListenersForAccount(account) {
+    account.client.on('loggedOn', () => {
+        console.log(`Login OK para: ${account.username}`);
+        account.status = "Rodando";
+        account.sessionStartTime = Date.now();
+        account.client.setPersona(SteamUser.EPersonaState.Online);
+        account.client.gamesPlayed(account.games);
+    });
+    account.client.on('steamGuard', (domain, callback) => {
+        console.log(`Steam Guard solicitado para: ${account.username}`);
+        account.status = "Pendente: Steam Guard";
+        account.steamGuardCallback = callback;
+    });
+    account.client.on('disconnected', () => {
+        account.status = "Parado";
+        account.sessionStartTime = null;
+    });
+    account.client.on('error', () => {
+        account.status = "Erro";
+        account.sessionStartTime = null;
+    });
+}
 
 async function loadAccountsIntoMemory() {
     const savedAccounts = await accountsCollection.find({}).toArray();
@@ -54,40 +101,82 @@ async function loadAccountsIntoMemory() {
     console.log(`${Object.keys(liveAccounts).length} contas carregadas na memória.`);
 }
 
-function setupListenersForAccount(account) {
-    // ... (cole aqui a função setupListenersForAccount da resposta anterior) ...
-}
 
 // --- API ---
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Rota para adicionar conta (agora no DB)
+app.get('/status', (req, res) => {
+    const publicState = {};
+    for (const username in liveAccounts) {
+        const acc = liveAccounts[username];
+        publicState[username] = {
+            username: acc.username,
+            status: acc.status,
+            games: acc.games,
+            uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0
+        };
+    }
+    res.json({ accounts: publicState });
+});
+
 app.post('/add-account', async (req, res) => {
     const { username, password } = req.body;
-    const existing = await accountsCollection.findOne({ username });
-    if (existing) {
-        return res.status(400).json({ message: "Conta já existe." });
-    }
-    
-    const newAccount = {
-        username,
-        password: encrypt(password),
-        games: [730]
-    };
-    await accountsCollection.insertOne(newAccount);
-    
-    // Adiciona à memória também
-    liveAccounts[username] = { ...newAccount, password: password, status: 'Parado', client: new SteamUser() /* ... */ };
-    setupListenersForAccount(liveAccounts[username]);
+    if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."});
 
+    const existing = await accountsCollection.findOne({ username });
+    if (existing) return res.status(400).json({ message: "Conta já existe." });
+    
+    const newAccountData = { username, password: encrypt(password), games: [730] };
+    await accountsCollection.insertOne(newAccountData);
+    
+    liveAccounts[username] = {
+        ...newAccountData,
+        password: password,
+        status: 'Parado',
+        client: new SteamUser(),
+        sessionStartTime: null,
+        steamGuardCallback: null
+    };
+    setupListenersForAccount(liveAccounts[username]);
     res.status(200).json({ message: "Conta adicionada com sucesso." });
 });
 
-// Outras rotas (/start, /stop, etc.) precisam ser adaptadas para ler de 'liveAccounts'
-// ... (a lógica das outras rotas permanece muito semelhante à da resposta anterior, mas operando sobre 'liveAccounts')
+app.post('/start/:username', (req, res) => {
+    const account = liveAccounts[req.params.username];
+    if (account) {
+        account.status = "Iniciando...";
+        account.client.logOn({ accountName: account.username, password: account.password });
+        res.status(200).json({ message: "Iniciando..." });
+    } else {
+        res.status(404).json({ message: "Conta não encontrada." });
+    }
+});
 
-// --- INICIALIZAÇÃO ---
+app.post('/stop/:username', (req, res) => {
+    const account = liveAccounts[req.params.username];
+    if (account) {
+        account.status = "Parando...";
+        account.client.logOff();
+        res.status(200).json({ message: "Parando..." });
+    } else {
+        res.status(404).json({ message: "Conta não encontrada." });
+    }
+});
+
+app.post('/submit-guard/:username', (req, res) => {
+    const account = liveAccounts[req.params.username];
+    if (account && account.steamGuardCallback) {
+        account.steamGuardCallback(req.body.code);
+        account.steamGuardCallback = null;
+        res.status(200).json({ message: "Código enviado." });
+    } else {
+        res.status(400).json({ message: "Pedido de Steam Guard não estava ativo." });
+    }
+});
+
+
+// --- INICIALIZAÇÃO DO SERVIDOR ---
 async function startServer() {
     await connectToDB();
     await loadAccountsIntoMemory();
