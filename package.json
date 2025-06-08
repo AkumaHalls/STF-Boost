@@ -6,16 +6,9 @@
   "scripts": {
     "start": "node index.js"
   },
-  "keywords": [
-    "steam",
-    "boost",
-    "node"
-  ],
-  "author": "AkumaHalls",
-  "license": "ISC",
   "dependencies": {
     "express": "^4.19.2",
     "steam-user": "^5.0.0",
-    "node-fetch": "^2.7.0"
+    "mongodb": "^6.7.0"
   }
 }
