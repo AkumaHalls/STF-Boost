@@ -8,10 +8,20 @@
 </head>
 <body>
     <div class="control-panel">
-        <header><h1>STF Steam Boost</h1></header>
+        <header>
+            <h1>STF Steam Boost</h1>
+        </header>
         <div class="accounts-table">
             <table>
-                <thead><tr><th>Usuário</th><th>Status</th><th>Iniciar/Parar</th><th>Steam Guard</th><th>Jogos</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Usuário</th>
+                        <th>Status</th>
+                        <th>Iniciar/Parar</th>
+                        <th>Steam Guard</th>
+                        <th>Jogos</th>
+                    </tr>
+                </thead>
                 <tbody>
                     <tr>
                         <td id="accountNameCell">Carregando...</td>
@@ -25,16 +35,36 @@
         </div>
     </div>
 
-    <div id="gamesModal" class="modal"></div>
+    <div id="gamesModal" class="modal">
+        <div class="modal-content">
+            <h2>Gerir Jogos</h2>
+            <p>Selecione os jogos que deseja impulsionar.</p>
+            <div id="selectedGames"></div>
+            <input type="text" id="searchInput" placeholder="Pesquisar jogos por nome...">
+            <ul id="resultsList"></ul>
+            <button id="saveGamesButton">Salvar</button>
+            <button id="closeModalButton">Cancelar</button>
+        </div>
+    </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Elementos da UI principal
             const startStopButton = document.getElementById('startStopButton');
             const guardButton = document.getElementById('guardButton');
             const manageGamesButton = document.getElementById('manageGamesButton');
             const statusCell = document.getElementById('statusCell');
 
-            // Função principal para atualizar toda a UI
+            // Elementos da Modal
+            const gamesModal = document.getElementById('gamesModal');
+            const closeModalButton = document.getElementById('closeModalButton');
+            const searchInput = document.getElementById('searchInput');
+            const resultsList = document.getElementById('resultsList');
+            const selectedGamesContainer = document.getElementById('selectedGames');
+            const saveGamesButton = document.getElementById('saveGamesButton');
+
+            let selectedGames = [];
+
             async function updateUI() {
                 try {
                     const response = await fetch('/status');
@@ -42,9 +72,8 @@
 
                     document.getElementById('accountNameCell').textContent = state.accountName;
                     statusCell.textContent = state.status;
-                    statusCell.className = ''; 
+                    statusCell.className = '';
 
-                    // Lógica do botão Iniciar/Parar
                     if (state.status === "Rodando") {
                         startStopButton.textContent = "Parar";
                         startStopButton.className = 'stop-btn';
@@ -53,7 +82,6 @@
                         startStopButton.className = 'start-btn';
                     }
 
-                    // Lógica das classes de cor e animações
                     guardButton.classList.remove('pulse-attention');
                     if (state.status === "Rodando") {
                         statusCell.classList.add('status-running');
@@ -66,38 +94,106 @@
                         }
                     }
 
-                    // Lógica para habilitar o botão de Gerir Jogos
                     manageGamesButton.disabled = !state.appListReady;
-                    if (!state.appListReady) {
-                        manageGamesButton.title = "Aguarde o carregamento da lista de jogos.";
-                    } else {
-                        manageGamesButton.title = "";
-                    }
-
+                    manageGamesButton.title = state.appListReady ? "" : "Aguarde o carregamento da lista de jogos.";
                 } catch (error) {
-                    console.error("Não foi possível buscar o status.", error);
                     statusCell.textContent = "Erro de Conexão";
                     statusCell.className = 'status-error';
                 }
             }
 
-            // Evento do botão Iniciar/Parar
             startStopButton.addEventListener('click', () => {
                 const action = startStopButton.textContent === 'Iniciar' ? '/start' : '/stop';
-                fetch(action, { method: 'POST' }).finally(() => {
-                    setTimeout(updateUI, 500); // Atualiza a UI rapidamente após o clique
+                fetch(action, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
+            });
+
+            guardButton.addEventListener('click', () => {
+                const code = prompt('Por favor, insira o código do Steam Guard:');
+                if (code) {
+                    fetch('/submit-guard', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code: code })
+                    }).finally(() => setTimeout(updateUI, 1000));
+                }
+            });
+
+            // --- Lógica da Modal de Jogos ---
+
+            manageGamesButton.addEventListener('click', async () => {
+                const response = await fetch('/status');
+                const state = await response.json();
+                const appIds = state.games;
+                
+                // Para preencher os nomes, teríamos que buscar um por um, o que é lento.
+                // Por enquanto, vamos manter a lógica simples de IDs e buscar ao selecionar.
+                selectedGames = appIds.map(appid => ({ appid, name: `Jogo ${appid}` })); 
+                renderSelectedGames();
+                gamesModal.style.display = 'block';
+            });
+
+            const hideModal = () => gamesModal.style.display = 'none';
+            closeModalButton.addEventListener('click', hideModal);
+            window.addEventListener('click', (event) => {
+                if (event.target == gamesModal) hideModal();
+            });
+
+            searchInput.addEventListener('input', async () => {
+                const query = searchInput.value;
+                resultsList.innerHTML = '';
+                if (query.length < 2) return;
+                
+                const response = await fetch(`/search-games?q=${query}`);
+                const games = await response.json();
+                games.forEach(game => {
+                    const li = document.createElement('li');
+                    li.textContent = `${game.name} (${game.appid})`;
+                    li.onclick = () => selectGame(game);
+                    resultsList.appendChild(li);
                 });
             });
 
-            // Demais eventos (guardButton, manageGamesButton, etc.)
-            // ... (copie a lógica dos botões da sua versão anterior) ...
+            function selectGame(game) {
+                if (!selectedGames.find(g => g.appid === game.appid)) {
+                    selectedGames.push(game);
+                    renderSelectedGames();
+                }
+                searchInput.value = '';
+                resultsList.innerHTML = '';
+            }
 
-            // Inicialização
+            function renderSelectedGames() {
+                selectedGamesContainer.innerHTML = '';
+                selectedGames.forEach(game => {
+                    const pill = document.createElement('div');
+                    pill.className = 'game-pill';
+                    pill.textContent = game.name;
+                    const removeSpan = document.createElement('span');
+                    removeSpan.textContent = 'x';
+                    removeSpan.onclick = () => removeGame(game.appid);
+                    pill.appendChild(removeSpan);
+                    selectedGamesContainer.appendChild(pill);
+                });
+            }
+
+            function removeGame(appid) {
+                selectedGames = selectedGames.filter(g => g.appid !== appid);
+                renderSelectedGames();
+            }
+
+            saveGamesButton.addEventListener('click', () => {
+                const gamesArray = selectedGames.map(g => g.appid);
+                fetch('/set-games', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ games: gamesArray })
+                }).then(() => hideModal());
+            });
+
+            // Inicialização da UI
             updateUI();
-            setInterval(updateUI, 3000); // Atualiza a cada 3 segundos
+            setInterval(updateUI, 3000);
         });
-
-        // Cole aqui o resto do seu JavaScript da modal de jogos
     </script>
 </body>
 </html>
