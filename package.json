@@ -1,0 +1,20 @@
+{
+  "name": "stf-steam-boost",
+  "version": "1.0.0",
+  "description": "Um sistema para boost de horas na Steam.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "steam",
+    "boost",
+    "node"
+  ],
+  "author": "Seu Nome",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "steam-user": "^5.0.0"
+  }
+}

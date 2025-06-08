@@ -1,0 +1,66 @@
+body {
+    background-color: #1b2838;
+    color: #c7d5e0;
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+.control-panel {
+    background-color: #2a475e;
+    border-radius: 8px;
+    padding: 20px;
+    max-width: 1200px;
+    margin: auto;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #1b2838;
+    padding-bottom: 15px;
+    margin-bottom: 15px;
+}
+
+button {
+    background-color: #66c0f4;
+    color: #fff;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button:hover {
+    background-color: #4a95c2;
+}
+
+.plan-info {
+    background-color: #1e3a51;
+    padding: 15px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+}
+
+.accounts-table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.accounts-table th, .accounts-table td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #1b2838;
+}
+
+.status-stopped {
+    color: #ff6B6B;
+    font-weight: bold;
+}
+
+footer {
+    text-align: center;
+    margin-top: 20px;
+}
