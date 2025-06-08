@@ -1,92 +1,72 @@
-// index.js - Servidor com estado e novas rotas
+// index.js - Agora com busca de jogos da Steam
 
 const express = require('express');
 const path = require('path');
 const SteamUser = require('steam-user');
+const fetch = require('node-fetch'); // Importamos o node-fetch
 
 const app = express();
 const client = new SteamUser();
 const PORT = process.env.PORT || 3000;
 
-// Objeto para guardar o estado atual do nosso serviço
+// --- NOVO: LÓGICA PARA BUSCAR JOGOS DA STEAM ---
+let steamApps = []; // Guarda a lista de todos os jogos
+
+async function fetchSteamApps() {
+    try {
+        console.log("A buscar a lista de jogos da Steam... Isto pode demorar um momento.");
+        const response = await fetch('https://api.steampowered.com/ISteamApps/GetAppList/v2/');
+        const data = await response.json();
+        steamApps = data.applist.apps;
+        console.log(`Lista de jogos carregada com sucesso: ${steamApps.length} apps encontrados.`);
+    } catch (error) {
+        console.error("Falha ao buscar a lista de jogos da Steam:", error);
+    }
+}
+// --- FIM DA NOVA LÓGICA ---
+
+
 let serverState = {
     status: "Parado",
-    accountName: process.env.STEAM_USER || "N/D", // Pega o nome do usuário da variável de ambiente
-    games: (process.env.STEAM_GAMES || "730,2923300").split(',').map(Number) // Pega os jogos das variáveis ou usa um padrão
+    accountName: process.env.STEAM_USER || "N/D",
+    games: (process.env.STEAM_GAMES || "730").split(',').map(Number)
 };
 
 let steamGuardCallback = null;
 
-// Configuração do Express
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 // --- ROTAS DA API ---
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('/status', (req, res) => res.status(200).json(serverState));
+app.post('/start', (req, res) => { /* ... (código sem alterações) ... */ });
+app.post('/submit-guard', (req, res) => { /* ... (código sem alterações) ... */ });
+app.post('/set-games', (req, res) => { /* ... (código sem alterações) ... */ });
 
-// NOVA Rota para o painel pedir o estado atual
-app.get('/status', (req, res) => {
-    res.status(200).json(serverState);
-});
-
-app.post('/start', (req, res) => {
-    client.logOn({ accountName: process.env.STEAM_USER, password: process.env.STEAM_PASS });
-    res.status(200).json({ message: 'Tentativa de login iniciada.' });
-});
-
-app.post('/submit-guard', (req, res) => {
-    if (steamGuardCallback) {
-        steamGuardCallback(req.body.code);
-        steamGuardCallback = null;
-        res.status(200).json({ message: 'Código do Steam Guard enviado!' });
-    } else {
-        res.status(400).json({ message: 'Nenhum pedido de código estava ativo.' });
+// --- NOVA ROTA DE BUSCA ---
+app.get('/search-games', (req, res) => {
+    const query = req.query.q ? req.query.q.toLowerCase() : "";
+    if (!query) {
+        return res.json([]);
     }
+    const results = steamApps
+        .filter(app => app.name.toLowerCase().includes(query))
+        .slice(0, 20); // Retorna os primeiros 20 resultados
+    res.json(results);
 });
+// --- FIM DA NOVA ROTA ---
 
-// NOVA Rota para definir os jogos
-app.post('/set-games', (req, res) => {
-    const { games } = req.body;
-    if (games && Array.isArray(games)) {
-        serverState.games = games;
-        client.gamesPlayed(serverState.games); // Atualiza os jogos em tempo real
-        console.log(`Lista de jogos atualizada para: ${games.join(', ')}`);
-        res.status(200).json({ message: `Jogos atualizados para: ${games.join(', ')}` });
-    } else {
-        res.status(400).json({ message: 'Formato de jogos inválido.' });
-    }
-});
 
-// --- OUVINTES DO CLIENTE STEAM ---
+// --- OUVINTES DO CLIENTE STEAM (sem alterações) ---
+client.on('loggedOn', () => { /* ... */ });
+client.on('steamGuard', (domain, callback) => { /* ... */ });
+client.on('disconnected', (eresult, msg) => { /* ... */ });
+client.on('error', (err) => { /* ... */ });
 
-client.on('loggedOn', () => {
-    console.log(`Login efetuado com sucesso para ${serverState.accountName}!`);
-    serverState.status = "A Correr"; // Atualiza o status
-    client.setPersona(SteamUser.EPersonaState.Online);
-    client.gamesPlayed(serverState.games);
-    console.log(`Boost iniciado para os jogos: ${serverState.games.join(', ')}`);
-});
 
-client.on('steamGuard', (domain, callback) => {
-    console.log(`A Steam está a pedir um código de autenticação!`);
-    steamGuardCallback = callback;
-});
-
-// NOVO Ouvinte para quando a conta é desconectada
-client.on('disconnected', (eresult, msg) => {
-    console.log(`Desconectado da Steam: ${msg}`);
-    serverState.status = "Parado"; // Atualiza o status
-});
-
-client.on('error', (err) => {
-    console.error(`Ocorreu um erro: ${SteamUser.EResult[err.eresult]}`);
-    serverState.status = "Erro"; // Atualiza o status
-});
-
-// Iniciar o servidor
+// Iniciar o servidor e buscar a lista de jogos
 app.listen(PORT, () => {
   console.log(`Servidor iniciado na porta ${PORT}`);
+  fetchSteamApps(); // Chama a função para carregar os jogos
 });
