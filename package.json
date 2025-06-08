@@ -11,10 +11,11 @@
     "boost",
     "node"
   ],
-  "author": "Seu Nome",
+  "author": "AkumaHalls",
   "license": "ISC",
   "dependencies": {
     "express": "^4.19.2",
-    "steam-user": "^5.0.0"
+    "steam-user": "^5.0.0",
+    "node-fetch": "^2.7.0"
   }
 }
