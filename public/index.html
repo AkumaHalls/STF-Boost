@@ -27,12 +27,12 @@
                 </thead>
                 <tbody>
                     <tr>
-                        <td>minha-conta-steam</td>
-                        <td class="status-stopped">Parado</td>
+                        <td id="accountNameCell">Carregando...</td>
+                        <td id="statusCell" class="status-stopped">Carregando...</td>
                         <td>Ilimitado</td>
                         <td><button id="startButton" class="start-btn">Iniciar</button></td>
                         <td><button id="guardButton" class="enter-btn">Inserir</button></td>
-                        <td><button class="manage-btn">Gerir</button></td>
+                        <td><button id="manageGamesButton" class="manage-btn">Gerir</button></td>
                         <td><button class="settings-btn">Configurações</button></td>
                     </tr>
                 </tbody>
@@ -42,34 +42,83 @@
 
     <script>
         const startButton = document.getElementById('startButton');
-        const guardButton = document.getElementById('guardButton'); // Encontra o novo botão
+        const guardButton = document.getElementById('guardButton');
+        const manageGamesButton = document.getElementById('manageGamesButton');
 
-        // Evento para o botão INICIAR
+        // --- FUNÇÕES DE INTERAÇÃO COM O SERVIDOR ---
+
+        // Função para atualizar o status e nome da conta
+        async function updateStatus() {
+            try {
+                const response = await fetch('/status');
+                const state = await response.json();
+
+                const accountNameCell = document.getElementById('accountNameCell');
+                const statusCell = document.getElementById('statusCell');
+
+                accountNameCell.textContent = state.accountName;
+                statusCell.textContent = state.status;
+
+                // Mudar a cor do status
+                statusCell.className = ''; // Limpa classes antigas
+                if (state.status === 'A Correr') {
+                    statusCell.classList.add('status-running'); // Classe para verde
+                } else if (state.status === 'Parado') {
+                    statusCell.classList.add('status-stopped'); // Classe para vermelho
+                } else {
+                    statusCell.classList.add('status-error'); // Classe para amarelo/erro
+                }
+            } catch (error) {
+                console.error("Não foi possível buscar o status.", error);
+            }
+        }
+        
+        // --- EVENTOS DOS BOTÕES ---
+
         startButton.addEventListener('click', () => {
-            fetch('/start', { method: 'POST' })
-                .then(response => response.json())
-                .then(data => alert(data.message))
-                .catch(error => console.error('Erro ao iniciar:', error));
+            fetch('/start', { method: 'POST' }).then(res => res.json()).then(data => {
+                alert(data.message);
+                setTimeout(updateStatus, 1000); // Atualiza o status 1s depois
+            });
         });
 
-        // NOVO Evento para o botão INSERIR (Steam Guard)
         guardButton.addEventListener('click', () => {
-            // Abre uma caixa de diálogo para pedir o código
             const code = prompt('Por favor, insira o código do Steam Guard:');
-
-            if (code) { // Se o usuário inseriu um código e não cancelou
+            if (code) {
                 fetch('/submit-guard', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ code: code }) // Envia o código para o servidor
-                })
-                .then(response => response.json())
-                .then(data => alert(data.message))
-                .catch(error => console.error('Erro ao enviar código:', error));
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                }).then(res => res.json()).then(data => {
+                    alert(data.message);
+                    setTimeout(updateStatus, 3000); // Atualiza o status 3s depois do login
+                });
             }
         });
+
+        manageGamesButton.addEventListener('click', async () => {
+            const currentStatus = await fetch('/status').then(res => res.json());
+            const currentGames = currentStatus.games.join(',');
+            
+            const newGames = prompt('Insira os AppIDs dos jogos separados por vírgula:', currentGames);
+            if (newGames) {
+                const gamesArray = newGames.split(',').map(id => Number(id.trim())).filter(id => !isNaN(id));
+                
+                fetch('/set-games', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ games: gamesArray })
+                }).then(res => res.json()).then(data => alert(data.message));
+            }
+        });
+
+
+        // --- INICIALIZAÇÃO ---
+        
+        // Atualiza o status assim que a página carrega
+        document.addEventListener('DOMContentLoaded', updateStatus);
+        // E continua a atualizar a cada 5 segundos
+        setInterval(updateStatus, 5000); 
     </script>
 </body>
 </html>
