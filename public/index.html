@@ -3,13 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Controle - STF Steam Boost</title>
+    <title>STF Steam Boost</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/png" href="/logo.png">
 </head>
 <body>
     <div class="control-panel">
         <header>
-            <h1>STF Steam Boost</h1>
+            <div class="logo-container">
+                <img src="/logo.png" alt="Logo STF Steam Boost" id="headerLogo">
+                <h1>STF Steam Boost</h1>
+            </div>
             <button id="addAccountButton">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 Adicionar Conta
@@ -25,8 +29,7 @@
                         <th>Ações</th>
                     </tr>
                 </thead>
-                <tbody id="accountsTableBody">
-                    </tbody>
+                <tbody id="accountsTableBody"></tbody>
             </table>
         </div>
     </div>
@@ -45,20 +48,16 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Seletores de Elementos ---
             const addAccountButton = document.getElementById('addAccountButton');
             const accountsTableBody = document.getElementById('accountsTableBody');
             
-            // Elementos da Modal
             const gamesModal = document.getElementById('gamesModal');
             const closeModalButton = document.getElementById('closeModalButton');
             const saveGamesButton = document.getElementById('saveGamesButton');
             const appIdsInput = document.getElementById('appIdsInput');
-
-            // --- Variáveis de Estado da UI ---
+            
             let currentlyEditingGamesFor = null;
 
-            // --- Ícones SVG ---
             const icons = {
                 play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
                 stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`,
@@ -66,8 +65,7 @@
                 games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`,
                 remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`
             };
-            
-            // --- Funções Auxiliares ---
+
             function showToast(message, type = 'info') {
                 const container = document.getElementById('toastContainer');
                 const toast = document.createElement('div');
@@ -90,30 +88,27 @@
                 return `${hours}:${minutes}:${seconds}`;
             }
 
-            // --- Função Principal de Renderização ---
             async function updateUI() {
                 try {
                     const response = await fetch('/status');
                     const data = await response.json();
                     const accounts = data.accounts;
-                    
                     accountsTableBody.innerHTML = '';
 
                     if (Object.keys(accounts).length === 0) {
-                        accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Nenhuma conta adicionada. Clique em "Adicionar Conta".</td></tr>`;
+                        accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Nenhuma conta adicionada.</td></tr>`;
                     }
 
                     for (const username in accounts) {
                         const acc = accounts[username];
                         const row = document.createElement('tr');
                         row.innerHTML = `<td>${acc.username}</td><td class="status-cell">${acc.status}</td><td>${formatUptime(acc.uptime)}</td><td class="actions-cell"></td>`;
-
+                        
                         const statusCell = row.querySelector('.status-cell');
                         statusCell.className = `status-cell ${acc.status === 'Rodando' ? 'status-running' : (acc.status === 'Parado' ? 'status-stopped' : 'status-pending')}`;
                         
                         const actionsCell = row.querySelector('.actions-cell');
                         
-                        // Botões de Ação
                         const startStopBtn = document.createElement('button');
                         const isRunning = acc.status === "Rodando";
                         startStopBtn.innerHTML = isRunning ? icons.stop + "Parar" : icons.play + "Iniciar";
@@ -156,19 +151,16 @@
                 }
             }
 
-            // --- Lógica dos Botões e Modal ---
             addAccountButton.addEventListener('click', async () => {
                 const username = prompt("Nome de usuário da nova conta Steam:");
                 if (!username) return;
                 const password = prompt(`Senha para a conta ${username}:`);
                 if (!password) return;
-
                 const response = await fetch('/add-account', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
                 });
-                
                 const result = await response.json();
                 showToast(result.message, response.ok ? 'info' : 'error');
                 updateUI();
@@ -184,7 +176,6 @@
 
             saveGamesButton.addEventListener('click', () => {
                 if (!currentlyEditingGamesFor) return;
-                
                 const gamesArray = appIdsInput.value.split(',')
                     .map(id => parseInt(id.trim()))
                     .filter(id => !isNaN(id) && id > 0);
@@ -204,7 +195,6 @@
                 });
             });
 
-            // --- Inicialização ---
             updateUI();
             setInterval(updateUI, 3000);
         });
