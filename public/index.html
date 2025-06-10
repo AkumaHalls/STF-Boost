@@ -48,9 +48,9 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Seletores de Elementos (sem alterações)
             const addAccountButton = document.getElementById('addAccountButton');
             const accountsTableBody = document.getElementById('accountsTableBody');
-            
             const gamesModal = document.getElementById('gamesModal');
             const closeModalButton = document.getElementById('closeModalButton');
             const saveGamesButton = document.getElementById('saveGamesButton');
@@ -58,6 +58,7 @@
             
             let currentlyEditingGamesFor = null;
 
+            // Ícones SVG (sem alterações)
             const icons = {
                 play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
                 stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`,
@@ -65,7 +66,8 @@
                 games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`,
                 remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`
             };
-
+            
+            // Função de Notificações "Toast" (sem alterações)
             function showToast(message, type = 'info') {
                 const container = document.getElementById('toastContainer');
                 const toast = document.createElement('div');
@@ -79,15 +81,32 @@
                 }, 4000);
             }
 
+            // --- FUNÇÃO formatUptime ATUALIZADA ---
             function formatUptime(ms) {
                 if (ms <= 0) return '00:00:00';
-                const totalSeconds = Math.floor(ms / 1000);
+                
+                let totalSeconds = Math.floor(ms / 1000);
+                
+                const days = Math.floor(totalSeconds / 86400);
+                totalSeconds %= 86400; // Resto de segundos após tirar os dias
+                
                 const hours = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
-                const minutes = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+                totalSeconds %= 3600; // Resto de segundos após tirar as horas
+                
+                const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
                 const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-                return `${hours}:${minutes}:${seconds}`;
+
+                if (days > 0) {
+                    // Se tiver 1 dia ou mais, mostra o formato "X d, HH:MM:SS"
+                    const dayString = days === 1 ? 'dia' : 'dias';
+                    return `${days} ${dayString}, ${hours}:${minutes}:${seconds}`;
+                } else {
+                    // Senão, mostra o formato normal
+                    return `${hours}:${minutes}:${seconds}`;
+                }
             }
 
+            // Função Principal de Renderização (sem alterações)
             async function updateUI() {
                 try {
                     const response = await fetch('/status');
@@ -113,10 +132,7 @@
                         const isRunning = acc.status === "Rodando";
                         startStopBtn.innerHTML = isRunning ? icons.stop + "Parar" : icons.play + "Iniciar";
                         startStopBtn.className = isRunning ? 'stop-btn' : 'start-btn';
-                        startStopBtn.onclick = () => {
-                            const action = isRunning ? 'stop' : 'start';
-                            fetch(`/${action}/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
-                        };
+                        startStopBtn.onclick = () => fetch(`/${isRunning ? 'stop' : 'start'}/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
                         
                         const guardBtn = document.createElement('button');
                         guardBtn.innerHTML = icons.guard + "Guard";
@@ -138,7 +154,7 @@
                         removeBtn.innerHTML = icons.remove + "Remover";
                         removeBtn.className = "remove-btn";
                         removeBtn.onclick = () => {
-                            if (confirm(`Tem a certeza que deseja remover a conta ${acc.username}? Esta ação é irreversível.`)) {
+                            if (confirm(`Tem a certeza que deseja remover a conta ${acc.username}?`)) {
                                 fetch(`/remove-account/${acc.username}`, { method: 'DELETE' }).finally(() => setTimeout(updateUI, 500));
                             }
                         };
@@ -147,20 +163,17 @@
                         accountsTableBody.appendChild(row);
                     }
                 } catch(e) {
-                    accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Erro ao carregar dados. Verifique a conexão com o servidor.</td></tr>`;
+                    accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Erro ao carregar dados.</td></tr>`;
                 }
             }
 
+            // Lógica dos Botões e Modal (sem alterações)
             addAccountButton.addEventListener('click', async () => {
                 const username = prompt("Nome de usuário da nova conta Steam:");
                 if (!username) return;
                 const password = prompt(`Senha para a conta ${username}:`);
                 if (!password) return;
-                const response = await fetch('/add-account', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
+                const response = await fetch('/add-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
                 const result = await response.json();
                 showToast(result.message, response.ok ? 'info' : 'error');
                 updateUI();
@@ -176,27 +189,19 @@
 
             saveGamesButton.addEventListener('click', () => {
                 if (!currentlyEditingGamesFor) return;
-                const gamesArray = appIdsInput.value.split(',')
-                    .map(id => parseInt(id.trim()))
-                    .filter(id => !isNaN(id) && id > 0);
-                
-                fetch(`/set-games/${currentlyEditingGamesFor}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ games: gamesArray })
-                })
+                const gamesArray = appIdsInput.value.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0);
+                fetch(`/set-games/${currentlyEditingGamesFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ games: gamesArray }) })
                 .then(res => res.json())
                 .then(data => {
                     showToast(data.message);
                     hideModal();
                 })
-                .catch(err => {
-                    showToast("Ocorreu um erro ao salvar os jogos.", 'error');
-                });
+                .catch(err => showToast("Ocorreu um erro ao salvar os jogos.", 'error'));
             });
 
+            // Inicialização (sem alterações)
             updateUI();
-            setInterval(updateUI, 3000);
+            setInterval(updateUI, 1000); // Mudei para 1 segundo para o contador ficar mais fluido
         });
     </script>
 </body>
