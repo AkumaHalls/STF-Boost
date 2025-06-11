@@ -37,6 +37,7 @@ const decrypt = (text) => {
         decrypted = Buffer.concat([decrypted, decipher.final()]);
         return decrypted.toString();
     } catch (error) {
+        console.error("Erro ao descodificar a senha. Verifique se a APP_SECRET mudou.");
         return "";
     }
 };
@@ -44,7 +45,7 @@ const decrypt = (text) => {
 // --- LÓGICA DO BANCO DE DADOS E GESTÃO DE CONTAS ---
 const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection;
-let liveAccounts = {};
+let liveAccounts = {}; 
 
 async function connectToDB() {
     try {
@@ -58,52 +59,62 @@ async function connectToDB() {
     }
 }
 
+function applyLiveSettings(account) {
+    if (account.status !== "Rodando") return;
+
+    console.log(`[${account.username}] Aplicando configurações ao vivo...`);
+    const personaState = account.settings.appearOffline ? SteamUser.EPersonaState.Offline : SteamUser.EPersonaState.Online;
+    account.client.setPersona(personaState);
+    console.log(`[${account.username}] Status da persona definido para: ${personaState}`);
+
+    let gamesToPlay = [...account.games];
+    if (account.settings.customInGameTitle) {
+        gamesToPlay.unshift({ game_id: 0, game_extra_info: account.settings.customInGameTitle });
+    }
+    
+    if (gamesToPlay.length > 0) {
+        console.log(`[${account.username}] Enviando para a Steam os jogos:`, JSON.stringify(gamesToPlay));
+        account.client.gamesPlayed(gamesToPlay);
+    }
+}
+
 function setupListenersForAccount(account) {
     account.client.on('loggedOn', () => {
-        console.log(`Login OK para: ${account.username}`);
+        console.log(`[${account.username}] Login OK!`);
         account.status = "Rodando";
         account.sessionStartTime = Date.now();
-        
-        const personaState = account.settings.appearOffline ? SteamUser.EPersonaState.Offline : SteamUser.EPersonaState.Online;
-        account.client.setPersona(personaState);
-
-        let gamesToPlay = [...account.games];
-        if (account.settings.customInGameTitle) {
-            gamesToPlay.unshift({ game_id: 0, game_extra_info: account.settings.customInGameTitle });
-        }
-        if (gamesToPlay.length > 0) {
-            account.client.gamesPlayed(gamesToPlay);
-        }
+        applyLiveSettings(account);
     });
 
     account.client.on('steamGuard', (domain, callback) => {
-        console.log(`Steam Guard solicitado para: ${account.username}`);
+        console.log(`[${account.username}] Steam Guard solicitado.`);
         account.status = "Pendente: Steam Guard";
         account.steamGuardCallback = callback;
     });
 
-    account.client.on('disconnected', () => {
-        console.log(`Desconectado: ${account.username}`);
+    account.client.on('disconnected', (eresult, msg) => {
+        console.log(`[${account.username}] Desconectado: ${msg}`);
         account.status = "Parado";
         account.sessionStartTime = null;
     });
     
     account.client.on('error', (err) => {
-        console.log(`Erro na conta ${account.username}: ${err.message}`);
+        console.log(`[${account.username}] Erro: ${err.message || err.eresult}`);
         account.status = "Erro";
         account.sessionStartTime = null;
     });
 
     account.client.on('friendRelationship', (steamID, relationship) => {
         if (relationship === SteamUser.EFriendRelationship.RequestRecipient && account.settings.autoAcceptFriends) {
-            console.log(`Aceitando pedido de amizade de ${steamID} para a conta ${account.username}`);
+            console.log(`[${account.username}] Aceitando pedido de amizade de ${steamID.getSteamID64()}`);
             account.client.addFriend(steamID);
         }
     });
 
-    account.client.on('chatMessage', (sender, message, type) => {
+    account.client.on('chatMessage', (sender, message) => {
+        console.log(`[${account.username}] Mensagem recebida de ${sender.getSteamID64()}: "${message}"`);
         if (account.settings.customAwayMessage) {
-            console.log(`Enviando resposta automática para ${sender.getSteamID64()} na conta ${account.username}`);
+            console.log(`[${account.username}] Enviando resposta automática.`);
             account.client.chatMessage(sender, account.settings.customAwayMessage);
         }
     });
@@ -164,11 +175,15 @@ app.delete('/remove-account/:username', async (req, res) => {
     const { username } = req.params;
     const account = liveAccounts[username];
     if (account) {
-        if (account.status === "Rodando") account.client.logOff();
+        if (account.status === "Rodando") {
+            account.client.logOff();
+        }
         delete liveAccounts[username];
         await accountsCollection.deleteOne({ username });
         res.status(200).json({ message: "Conta removida com sucesso." });
-    } else { res.status(404).json({ message: "Conta não encontrada." }); }
+    } else {
+        res.status(404).json({ message: "Conta não encontrada." });
+    }
 });
 
 app.post('/start/:username', (req, res) => {
@@ -177,7 +192,9 @@ app.post('/start/:username', (req, res) => {
         account.status = "Iniciando...";
         account.client.logOn({ accountName: account.username, password: account.password });
         res.status(200).json({ message: "Iniciando..." });
-    } else { res.status(404).json({ message: "Conta não encontrada." }); }
+    } else {
+        res.status(404).json({ message: "Conta não encontrada." });
+    }
 });
 
 app.post('/stop/:username', (req, res) => {
@@ -186,7 +203,9 @@ app.post('/stop/:username', (req, res) => {
         account.status = "Parando...";
         account.client.logOff();
         res.status(200).json({ message: "Parando..." });
-    } else { res.status(404).json({ message: "Conta não encontrada." }); }
+    } else {
+        res.status(404).json({ message: "Conta não encontrada." });
+    }
 });
 
 app.post('/submit-guard/:username', (req, res) => {
@@ -195,7 +214,9 @@ app.post('/submit-guard/:username', (req, res) => {
         account.steamGuardCallback(req.body.code);
         account.steamGuardCallback = null;
         res.status(200).json({ message: "Código enviado." });
-    } else { res.status(400).json({ message: "Pedido de Steam Guard não estava ativo." }); }
+    } else {
+        res.status(400).json({ message: "Pedido de Steam Guard não estava ativo." });
+    }
 });
 
 app.post('/set-games/:username', async (req, res) => {
@@ -205,9 +226,11 @@ app.post('/set-games/:username', async (req, res) => {
     if (account && games && Array.isArray(games)) {
         account.games = games;
         await accountsCollection.updateOne({ username }, { $set: { games: games } });
-        if (account.status === "Rodando") account.client.gamesPlayed(account.games);
+        applyLiveSettings(account);
         res.status(200).json({ message: `Jogos atualizados.` });
-    } else { res.status(400).json({ message: 'Conta ou formato de jogos inválido.' }); }
+    } else {
+        res.status(400).json({ message: 'Conta ou formato de jogos inválido.' });
+    }
 });
 
 app.post('/save-settings/:username', async (req, res) => {
@@ -215,24 +238,16 @@ app.post('/save-settings/:username', async (req, res) => {
     const newSettings = req.body.settings;
     const account = liveAccounts[username];
     if (account && newSettings) {
+        console.log(`[${username}] Recebido pedido para salvar configurações:`, newSettings);
         account.settings = newSettings;
         await accountsCollection.updateOne({ username }, { $set: { settings: newSettings } });
-        
-        if (account.status === "Rodando") {
-            const personaState = account.settings.appearOffline ? SteamUser.EPersonaState.Offline : SteamUser.EPersonaState.Online;
-            account.client.setPersona(personaState);
-            
-            let gamesToPlay = [...account.games];
-            if (account.settings.customInGameTitle) {
-                gamesToPlay.unshift({ game_id: 0, game_extra_info: account.settings.customInGameTitle });
-            }
-            if (gamesToPlay.length > 0) {
-                 account.client.gamesPlayed(gamesToPlay);
-            }
-        }
-        res.status(200).json({ message: "Configurações salvas!" });
-    } else { res.status(404).json({ message: "Conta não encontrada ou dados inválidos." }); }
+        applyLiveSettings(account);
+        res.status(200).json({ message: "Configurações salvas com sucesso!" });
+    } else {
+        res.status(404).json({ message: "Conta não encontrada ou dados inválidos." });
+    }
 });
+
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 async function startServer() {
