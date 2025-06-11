@@ -63,22 +63,68 @@ function applyLiveSettings(account) {
     if (account.status !== "Rodando") return;
 
     console.log(`[${account.username}] Aplicando configurações ao vivo...`);
-    const personaState = account.settings.appearOffline ? SteamUser.EPersonaState.Offline : SteamUser.EPersonaState.Online;
-    account.client.setPersona(personaState);
-    console.log(`[${account.username}] Status da persona definido para: ${personaState}`);
-
-    let gamesToPlay;
-
-    if (account.settings.customInGameTitle) {
-        gamesToPlay = [{ game_id: 0, game_extra_info: account.settings.customInGameTitle }];
-    } else {
-        gamesToPlay = [...account.games];
-    }
     
-    if (gamesToPlay.length > 0) {
-        console.log(`[${account.username}] Enviando para a Steam os jogos:`, JSON.stringify(gamesToPlay));
-        account.client.gamesPlayed(gamesToPlay);
-    }
+    // Aguardar um pouco para garantir que a conexão está estável
+    setTimeout(() => {
+        try {
+            // Primeiro, definir os jogos
+            let gamesToPlay = [];
+
+            if (account.settings.customInGameTitle && account.settings.customInGameTitle.trim() !== '') {
+                // Se há título customizado, usar ele com game_id 0
+                gamesToPlay = [{ 
+                    game_id: 0, 
+                    game_extra_info: account.settings.customInGameTitle 
+                }];
+                console.log(`[${account.username}] Usando título customizado: "${account.settings.customInGameTitle}"`);
+            } else if (account.games && account.games.length > 0) {
+                // Senão, usar os jogos configurados
+                gamesToPlay = account.games.map(gameId => ({ game_id: parseInt(gameId) }));
+                console.log(`[${account.username}] Usando jogos configurados: ${account.games}`);
+            }
+            
+            if (gamesToPlay.length > 0) {
+                console.log(`[${account.username}] Enviando para a Steam os jogos:`, JSON.stringify(gamesToPlay));
+                account.client.gamesPlayed(gamesToPlay);
+            }
+
+            // Aguardar um pouco para os jogos serem aplicados
+            setTimeout(() => {
+                // Definir status da persona DEPOIS dos jogos
+                let personaState;
+                
+                if (account.settings.appearOffline) {
+                    personaState = SteamUser.EPersonaState.Offline;
+                } else if (account.settings.customAwayMessage && account.settings.customAwayMessage.trim() !== '') {
+                    personaState = SteamUser.EPersonaState.Away;
+                    console.log(`[${account.username}] Definindo status como Ausente devido à mensagem automática`);
+                } else if (account.settings.customInGameTitle && account.settings.customInGameTitle.trim() !== '') {
+                    // Para títulos customizados, usar status "Jogando" explicitamente
+                    personaState = SteamUser.EPersonaState.Online;
+                    console.log(`[${account.username}] Definindo status como Online com título customizado`);
+                } else {
+                    personaState = SteamUser.EPersonaState.Online;
+                }
+                
+                account.client.setPersona(personaState);
+                console.log(`[${account.username}] Status da persona definido para: ${personaState}`);
+
+                // Para títulos customizados, forçar o status como "ocupado" ou "ausente" para mostrar o título
+                if (account.settings.customInGameTitle && account.settings.customInGameTitle.trim() !== '' && 
+                    (!account.settings.customAwayMessage || account.settings.customAwayMessage.trim() === '')) {
+                    
+                    setTimeout(() => {
+                        account.client.setPersona(SteamUser.EPersonaState.Busy);
+                        console.log(`[${account.username}] Forçando status Ocupado para mostrar título customizado`);
+                    }, 1000);
+                }
+                
+            }, 1500); // Aguardar 1.5s para aplicar persona após jogos
+
+        } catch (error) {
+            console.error(`[${account.username}] Erro ao aplicar configurações:`, error);
+        }
+    }, 2000); // Aguardar 2 segundos após o login
 }
 
 function setupListenersForAccount(account) {
@@ -86,6 +132,8 @@ function setupListenersForAccount(account) {
         console.log(`[${account.username}] Login OK!`);
         account.status = "Rodando";
         account.sessionStartTime = Date.now();
+        
+        // Aplicar configurações após login bem-sucedido
         applyLiveSettings(account);
     });
 
@@ -107,24 +155,46 @@ function setupListenersForAccount(account) {
         account.sessionStartTime = null;
     });
 
+    // Corrigir listener de amizade
     account.client.on('friendRelationship', (steamID, relationship) => {
+        console.log(`[${account.username}] Mudança de relacionamento: ${steamID.getSteamID64()} - ${relationship}`);
+        
         if (relationship === SteamUser.EFriendRelationship.RequestRecipient && account.settings.autoAcceptFriends) {
             console.log(`[${account.username}] Aceitando pedido de amizade de ${steamID.getSteamID64()}`);
             account.client.addFriend(steamID);
         }
     });
 
-    account.client.on('friendMessage', (sender, message) => {
-        console.log(`[${account.username}] Mensagem de amigo recebida de ${sender.getSteamID64()}: "${message}"`);
-        if (account.settings.customAwayMessage) {
-            console.log(`[${account.username}] Enviando resposta automática.`);
-            account.client.chatMessage(sender, account.settings.customAwayMessage);
+    // Corrigir listener de mensagens - usar friendMessage em vez de chatMessage
+    account.client.on('friendMessage', (steamID, message) => {
+        console.log(`[${account.username}] Mensagem recebida de ${steamID.getSteamID64()}: "${message}"`);
+        
+        if (account.settings.customAwayMessage && account.settings.customAwayMessage.trim() !== '') {
+            console.log(`[${account.username}] Enviando resposta automática: "${account.settings.customAwayMessage}"`);
+            
+            // Aguardar um pouco antes de responder para parecer mais natural
+            setTimeout(() => {
+                account.client.chatMessage(steamID, account.settings.customAwayMessage);
+            }, 1000);
+        }
+    });
+
+    // Adicionar listener para mudanças de persona
+    account.client.on('user', (steamID, user) => {
+        if (steamID.getSteamID64() === account.client.steamID.getSteamID64()) {
+            console.log(`[${account.username}] Status da persona atualizado:`, user.persona_state);
         }
     });
 }
 
 async function loadAccountsIntoMemory() {
-    const defaultSettings = { customInGameTitle: '', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false };
+    const defaultSettings = { 
+        customInGameTitle: '', 
+        customAwayMessage: '', 
+        appearOffline: false, 
+        autoAcceptFriends: false 
+    };
+    
     const savedAccounts = await accountsCollection.find({}).toArray();
     for (const acc of savedAccounts) {
         liveAccounts[acc.username] = {
@@ -150,7 +220,13 @@ app.get('/status', (req, res) => {
     const publicState = { accounts: {} };
     for (const username in liveAccounts) {
         const acc = liveAccounts[username];
-        publicState.accounts[username] = { username: acc.username, status: acc.status, games: acc.games, uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0, settings: acc.settings };
+        publicState.accounts[username] = { 
+            username: acc.username, 
+            status: acc.status, 
+            games: acc.games, 
+            uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0, 
+            settings: acc.settings 
+        };
     }
     res.json(publicState);
 });
@@ -169,7 +245,14 @@ app.post('/add-account', async (req, res) => {
     };
     await accountsCollection.insertOne(newAccountData);
     
-    liveAccounts[username] = { ...newAccountData, password: password, status: 'Parado', client: new SteamUser(), sessionStartTime: null, steamGuardCallback: null };
+    liveAccounts[username] = { 
+        ...newAccountData, 
+        password: password, 
+        status: 'Parado', 
+        client: new SteamUser(), 
+        sessionStartTime: null, 
+        steamGuardCallback: null 
+    };
     setupListenersForAccount(liveAccounts[username]);
     res.status(200).json({ message: "Conta adicionada com sucesso." });
 });
@@ -229,7 +312,12 @@ app.post('/set-games/:username', async (req, res) => {
     if (account && games && Array.isArray(games)) {
         account.games = games;
         await accountsCollection.updateOne({ username }, { $set: { games: games } });
-        applyLiveSettings(account);
+        
+        // Reaplicar configurações se a conta estiver rodando
+        if (account.status === "Rodando") {
+            applyLiveSettings(account);
+        }
+        
         res.status(200).json({ message: `Jogos atualizados.` });
     } else {
         res.status(400).json({ message: 'Conta ou formato de jogos inválido.' });
@@ -242,9 +330,14 @@ app.post('/save-settings/:username', async (req, res) => {
     const account = liveAccounts[username];
     if (account && newSettings) {
         console.log(`[${username}] Recebido pedido para salvar configurações:`, newSettings);
-        account.settings = newSettings;
-        await accountsCollection.updateOne({ username }, { $set: { settings: newSettings } });
-        applyLiveSettings(account);
+        account.settings = { ...account.settings, ...newSettings };
+        await accountsCollection.updateOne({ username }, { $set: { settings: account.settings } });
+        
+        // Reaplicar configurações se a conta estiver rodando
+        if (account.status === "Rodando") {
+            applyLiveSettings(account);
+        }
+        
         res.status(200).json({ message: "Configurações salvas com sucesso!" });
     } else {
         res.status(404).json({ message: "Conta não encontrada ou dados inválidos." });
