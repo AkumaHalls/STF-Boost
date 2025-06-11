@@ -43,7 +43,7 @@
             <button id="closeGamesModalButton" class="remove-btn">Cancelar</button>
         </div>
     </div>
-    
+
     <div id="settingsModal" class="modal">
         <div class="modal-content">
             <h2>Configurações da Conta</h2>
@@ -74,26 +74,18 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Seletores de Elementos ---
             const accountsTableBody = document.getElementById('accountsTableBody');
             const addAccountButton = document.getElementById('addAccountButton');
-
-            // Elementos da Modal de Jogos
             const gamesModal = document.getElementById('gamesModal');
             const closeGamesModalButton = document.getElementById('closeGamesModalButton');
             const saveGamesButton = document.getElementById('saveGamesButton');
             const appIdsInput = document.getElementById('appIdsInput');
-            
-            // Elementos da Modal de Configurações
             const settingsModal = document.getElementById('settingsModal');
             const closeSettingsModalButton = document.getElementById('closeSettingsModalButton');
             const saveSettingsButton = document.getElementById('saveSettingsButton');
-            
-            // --- Variáveis de Estado da UI ---
             let currentlyEditingGamesFor = null;
             let currentlyEditingSettingsFor = null;
 
-            // --- Ícones SVG ---
             const icons = {
                 play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
                 stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`,
@@ -103,7 +95,6 @@
                 settings: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`
             };
 
-            // --- Funções Auxiliares ---
             function showToast(message, type = 'info') {
                 const container = document.getElementById('toastContainer');
                 const toast = document.createElement('div');
@@ -134,26 +125,21 @@
                 }
             }
 
-            // --- Função Principal de Renderização ---
             async function updateUI() {
                 try {
                     const response = await fetch('/status');
                     const data = await response.json();
                     const accounts = data.accounts;
                     accountsTableBody.innerHTML = '';
-
                     if (Object.keys(accounts).length === 0) {
                         accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Nenhuma conta adicionada.</td></tr>`;
                     }
-
                     for (const username in accounts) {
                         const acc = accounts[username];
                         const row = document.createElement('tr');
                         row.innerHTML = `<td>${acc.username}</td><td class="status-cell">${acc.status}</td><td>${formatUptime(acc.uptime)}</td><td class="actions-cell"></td>`;
-                        
                         const statusCell = row.querySelector('.status-cell');
                         statusCell.className = `status-cell ${acc.status === 'Rodando' ? 'status-running' : (acc.status === 'Parado' ? 'status-stopped' : 'status-pending')}`;
-                        
                         const actionsCell = row.querySelector('.actions-cell');
                         
                         const startStopBtn = document.createElement('button');
@@ -178,15 +164,6 @@
                             gamesModal.style.display = 'block';
                         };
                         
-                        const removeBtn = document.createElement('button');
-                        removeBtn.innerHTML = icons.remove + "Remover";
-                        removeBtn.className = "remove-btn";
-                        removeBtn.onclick = () => {
-                            if (confirm(`Tem a certeza que deseja remover a conta ${acc.username}? Esta ação é irreversível.`)) {
-                                fetch(`/remove-account/${acc.username}`, { method: 'DELETE' }).finally(() => setTimeout(updateUI, 500));
-                            }
-                        };
-                        
                         const settingsBtn = document.createElement('button');
                         settingsBtn.innerHTML = icons.settings + "Config.";
                         settingsBtn.className = "settings-btn";
@@ -199,16 +176,25 @@
                             document.getElementById('autoAcceptFriendsToggle').checked = currentSettings.autoAcceptFriends;
                             settingsModal.style.display = 'block';
                         };
+
+                        const removeBtn = document.createElement('button');
+                        removeBtn.innerHTML = icons.remove + "Remover";
+                        removeBtn.className = "remove-btn";
+                        removeBtn.onclick = () => {
+                            if (confirm(`Tem a certeza que deseja remover a conta ${acc.username}? Esta ação é irreversível.`)) {
+                                fetch(`/remove-account/${acc.username}`, { method: 'DELETE' }).finally(() => setTimeout(updateUI, 500));
+                            }
+                        };
                         
-                        actionsCell.append(startStopBtn, guardBtn, manageBtn, removeBtn, settingsBtn);
+                        // --- AQUI ESTÁ A MUDANÇA ---
+                        // Nova ordem dos botões, com Remover por último.
+                        actionsCell.append(startStopBtn, guardBtn, manageBtn, settingsBtn, removeBtn);
                         accountsTableBody.appendChild(row);
                     }
                 } catch(e) {
-                    accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Erro ao carregar dados. Verifique a conexão com o servidor.</td></tr>`;
+                    accountsTableBody.innerHTML = `<tr><td colspan="4" style="text-align:center;">Erro ao carregar dados.</td></tr>`;
                 }
             }
-
-            // --- Lógica dos Botões e Modais ---
 
             addAccountButton.addEventListener('click', async () => {
                 const username = prompt("Nome de usuário da nova conta Steam:");
@@ -225,7 +211,6 @@
                 updateUI();
             });
 
-            // Modal de Jogos
             const hideGamesModal = () => {
                 gamesModal.style.display = 'none';
                 appIdsInput.value = '';
@@ -233,6 +218,7 @@
             }
             closeGamesModalButton.addEventListener('click', hideGamesModal);
             window.addEventListener('click', (event) => { if (event.target == gamesModal) hideGamesModal(); });
+
             saveGamesButton.addEventListener('click', () => {
                 if (!currentlyEditingGamesFor) return;
                 const gamesArray = appIdsInput.value.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0);
@@ -240,16 +226,17 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ games: gamesArray })
-                }).then(res => res.json()).then(data => { showToast(data.message); hideGamesModal(); });
+                })
+                .then(res => res.json()).then(data => { showToast(data.message); hideGamesModal(); });
             });
 
-            // Modal de Configurações
             const hideSettingsModal = () => {
                 settingsModal.style.display = 'none';
                 currentlyEditingSettingsFor = null;
             }
             closeSettingsModalButton.addEventListener('click', hideSettingsModal);
             window.addEventListener('click', (event) => { if (event.target == settingsModal) hideSettingsModal(); });
+
             saveSettingsButton.addEventListener('click', () => {
                 if (!currentlyEditingSettingsFor) return;
                 const newSettings = {
@@ -262,10 +249,10 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ settings: newSettings })
-                }).then(res => res.json()).then(data => { showToast(data.message); hideSettingsModal(); });
+                })
+                .then(res => res.json()).then(data => { showToast(data.message); hideSettingsModal(); });
             });
 
-            // --- Inicialização ---
             updateUI();
             setInterval(updateUI, 1000);
         });
