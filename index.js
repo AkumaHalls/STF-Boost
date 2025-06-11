@@ -67,9 +67,12 @@ function applyLiveSettings(account) {
     account.client.setPersona(personaState);
     console.log(`[${account.username}] Status da persona definido para: ${personaState}`);
 
-    let gamesToPlay = [...account.games];
+    let gamesToPlay;
+
     if (account.settings.customInGameTitle) {
-        gamesToPlay.unshift({ game_id: 0, game_extra_info: account.settings.customInGameTitle });
+        gamesToPlay = [{ game_id: 0, game_extra_info: account.settings.customInGameTitle }];
+    } else {
+        gamesToPlay = [...account.games];
     }
     
     if (gamesToPlay.length > 0) {
@@ -247,7 +250,6 @@ app.post('/save-settings/:username', async (req, res) => {
         res.status(404).json({ message: "Conta não encontrada ou dados inválidos." });
     }
 });
-
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 async function startServer() {
