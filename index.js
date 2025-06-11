@@ -67,64 +67,168 @@ function applyLiveSettings(account) {
     // Aguardar um pouco para garantir que a conexão está estável
     setTimeout(() => {
         try {
-            // Primeiro, definir os jogos
-            let gamesToPlay = [];
-
-            if (account.settings.customInGameTitle && account.settings.customInGameTitle.trim() !== '') {
-                // Se há título customizado, usar ele com game_id 0
-                gamesToPlay = [{ 
-                    game_id: 0, 
-                    game_extra_info: account.settings.customInGameTitle 
-                }];
-                console.log(`[${account.username}] Usando título customizado: "${account.settings.customInGameTitle}"`);
-            } else if (account.games && account.games.length > 0) {
-                // Senão, usar os jogos configurados
-                gamesToPlay = account.games.map(gameId => ({ game_id: parseInt(gameId) }));
-                console.log(`[${account.username}] Usando jogos configurados: ${account.games}`);
-            }
-            
-            if (gamesToPlay.length > 0) {
-                console.log(`[${account.username}] Enviando para a Steam os jogos:`, JSON.stringify(gamesToPlay));
-                account.client.gamesPlayed(gamesToPlay);
-            }
-
-            // Aguardar um pouco para os jogos serem aplicados
-            setTimeout(() => {
-                // Definir status da persona DEPOIS dos jogos
-                let personaState;
-                
-                if (account.settings.appearOffline) {
-                    personaState = SteamUser.EPersonaState.Offline;
-                } else if (account.settings.customAwayMessage && account.settings.customAwayMessage.trim() !== '') {
-                    personaState = SteamUser.EPersonaState.Away;
-                    console.log(`[${account.username}] Definindo status como Ausente devido à mensagem automática`);
-                } else if (account.settings.customInGameTitle && account.settings.customInGameTitle.trim() !== '') {
-                    // Para títulos customizados, usar status "Jogando" explicitamente
-                    personaState = SteamUser.EPersonaState.Online;
-                    console.log(`[${account.username}] Definindo status como Online com título customizado`);
-                } else {
-                    personaState = SteamUser.EPersonaState.Online;
-                }
-                
-                account.client.setPersona(personaState);
-                console.log(`[${account.username}] Status da persona definido para: ${personaState}`);
-
-                // Para títulos customizados, forçar o status como "ocupado" ou "ausente" para mostrar o título
-                if (account.settings.customInGameTitle && account.settings.customInGameTitle.trim() !== '' && 
-                    (!account.settings.customAwayMessage || account.settings.customAwayMessage.trim() === '')) {
-                    
-                    setTimeout(() => {
-                        account.client.setPersona(SteamUser.EPersonaState.Busy);
-                        console.log(`[${account.username}] Forçando status Ocupado para mostrar título customizado`);
-                    }, 1000);
-                }
-                
-            }, 1500); // Aguardar 1.5s para aplicar persona após jogos
-
+            applySettingsWithRetry(account, 0);
         } catch (error) {
             console.error(`[${account.username}] Erro ao aplicar configurações:`, error);
         }
-    }, 2000); // Aguardar 2 segundos após o login
+    }, 2000);
+}
+
+function applySettingsWithRetry(account, attempt) {
+    if (attempt >= 5) {
+        console.log(`[${account.username}] Máximo de tentativas atingido`);
+        return;
+    }
+
+    console.log(`[${account.username}] Tentativa ${attempt + 1} de aplicar configurações`);
+
+    // Estratégia: Alternar entre diferentes abordagens
+    if (account.settings.customInGameTitle && account.settings.customInGameTitle.trim() !== '') {
+        
+        // Estratégia baseada na tentativa
+        if (attempt === 0) {
+            // Tentativa 1: Método padrão
+            setCustomGameTitle(account, attempt);
+        } else if (attempt === 1) {
+            // Tentativa 2: Primeiro definir status, depois jogo
+            setPersonaFirst(account, attempt);
+        } else if (attempt === 2) {
+            // Tentativa 3: Usar jogo real + título customizado
+            setRealGameWithCustomTitle(account, attempt);
+        } else if (attempt === 3) {
+            // Tentativa 4: Forçar Away sempre
+            setForceAway(account, attempt);
+        } else {
+            // Tentativa 5: Última tentativa com múltiplas aplicações
+            setMultipleApplications(account, attempt);
+        }
+        
+    } else {
+        // Sem título customizado, aplicar configurações normais
+        applyNormalSettings(account);
+    }
+}
+
+function setCustomGameTitle(account, attempt) {
+    const gamesToPlay = [{ 
+        game_id: 0, 
+        game_extra_info: account.settings.customInGameTitle 
+    }];
+    
+    console.log(`[${account.username}] Método 1: Aplicando jogo customizado`);
+    account.client.gamesPlayed(gamesToPlay);
+    
+    setTimeout(() => {
+        account.client.setPersona(SteamUser.EPersonaState.Away);
+        console.log(`[${account.username}] Definindo status como Away`);
+        
+        // Verificar após 3 segundos se funcionou
+        setTimeout(() => {
+            applySettingsWithRetry(account, attempt + 1);
+        }, 3000);
+    }, 1000);
+}
+
+function setPersonaFirst(account, attempt) {
+    console.log(`[${account.username}] Método 2: Definindo persona primeiro`);
+    account.client.setPersona(SteamUser.EPersonaState.Away);
+    
+    setTimeout(() => {
+        const gamesToPlay = [{ 
+            game_id: 0, 
+            game_extra_info: account.settings.customInGameTitle 
+        }];
+        account.client.gamesPlayed(gamesToPlay);
+        console.log(`[${account.username}] Aplicando jogo após persona`);
+        
+        setTimeout(() => {
+            applySettingsWithRetry(account, attempt + 1);
+        }, 3000);
+    }, 1000);
+}
+
+function setRealGameWithCustomTitle(account, attempt) {
+    console.log(`[${account.username}] Método 3: Usando jogo real com título customizado`);
+    
+    // Usar CS:GO (730) com título customizado
+    const gamesToPlay = [{ 
+        game_id: 730, 
+        game_extra_info: account.settings.customInGameTitle 
+    }];
+    
+    account.client.gamesPlayed(gamesToPlay);
+    
+    setTimeout(() => {
+        account.client.setPersona(SteamUser.EPersonaState.Away);
+        
+        setTimeout(() => {
+            applySettingsWithRetry(account, attempt + 1);
+        }, 3000);
+    }, 1000);
+}
+
+function setForceAway(account, attempt) {
+    console.log(`[${account.username}] Método 4: Forçando status Away`);
+    
+    // Primeiro limpar jogos
+    account.client.gamesPlayed([]);
+    
+    setTimeout(() => {
+        // Definir status como Away
+        account.client.setPersona(SteamUser.EPersonaState.Away);
+        
+        setTimeout(() => {
+            // Então aplicar o jogo customizado
+            const gamesToPlay = [{ 
+                game_id: 0, 
+                game_extra_info: account.settings.customInGameTitle 
+            }];
+            account.client.gamesPlayed(gamesToPlay);
+            
+            setTimeout(() => {
+                applySettingsWithRetry(account, attempt + 1);
+            }, 3000);
+        }, 1000);
+    }, 1000);
+}
+
+function setMultipleApplications(account, attempt) {
+    console.log(`[${account.username}] Método 5: Múltiplas aplicações`);
+    
+    const gamesToPlay = [{ 
+        game_id: 0, 
+        game_extra_info: account.settings.customInGameTitle 
+    }];
+    
+    // Aplicar 3 vezes com intervalos
+    for (let i = 0; i < 3; i++) {
+        setTimeout(() => {
+            account.client.gamesPlayed(gamesToPlay);
+            account.client.setPersona(SteamUser.EPersonaState.Away);
+            console.log(`[${account.username}] Aplicação múltipla ${i + 1}/3`);
+        }, i * 1000);
+    }
+}
+
+function applyNormalSettings(account) {
+    let gamesToPlay = [];
+    
+    if (account.games && account.games.length > 0) {
+        gamesToPlay = account.games.map(gameId => ({ game_id: parseInt(gameId) }));
+    }
+    
+    if (gamesToPlay.length > 0) {
+        account.client.gamesPlayed(gamesToPlay);
+    }
+    
+    let personaState = SteamUser.EPersonaState.Online;
+    if (account.settings.appearOffline) {
+        personaState = SteamUser.EPersonaState.Offline;
+    } else if (account.settings.customAwayMessage && account.settings.customAwayMessage.trim() !== '') {
+        personaState = SteamUser.EPersonaState.Away;
+    }
+    
+    account.client.setPersona(personaState);
 }
 
 function setupListenersForAccount(account) {
