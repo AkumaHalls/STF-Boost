@@ -1,195 +1,64 @@
-/* Estilos Gerais */
-body {
-    background-color: #1b2838;
-    color: #c7d5e0;
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 20px;
-}
-button {
-    background-color: #66c0f4;
-    color: #fff;
-    border: none;
-    padding: 8px 12px;
-    margin: 0 4px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-    transition: background-color 0.3s ease, transform 0.1s ease;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-}
-button:hover {
-    background-color: #4a95c2;
-}
-button:active {
-    transform: scale(0.97);
-}
-button:disabled {
-    background-color: #3a5f7e;
-    cursor: not-allowed;
-    opacity: 0.6;
-}
+/* ... (Todo o CSS anterior sem alterações até aqui) ... */
+.actions-cell { display: flex; flex-wrap: wrap; gap: 5px; }
 
-/* Botões Específicos */
-.stop-btn {
-    background-color: #ff6B6B;
-}
-.stop-btn:hover {
-    background-color: #d44a4a;
-}
-.remove-btn {
-    background-color: #4f5255;
-}
-.remove-btn:hover {
-    background-color: #6d7175;
-}
+/* ... (Todo o resto do CSS até ao final da secção da modal de jogos) ... */
 
-/* Animação de Pulse */
-@keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(102, 192, 244, 0.7); }
-    70% { box-shadow: 0 0 0 10px rgba(102, 192, 244, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(102, 192, 244, 0); }
-}
-.pulse-attention {
-    animation: pulse 1.5s infinite;
-}
-
-/* Painel Principal e Header */
-.control-panel {
-    background-color: #2a475e;
-    border-radius: 8px;
-    padding: 20px;
-    max-width: 1200px;
-    margin: auto;
-}
-header {
+/* --- NOVOS ESTILOS PARA A MODAL DE CONFIGURAÇÕES --- */
+.settings-form-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid #1b2838;
-    padding-bottom: 15px;
     margin-bottom: 15px;
 }
-header h1 {
-    margin: 0;
-    font-size: 24px;
-}
-.logo-container {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-#headerLogo {
-    height: 40px;
-    width: 40px;
-}
-
-/* Tabela de Contas */
-.accounts-table table {
-    width: 100%;
-    border-collapse: collapse;
-}
-.accounts-table th, .accounts-table td {
-    padding: 12px;
-    text-align: left;
-    border-bottom: 1px solid #1b2838;
-    vertical-align: middle;
-}
-.accounts-table th {
-    color: #66c0f4;
-}
-.actions-cell {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-}
-
-/* Classes de Status */
-.status-cell {
-    transition: color 0.5s ease;
-}
-.status-stopped {
-    color: #ff6B6B;
-    font-weight: bold;
-}
-.status-running {
-    color: #90ee90;
-    font-weight: bold;
-}
-.status-pending {
-    color: #ffd700;
-    font-weight: bold;
-}
-.status-error {
-    color: #ffd700;
-    font-weight: bold;
-}
-
-/* Janela Modal */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 10;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(0,0,0,0.6);
-}
-.modal-content {
-    background-color: #2a475e;
-    margin: 10% auto;
-    padding: 20px;
-    border: 1px solid #888;
-    width: 80%;
-    max-width: 500px;
-    border-radius: 8px;
-}
-#appIdsInput {
-    width: 100%;
-    padding: 10px;
-    margin-top: 10px;
-    margin-bottom: 15px;
-    border-radius: 4px;
-    border: 1px solid #1b2838;
-    background-color: #1b2838;
+.settings-form-row label {
     color: #c7d5e0;
-    box-sizing: border-box;
-    resize: vertical;
+}
+.settings-form-row input[type="text"] {
+    background-color: #1b2838;
+    border: 1px solid #101822;
+    color: #c7d5e0;
+    padding: 8px;
+    border-radius: 4px;
+    width: 60%;
 }
 
-/* Notificações "Toast" */
-#toastContainer {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+/* Estilos para os Toggles (Ligar/Desligar) */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
 }
-.toast {
-    background-color: #1e3a51;
-    color: #fff;
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 10px;
-    border-left: 5px solid #66c0f4;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+.switch input {
     opacity: 0;
-    transition: all 0.4s ease-in-out;
-    transform: translateX(110%);
-    max-width: 300px;
-    font-size: 14px;
+    width: 0;
+    height: 0;
 }
-.toast.show {
-    opacity: 1;
-    transform: translateX(0);
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #4f5255;
+    transition: .4s;
+    border-radius: 24px;
 }
-.toast.error {
-    border-left-color: #ff6B6B;
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+input:checked + .slider {
+    background-color: #66c0f4;
+}
+input:checked + .slider:before {
+    transform: translateX(26px);
 }
