@@ -46,6 +46,12 @@ button:disabled {
 .remove-btn:hover {
     background-color: #6d7175;
 }
+.settings-btn svg {
+    transition: transform 0.5s ease;
+}
+.settings-btn:hover svg {
+    transform: rotate(180deg);
+}
 
 /* Animação de Pulse */
 @keyframes pulse {
@@ -128,7 +134,7 @@ header h1 {
     font-weight: bold;
 }
 
-/* Janela Modal */
+/* Janelas Modais */
 .modal {
     display: none;
     position: fixed;
@@ -160,6 +166,64 @@ header h1 {
     color: #c7d5e0;
     box-sizing: border-box;
     resize: vertical;
+}
+
+/* Modal de Configurações */
+.settings-form-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 18px;
+}
+.settings-form-row label {
+    color: #c7d5e0;
+}
+.settings-form-row input[type="text"] {
+    background-color: #1b2838;
+    border: 1px solid #101822;
+    color: #c7d5e0;
+    padding: 8px;
+    border-radius: 4px;
+    width: 55%;
+}
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 24px;
+}
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #4f5255;
+    transition: .4s;
+    border-radius: 24px;
+}
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+input:checked + .slider {
+    background-color: #66c0f4;
+}
+input:checked + .slider:before {
+    transform: translateX(26px);
 }
 
 /* Notificações "Toast" */
