@@ -1,5 +1,5 @@
 const express = require('express');
-const path = require('path');
+const path =require('path');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const { MongoClient } = require('mongodb');
@@ -34,12 +34,13 @@ function applyLiveSettings(account) { if (account.status !== "Rodando") return; 
 function setupListenersForAccount(account) { account.client.on('loggedOn', () => { account.status = "Rodando"; account.sessionStartTime = Date.now(); applyLiveSettings(account); }); account.client.on('steamGuard', (domain, callback) => { account.status = "Pendente: Steam Guard"; account.steamGuardCallback = callback; }); account.client.on('disconnected', () => { account.status = "Parado"; account.sessionStartTime = null; }); account.client.on('error', () => { account.status = "Erro"; account.sessionStartTime = null; }); account.client.on('friendRelationship', (steamID, relationship) => { if (relationship === SteamUser.EFriendRelationship.RequestRecipient && account.settings.autoAcceptFriends) { account.client.addFriend(steamID); } }); account.client.on('friendMessage', (sender, message) => { if (account.settings.customAwayMessage) { account.client.chatMessage(sender, account.settings.customAwayMessage); } }); }
 async function loadAccountsIntoMemory() { const defaultSettings = { customInGameTitle: '', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false }; const savedAccounts = await accountsCollection.find({}).toArray(); for (const acc of savedAccounts) { liveAccounts[acc.username] = { username: acc.username, password: decrypt(acc.password), games: acc.games || [730], settings: { ...defaultSettings, ...(acc.settings || {}) }, status: 'Parado', client: new SteamUser(), sessionStartTime: null, steamGuardCallback: null }; setupListenersForAccount(liveAccounts[acc.username]); } console.log(`${Object.keys(liveAccounts).length} contas carregadas na memória.`); }
 
+// --- CONFIGURAÇÃO DA APLICAÇÃO EXPRESS ---
 
-// --- CONFIGURAÇÃO DA APLICAÇÃO EXPRESS (ESTRUTURA CORRIGIDA) ---
-
-// 1. Middlewares básicos para processar pedidos e sessões
+// 1. Middlewares básicos para processar dados de formulários e JSON
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// 2. Configuração da Sessão
 app.use(session({
     secret: APP_SECRET,
     resave: false,
@@ -48,12 +49,13 @@ app.use(session({
     cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-// 2. Rotas Públicas - acessíveis ANTES da verificação de login
+// 3. Rota Pública para a página de Login
 app.get('/login', (req, res) => {
     if (req.session.isLoggedIn) { return res.redirect('/'); }
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+// 4. Rota Pública para processar a tentativa de login
 app.post('/login', async (req, res) => {
     let settings = await siteSettingsCollection.findOne({ _id: 'config' });
     const submittedPass = req.body.password;
@@ -61,40 +63,30 @@ app.post('/login', async (req, res) => {
         req.session.isLoggedIn = true;
         res.redirect('/');
     } else {
-        res.redirect('/login?error=1');
+        res.redirect('/login');
     }
 });
 
-// A rota de logout também deve ser acessível
-app.get('/logout', (req, res) => {
-    req.session.destroy((err) => {
-        if (err) { return res.redirect('/'); }
-        res.clearCookie('connect.sid');
-        res.redirect('/login');
-    });
-});
-
-// 3. Middleware de Autenticação - O nosso "Segurança"
+// 5. Middleware de Autenticação (O nosso "Segurança")
 const isAuthenticated = (req, res, next) => {
     if (req.session.isLoggedIn) {
-        return next(); // Se tem login, pode prosseguir
+        return next(); // Se tem login, pode prosseguir para a rota pedida
     }
     res.redirect('/login'); // Se não tem, é mandado para a página de login
 };
 
-// 4. Servir ficheiros estáticos (CSS, imagens). Isto vem DEPOIS das rotas públicas
-// para que o login.html possa carregar os seus estilos.
-app.use(express.static(path.join(__dirname, 'public')));
-
-
-// 5. Rotas Protegidas - todas as rotas abaixo desta linha exigem login
-// porque o `isAuthenticated` será aplicado a elas.
-
-// A rota principal do painel AGORA está protegida
+// 6. Rota para a página principal (agora protegida)
+// Qualquer pedido para a raiz '/' passará primeiro pelo `isAuthenticated`
 app.get('/', isAuthenticated, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// 7. Servir ficheiros estáticos (CSS, imagens, etc.)
+// Esta linha agora vem DEPOIS da rota '/', garantindo que a rota principal seja protegida
+app.use(express.static(path.join(__dirname, 'public')));
+
+
+// 8. API Protegida - Todas as rotas abaixo também precisam do `isAuthenticated`
 app.get('/status', isAuthenticated, (req, res) => {
     const publicState = { accounts: {} };
     for (const username in liveAccounts) {
@@ -176,6 +168,14 @@ app.post('/save-settings/:username', isAuthenticated, async (req, res) => {
         applyLiveSettings(account);
         res.status(200).json({ message: "Configurações salvas!" });
     } else { res.status(404).json({ message: "Conta não encontrada." }); }
+});
+
+app.get('/logout', isAuthenticated, (req, res) => {
+    req.session.destroy((err) => {
+        if (err) { return res.redirect('/'); }
+        res.clearCookie('connect.sid');
+        res.redirect('/login');
+    });
 });
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
