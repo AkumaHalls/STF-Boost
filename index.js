@@ -37,7 +37,7 @@ async function loadAccountsIntoMemory() { const defaultSettings = { customInGame
 
 // --- CONFIGURAÇÃO DA APLICAÇÃO EXPRESS (ESTRUTURA CORRIGIDA) ---
 
-// 1. Middlewares básicos e de sessão
+// 1. Middlewares básicos para processar pedidos e sessões
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
@@ -48,7 +48,7 @@ app.use(session({
     cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-// 2. Rotas Públicas (acessíveis sem login)
+// 2. Rotas Públicas - acessíveis ANTES da verificação de login
 app.get('/login', (req, res) => {
     if (req.session.isLoggedIn) { return res.redirect('/'); }
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -61,24 +61,36 @@ app.post('/login', async (req, res) => {
         req.session.isLoggedIn = true;
         res.redirect('/');
     } else {
-        res.redirect('/login?error=1'); // Adiciona um parâmetro de erro para futura implementação de mensagem
+        res.redirect('/login?error=1');
     }
 });
 
-// 3. Servir ficheiros estáticos (CSS, imagens, etc.) para todas as páginas
+// A rota de logout também deve ser acessível
+app.get('/logout', (req, res) => {
+    req.session.destroy((err) => {
+        if (err) { return res.redirect('/'); }
+        res.clearCookie('connect.sid');
+        res.redirect('/login');
+    });
+});
+
+// 3. Middleware de Autenticação - O nosso "Segurança"
+const isAuthenticated = (req, res, next) => {
+    if (req.session.isLoggedIn) {
+        return next(); // Se tem login, pode prosseguir
+    }
+    res.redirect('/login'); // Se não tem, é mandado para a página de login
+};
+
+// 4. Servir ficheiros estáticos (CSS, imagens). Isto vem DEPOIS das rotas públicas
+// para que o login.html possa carregar os seus estilos.
 app.use(express.static(path.join(__dirname, 'public')));
 
 
-// 4. Middleware de Autenticação (O nosso "Segurança")
-const isAuthenticated = (req, res, next) => {
-    if (req.session.isLoggedIn) {
-        return next();
-    }
-    res.redirect('/login');
-};
+// 5. Rotas Protegidas - todas as rotas abaixo desta linha exigem login
+// porque o `isAuthenticated` será aplicado a elas.
 
-// 5. Rotas Protegidas (SÓ ACESSÍVEIS APÓS LOGIN)
-// Todas as rotas daqui para baixo usarão o `isAuthenticated`
+// A rota principal do painel AGORA está protegida
 app.get('/', isAuthenticated, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -165,17 +177,6 @@ app.post('/save-settings/:username', isAuthenticated, async (req, res) => {
         res.status(200).json({ message: "Configurações salvas!" });
     } else { res.status(404).json({ message: "Conta não encontrada." }); }
 });
-
-app.get('/logout', isAuthenticated, (req, res) => {
-    req.session.destroy((err) => {
-        if (err) {
-            return res.redirect('/');
-        }
-        res.clearCookie('connect.sid');
-        res.redirect('/login');
-    });
-});
-
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 async function startServer() {
