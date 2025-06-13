@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const session = require('express-session');
+const MongoStore = require('connect-mongo');
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const SteamUser = require('steam-user');
@@ -44,7 +45,7 @@ const decrypt = (text) => {
     }
 };
 
-// --- LÓGICA DO BANCO DE DADOS E SESSÃO ---
+// --- LÓGICA DO BANCO DE DADOS E GESTÃO DE CONTAS ---
 const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection;
 let siteSettingsCollection;
@@ -63,26 +64,6 @@ async function connectToDB() {
     }
 }
 
-app.use(session({
-    secret: APP_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: process.env.NODE_ENV === 'production', // Use 'auto' no Render ou true se tiver HTTPS
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // Sessão de 24 horas
-    }
-}));
-
-// --- MIDDLEWARE DE AUTENTICAÇÃO ---
-const isAuthenticated = (req, res, next) => {
-    if (req.session.isLoggedIn) {
-        return next();
-    }
-    res.redirect('/login');
-};
-
-// --- GESTÃO DE CONTAS ---
 function applyLiveSettings(account) {
     if (account.status !== "Rodando") return;
     const personaState = account.settings.appearOffline ? SteamUser.EPersonaState.Offline : SteamUser.EPersonaState.Online;
@@ -94,12 +75,37 @@ function applyLiveSettings(account) {
 }
 
 function setupListenersForAccount(account) {
-    account.client.on('loggedOn', () => { console.log(`[${account.username}] Login OK!`); account.status = "Rodando"; account.sessionStartTime = Date.now(); applyLiveSettings(account); });
-    account.client.on('steamGuard', (domain, callback) => { console.log(`[${account.username}] Steam Guard solicitado.`); account.status = "Pendente: Steam Guard"; account.steamGuardCallback = callback; });
-    account.client.on('disconnected', (eresult, msg) => { console.log(`[${account.username}] Desconectado: ${msg}`); account.status = "Parado"; account.sessionStartTime = null; });
-    account.client.on('error', (err) => { console.log(`[${account.username}] Erro: ${err.message || err.eresult}`); account.status = "Erro"; account.sessionStartTime = null; });
-    account.client.on('friendRelationship', (steamID, relationship) => { if (relationship === SteamUser.EFriendRelationship.RequestRecipient && account.settings.autoAcceptFriends) { account.client.addFriend(steamID); } });
-    account.client.on('friendMessage', (sender, message) => { if (account.settings.customAwayMessage) { account.client.chatMessage(sender, account.settings.customAwayMessage); } });
+    account.client.on('loggedOn', () => {
+        console.log(`[${account.username}] Login OK!`);
+        account.status = "Rodando";
+        account.sessionStartTime = Date.now();
+        applyLiveSettings(account);
+    });
+    account.client.on('steamGuard', (domain, callback) => {
+        console.log(`[${account.username}] Steam Guard solicitado.`);
+        account.status = "Pendente: Steam Guard";
+        account.steamGuardCallback = callback;
+    });
+    account.client.on('disconnected', (eresult, msg) => {
+        console.log(`[${account.username}] Desconectado: ${msg}`);
+        account.status = "Parado";
+        account.sessionStartTime = null;
+    });
+    account.client.on('error', (err) => {
+        console.log(`[${account.username}] Erro: ${err.message || err.eresult}`);
+        account.status = "Erro";
+        account.sessionStartTime = null;
+    });
+    account.client.on('friendRelationship', (steamID, relationship) => {
+        if (relationship === SteamUser.EFriendRelationship.RequestRecipient && account.settings.autoAcceptFriends) {
+            account.client.addFriend(steamID);
+        }
+    });
+    account.client.on('friendMessage', (sender, message) => {
+        if (account.settings.customAwayMessage) {
+            account.client.chatMessage(sender, account.settings.customAwayMessage);
+        }
+    });
 }
 
 async function loadAccountsIntoMemory() {
@@ -121,12 +127,30 @@ async function loadAccountsIntoMemory() {
     console.log(`${Object.keys(liveAccounts).length} contas carregadas na memória.`);
 }
 
-// --- API ---
-app.use(express.static(path.join(__dirname, 'public')));
+
+// --- CONFIGURAÇÃO DA APLICAÇÃO EXPRESS ---
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// --- ROTAS PÚBLICAS (LOGIN) ---
+app.use(session({
+    secret: APP_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({
+        mongoUrl: MONGODB_URI,
+        dbName: 'stf_boost_db',
+        collectionName: 'sessions',
+        ttl: 24 * 60 * 60 // 1 dia em segundos
+    }),
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000
+    }
+}));
+
+
+// --- ROTAS PÚBLICAS ---
 app.get('/login', (req, res) => {
     if (req.session.isLoggedIn) {
         return res.redirect('/');
@@ -145,19 +169,21 @@ app.post('/login', async (req, res) => {
     }
 });
 
-app.get('/logout', (req, res) => {
-    req.session.destroy((err) => {
-        if (err) {
-            return res.redirect('/');
-        }
-        res.clearCookie('connect.sid');
-        res.redirect('/login');
-    });
-});
+// Serve os ficheiros estáticos como CSS e o logo publicamente
+app.use(express.static(path.join(__dirname, 'public')));
 
-// --- ROTAS PROTEGIDAS ---
+
+// --- MIDDLEWARE DE AUTENTICAÇÃO ---
+const isAuthenticated = (req, res, next) => {
+    if (req.session.isLoggedIn) {
+        return next();
+    }
+    res.redirect('/login');
+};
 app.use(isAuthenticated);
 
+
+// --- ROTAS PROTEGIDAS ---
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -244,6 +270,17 @@ app.post('/save-settings/:username', async (req, res) => {
         res.status(200).json({ message: "Configurações salvas!" });
     } else { res.status(404).json({ message: "Conta não encontrada." }); }
 });
+
+app.get('/logout', (req, res) => {
+    req.session.destroy((err) => {
+        if (err) {
+            return res.redirect('/');
+        }
+        res.clearCookie('connect.sid');
+        res.redirect('/login');
+    });
+});
+
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 async function startServer() {
