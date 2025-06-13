@@ -1,5 +1,5 @@
 const express = require('express');
-const path =require('path');
+const path = require('path');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const { MongoClient } = require('mongodb');
@@ -34,13 +34,10 @@ function applyLiveSettings(account) { if (account.status !== "Rodando") return; 
 function setupListenersForAccount(account) { account.client.on('loggedOn', () => { account.status = "Rodando"; account.sessionStartTime = Date.now(); applyLiveSettings(account); }); account.client.on('steamGuard', (domain, callback) => { account.status = "Pendente: Steam Guard"; account.steamGuardCallback = callback; }); account.client.on('disconnected', () => { account.status = "Parado"; account.sessionStartTime = null; }); account.client.on('error', () => { account.status = "Erro"; account.sessionStartTime = null; }); account.client.on('friendRelationship', (steamID, relationship) => { if (relationship === SteamUser.EFriendRelationship.RequestRecipient && account.settings.autoAcceptFriends) { account.client.addFriend(steamID); } }); account.client.on('friendMessage', (sender, message) => { if (account.settings.customAwayMessage) { account.client.chatMessage(sender, account.settings.customAwayMessage); } }); }
 async function loadAccountsIntoMemory() { const defaultSettings = { customInGameTitle: '', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false }; const savedAccounts = await accountsCollection.find({}).toArray(); for (const acc of savedAccounts) { liveAccounts[acc.username] = { username: acc.username, password: decrypt(acc.password), games: acc.games || [730], settings: { ...defaultSettings, ...(acc.settings || {}) }, status: 'Parado', client: new SteamUser(), sessionStartTime: null, steamGuardCallback: null }; setupListenersForAccount(liveAccounts[acc.username]); } console.log(`${Object.keys(liveAccounts).length} contas carregadas na memória.`); }
 
-// --- CONFIGURAÇÃO DA APLICAÇÃO EXPRESS ---
 
-// 1. Middlewares básicos para processar dados de formulários e JSON
+// --- CONFIGURAÇÃO DA APLICAÇÃO EXPRESS ---
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// 2. Configuração da Sessão
 app.use(session({
     secret: APP_SECRET,
     resave: false,
@@ -49,13 +46,12 @@ app.use(session({
     cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-// 3. Rota Pública para a página de Login
+// --- ROTAS PÚBLICAS ---
 app.get('/login', (req, res) => {
     if (req.session.isLoggedIn) { return res.redirect('/'); }
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-// 4. Rota Pública para processar a tentativa de login
 app.post('/login', async (req, res) => {
     let settings = await siteSettingsCollection.findOne({ _id: 'config' });
     const submittedPass = req.body.password;
@@ -63,132 +59,41 @@ app.post('/login', async (req, res) => {
         req.session.isLoggedIn = true;
         res.redirect('/');
     } else {
-        res.redirect('/login');
+        res.redirect('/login?error=1');
     }
 });
 
-// 5. Middleware de Autenticação (O nosso "Segurança")
+// NOVA ROTA PÚBLICA DE "HEALTH CHECK" PARA MANTER O SERVIÇO ATIVO
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
+
+
+app.use(express.static(path.join(__dirname, 'public')));
+
+
+// --- MIDDLEWARE DE AUTENTICAÇÃO ---
 const isAuthenticated = (req, res, next) => {
-    if (req.session.isLoggedIn) {
-        return next(); // Se tem login, pode prosseguir para a rota pedida
-    }
-    res.redirect('/login'); // Se não tem, é mandado para a página de login
+    if (req.session.isLoggedIn) { return next(); }
+    res.redirect('/login');
 };
 
-// 6. Rota para a página principal (agora protegida)
-// Qualquer pedido para a raiz '/' passará primeiro pelo `isAuthenticated`
+
+// --- ROTAS PROTEGIDAS ---
 app.get('/', isAuthenticated, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// 7. Servir ficheiros estáticos (CSS, imagens, etc.)
-// Esta linha agora vem DEPOIS da rota '/', garantindo que a rota principal seja protegida
-app.use(express.static(path.join(__dirname, 'public')));
-
-
-// 8. API Protegida - Todas as rotas abaixo também precisam do `isAuthenticated`
-app.get('/status', isAuthenticated, (req, res) => {
-    const publicState = { accounts: {} };
-    for (const username in liveAccounts) {
-        const acc = liveAccounts[username];
-        publicState.accounts[username] = { username: acc.username, status: acc.status, games: acc.games, uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0, settings: acc.settings };
-    }
-    res.json(publicState);
-});
-
-app.post('/add-account', isAuthenticated, async (req, res) => {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."});
-    const existing = await accountsCollection.findOne({ username });
-    if (existing) return res.status(400).json({ message: "Conta já existe." });
-    const newAccountData = { username, password: encrypt(password), games: [730], settings: { customInGameTitle: 'STF Boost', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false } };
-    await accountsCollection.insertOne(newAccountData);
-    liveAccounts[username] = { ...newAccountData, password: password, status: 'Parado', client: new SteamUser(), sessionStartTime: null, steamGuardCallback: null };
-    setupListenersForAccount(liveAccounts[username]);
-    res.status(200).json({ message: "Conta adicionada com sucesso." });
-});
-
-app.delete('/remove-account/:username', isAuthenticated, async (req, res) => {
-    const { username } = req.params;
-    const account = liveAccounts[username];
-    if (account) {
-        if (account.status === "Rodando") account.client.logOff();
-        delete liveAccounts[username];
-        await accountsCollection.deleteOne({ username });
-        res.status(200).json({ message: "Conta removida com sucesso." });
-    } else { res.status(404).json({ message: "Conta não encontrada." }); }
-});
-
-app.post('/start/:username', isAuthenticated, (req, res) => {
-    const account = liveAccounts[req.params.username];
-    if (account) {
-        account.status = "Iniciando...";
-        account.client.logOn({ accountName: account.username, password: account.password });
-        res.status(200).json({ message: "Iniciando..." });
-    } else { res.status(404).json({ message: "Conta não encontrada." }); }
-});
-
-app.post('/stop/:username', isAuthenticated, (req, res) => {
-    const account = liveAccounts[req.params.username];
-    if (account) {
-        account.status = "Parando...";
-        account.client.logOff();
-        res.status(200).json({ message: "Parando..." });
-    } else { res.status(404).json({ message: "Conta não encontrada." }); }
-});
-
-app.post('/submit-guard/:username', isAuthenticated, (req, res) => {
-    const account = liveAccounts[req.params.username];
-    if (account && account.steamGuardCallback) {
-        account.steamGuardCallback(req.body.code);
-        account.steamGuardCallback = null;
-        res.status(200).json({ message: "Código enviado." });
-    } else { res.status(400).json({ message: "Pedido de Steam Guard não estava ativo." }); }
-});
-
-app.post('/set-games/:username', isAuthenticated, async (req, res) => {
-    const { games } = req.body;
-    const { username } = req.params;
-    const account = liveAccounts[username];
-    if (account && games && Array.isArray(games)) {
-        account.games = games;
-        await accountsCollection.updateOne({ username }, { $set: { games: games } });
-        applyLiveSettings(account);
-        res.status(200).json({ message: `Jogos atualizados.` });
-    } else { res.status(400).json({ message: 'Conta ou formato de jogos inválido.' }); }
-});
-
-app.post('/save-settings/:username', isAuthenticated, async (req, res) => {
-    const { username } = req.params;
-    const newSettings = req.body.settings;
-    const account = liveAccounts[username];
-    if (account && newSettings) {
-        account.settings = newSettings;
-        await accountsCollection.updateOne({ username }, { $set: { settings: newSettings } });
-        applyLiveSettings(account);
-        res.status(200).json({ message: "Configurações salvas!" });
-    } else { res.status(404).json({ message: "Conta não encontrada." }); }
-});
-
-app.get('/logout', isAuthenticated, (req, res) => {
-    req.session.destroy((err) => {
-        if (err) { return res.redirect('/'); }
-        res.clearCookie('connect.sid');
-        res.redirect('/login');
-    });
-});
+app.get('/status', isAuthenticated, (req, res) => { const publicState = { accounts: {} }; for (const username in liveAccounts) { const acc = liveAccounts[username]; publicState.accounts[username] = { username: acc.username, status: acc.status, games: acc.games, uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0, settings: acc.settings }; } res.json(publicState); });
+app.post('/add-account', isAuthenticated, async (req, res) => { const { username, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); const existing = await accountsCollection.findOne({ username }); if (existing) return res.status(400).json({ message: "Conta já existe." }); const newAccountData = { username, password: encrypt(password), games: [730], settings: { customInGameTitle: 'STF Boost', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false } }; await accountsCollection.insertOne(newAccountData); liveAccounts[username] = { ...newAccountData, password: password, status: 'Parado', client: new SteamUser(), sessionStartTime: null, steamGuardCallback: null }; setupListenersForAccount(liveAccounts[username]); res.status(200).json({ message: "Conta adicionada com sucesso." }); });
+app.delete('/remove-account/:username', isAuthenticated, async (req, res) => { const { username } = req.params; const account = liveAccounts[username]; if (account) { if (account.status === "Rodando") account.client.logOff(); delete liveAccounts[username]; await accountsCollection.deleteOne({ username }); res.status(200).json({ message: "Conta removida com sucesso." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
+app.post('/start/:username', isAuthenticated, (req, res) => { const account = liveAccounts[req.params.username]; if (account) { account.status = "Iniciando..."; account.client.logOn({ accountName: account.username, password: account.password }); res.status(200).json({ message: "Iniciando..." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
+app.post('/stop/:username', isAuthenticated, (req, res) => { const account = liveAccounts[req.params.username]; if (account) { account.status = "Parando..."; account.client.logOff(); res.status(200).json({ message: "Parando..." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
+app.post('/submit-guard/:username', isAuthenticated, (req, res) => { const account = liveAccounts[req.params.username]; if (account && account.steamGuardCallback) { account.steamGuardCallback(req.body.code); account.steamGuardCallback = null; res.status(200).json({ message: "Código enviado." }); } else { res.status(400).json({ message: "Pedido de Steam Guard não estava ativo." }); } });
+app.post('/set-games/:username', isAuthenticated, async (req, res) => { const { games } = req.body; const { username } = req.params; const account = liveAccounts[username]; if (account && games && Array.isArray(games)) { account.games = games; await accountsCollection.updateOne({ username }, { $set: { games: games } }); applyLiveSettings(account); res.status(200).json({ message: `Jogos atualizados.` }); } else { res.status(400).json({ message: 'Conta ou formato de jogos inválido.' }); } });
+app.post('/save-settings/:username', isAuthenticated, async (req, res) => { const { username } = req.params; const newSettings = req.body.settings; const account = liveAccounts[username]; if (account && newSettings) { account.settings = newSettings; await accountsCollection.updateOne({ username }, { $set: { settings: newSettings } }); applyLiveSettings(account); res.status(200).json({ message: "Configurações salvas!" }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
+app.get('/logout', isAuthenticated, (req, res) => { req.session.destroy((err) => { if (err) { return res.redirect('/'); } res.clearCookie('connect.sid'); res.redirect('/login'); }); });
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
-async function startServer() {
-    await connectToDB();
-    let settings = await siteSettingsCollection.findOne({ _id: 'config' });
-    if (!settings) {
-        console.log("Nenhuma senha de site encontrada. A configurar a partir de SITE_PASSWORD...");
-        await siteSettingsCollection.insertOne({ _id: 'config', sitePassword: encrypt(SITE_PASSWORD) });
-        console.log("Senha do site configurada com sucesso!");
-    }
-    await loadAccountsIntoMemory();
-    app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`));
-}
-
+async function startServer() { await connectToDB(); let settings = await siteSettingsCollection.findOne({ _id: 'config' }); if (!settings) { console.log("Nenhuma senha de site encontrada. A configurar a partir de SITE_PASSWORD..."); await siteSettingsCollection.insertOne({ _id: 'config', sitePassword: encrypt(SITE_PASSWORD) }); console.log("Senha do site configurada com sucesso!"); } await loadAccountsIntoMemory(); app.listen(PORT, () => console.log(`Servidor iniciado na porta ${PORT}`)); }
 startServer();
