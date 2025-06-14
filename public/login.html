@@ -11,18 +11,33 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    
     <div class="background-logo-container">
         <img src="/logo.png" alt="Logo de Fundo">
     </div>
-
     <div class="login-box">
         <h2 class="glitch-title" data-text="STF Boost">STF Boost</h2>
+        
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+
         <form action="/login" method="POST">
             <input type="password" id="password" name="password" required placeholder="SENHA DE ACESSO">
             <button type="submit">Acessar Painel</button>
         </form>
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const errorDiv = document.getElementById('errorMessage');
+
+            if (urlParams.get('error') === 'unauthorized') {
+                errorDiv.textContent = 'Você precisa estar logado para ver este painel.';
+                errorDiv.style.display = 'block';
+            } else if (urlParams.get('error') === '1') {
+                errorDiv.textContent = 'Senha incorreta. Tente novamente.';
+                errorDiv.style.display = 'block';
+            }
+        });
+    </script>
 </body>
 </html>
