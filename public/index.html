@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
     <div class="control-panel">
@@ -134,9 +134,8 @@
             async function updateUI() {
                 try {
                     const response = await fetch('/status');
-                    if (response.status === 401) { // Se não estiver autenticado, redireciona
-                        window.location.href = '/login';
-                        return;
+                    if (!response.ok) { // Se a resposta não for 2xx, indica problema (como redirecionamento)
+                        throw new Error(`Falha na rede: ${response.statusText}`);
                     }
                     const data = await response.json();
                     const accounts = data.accounts;
@@ -209,39 +208,24 @@
                 if (!username) return;
                 const password = prompt(`Senha para a conta ${username}:`);
                 if (!password) return;
-                const response = await fetch('/add-account', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
+                const response = await fetch('/add-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
                 const result = await response.json();
                 showToast(result.message, response.ok ? 'info' : 'error');
                 updateUI();
             });
 
-            const hideGamesModal = () => {
-                gamesModal.style.display = 'none';
-                appIdsInput.value = '';
-                currentlyEditingGamesFor = null;
-            }
+            const hideGamesModal = () => { gamesModal.style.display = 'none'; appIdsInput.value = ''; currentlyEditingGamesFor = null; }
             closeGamesModalButton.addEventListener('click', hideGamesModal);
             window.addEventListener('click', (event) => { if (event.target == gamesModal) hideGamesModal(); });
 
             saveGamesButton.addEventListener('click', () => {
                 if (!currentlyEditingGamesFor) return;
                 const gamesArray = appIdsInput.value.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0);
-                fetch(`/set-games/${currentlyEditingGamesFor}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ games: gamesArray })
-                })
+                fetch(`/set-games/${currentlyEditingGamesFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ games: gamesArray }) })
                 .then(res => res.json()).then(data => { showToast(data.message); hideGamesModal(); });
             });
 
-            const hideSettingsModal = () => {
-                settingsModal.style.display = 'none';
-                currentlyEditingSettingsFor = null;
-            }
+            const hideSettingsModal = () => { settingsModal.style.display = 'none'; currentlyEditingSettingsFor = null; }
             closeSettingsModalButton.addEventListener('click', hideSettingsModal);
             window.addEventListener('click', (event) => { if (event.target == settingsModal) hideSettingsModal(); });
 
@@ -253,11 +237,7 @@
                     appearOffline: document.getElementById('appearOfflineToggle').checked,
                     autoAcceptFriends: document.getElementById('autoAcceptFriendsToggle').checked
                 };
-                fetch(`/save-settings/${currentlyEditingSettingsFor}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ settings: newSettings })
-                })
+                fetch(`/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: newSettings }) })
                 .then(res => res.json()).then(data => { showToast(data.message); hideSettingsModal(); });
             });
 
