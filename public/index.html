@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>STF Steam Boost</title>
-    <link rel="icon" type="image/png" href="/logo.png">
+    <link rel="icon" type="image/png" href="/logo.png?v=1.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/style.css?v=1.1">
 </head>
-<body>
+<body class="panel-page">
     <div class="control-panel">
         <header>
             <div class="logo-container">
-                <img src="/logo.png" alt="Logo STF Steam Boost" id="headerLogo">
+                <img src="/logo.png?v=1.1" alt="Logo STF Steam Boost" id="headerLogo">
                 <h1 class="glitch-title" data-text="STF Steam Boost">STF Steam Boost</h1>
             </div>
             <div>
@@ -134,7 +134,7 @@
             async function updateUI() {
                 try {
                     const response = await fetch('/status');
-                    if (response.status === 401) { // Se não estiver autenticado, redireciona
+                    if (!response.ok) {
                         window.location.href = '/login';
                         return;
                     }
@@ -209,11 +209,7 @@
                 if (!username) return;
                 const password = prompt(`Senha para a conta ${username}:`);
                 if (!password) return;
-                const response = await fetch('/add-account', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
+                const response = await fetch('/add-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
                 const result = await response.json();
                 showToast(result.message, response.ok ? 'info' : 'error');
                 updateUI();
