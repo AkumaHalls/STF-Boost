@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>STF Steam Boost</title>
-    <link rel="icon" type="image/png" href="/logo.png">
+    <link rel="icon" type="image/png" href="/logo.png?v=1.1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/style.css?v=1.1">
 </head>
-<body>
+<body class="panel-page">
     <div class="control-panel">
         <header>
             <div class="logo-container">
-                <img src="/logo.png" alt="Logo STF Steam Boost" id="headerLogo">
+                <img src="/logo.png?v=1.1" alt="Logo STF Steam Boost" id="headerLogo">
                 <h1 class="glitch-title" data-text="STF Steam Boost">STF Steam Boost</h1>
             </div>
             <div>
@@ -134,8 +134,9 @@
             async function updateUI() {
                 try {
                     const response = await fetch('/status');
-                    if (!response.ok) { // Se a resposta não for 2xx, indica problema (como redirecionamento)
-                        throw new Error(`Falha na rede: ${response.statusText}`);
+                    if (!response.ok) {
+                        window.location.href = '/login';
+                        return;
                     }
                     const data = await response.json();
                     const accounts = data.accounts;
@@ -214,18 +215,29 @@
                 updateUI();
             });
 
-            const hideGamesModal = () => { gamesModal.style.display = 'none'; appIdsInput.value = ''; currentlyEditingGamesFor = null; }
+            const hideGamesModal = () => {
+                gamesModal.style.display = 'none';
+                appIdsInput.value = '';
+                currentlyEditingGamesFor = null;
+            }
             closeGamesModalButton.addEventListener('click', hideGamesModal);
             window.addEventListener('click', (event) => { if (event.target == gamesModal) hideGamesModal(); });
 
             saveGamesButton.addEventListener('click', () => {
                 if (!currentlyEditingGamesFor) return;
                 const gamesArray = appIdsInput.value.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0);
-                fetch(`/set-games/${currentlyEditingGamesFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ games: gamesArray }) })
+                fetch(`/set-games/${currentlyEditingGamesFor}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ games: gamesArray })
+                })
                 .then(res => res.json()).then(data => { showToast(data.message); hideGamesModal(); });
             });
 
-            const hideSettingsModal = () => { settingsModal.style.display = 'none'; currentlyEditingSettingsFor = null; }
+            const hideSettingsModal = () => {
+                settingsModal.style.display = 'none';
+                currentlyEditingSettingsFor = null;
+            }
             closeSettingsModalButton.addEventListener('click', hideSettingsModal);
             window.addEventListener('click', (event) => { if (event.target == settingsModal) hideSettingsModal(); });
 
@@ -237,7 +249,11 @@
                     appearOffline: document.getElementById('appearOfflineToggle').checked,
                     autoAcceptFriends: document.getElementById('autoAcceptFriendsToggle').checked
                 };
-                fetch(`/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: newSettings }) })
+                fetch(`/save-settings/${currentlyEditingSettingsFor}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ settings: newSettings })
+                })
                 .then(res => res.json()).then(data => { showToast(data.message); hideSettingsModal(); });
             });
 
