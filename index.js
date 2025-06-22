@@ -27,51 +27,37 @@ async function connectToDB() { try { await mongoClient.connect(); console.log("C
 function applyLiveSettings(account) { if (account.status !== "Rodando") return; const personaState = account.settings.appearOffline ? SteamUser.EPersonaState.Offline : SteamUser.EPersonaState.Online; account.client.setPersona(personaState); let gamesToPlay = account.settings.customInGameTitle ? [{ game_id: 0, game_extra_info: account.settings.customInGameTitle }] : [...account.games]; if (gamesToPlay.length > 0) { account.client.gamesPlayed(gamesToPlay); } }
 
 function setupListenersForAccount(account) {
-    account.client.on('loggedOn', () => {
-        account.status = "Rodando";
-        account.sessionStartTime = Date.now();
-        applyLiveSettings(account);
-    });
+    account.client.on('loggedOn', () => { account.status = "Rodando"; account.sessionStartTime = Date.now(); applyLiveSettings(account); });
+    account.client.on('steamGuard', (domain, callback) => { account.status = "Pendente: Steam Guard"; account.steamGuardCallback = callback; });
     
-    account.client.on('steamGuard', (domain, callback) => {
-        account.status = "Pendente: Steam Guard";
-        account.steamGuardCallback = callback;
-    });
-    
-    // --- LÓGICA DE DESCONEXÃO CORRIGIDA ---
+    // O evento disconnected agora só lida com desconexões "normais" ou manuais
     account.client.on('disconnected', (eresult, msg) => {
         console.log(`[${account.username}] Desconectado da Steam. Mensagem: ${msg}, Código (EResult): ${eresult}`);
         account.sessionStartTime = null;
-
-        // Se foi um logoff manual, apenas para e reseta o sinalizador.
         if (account.manual_logout) {
             account.status = "Parado";
-            account.manual_logout = false; 
-            console.log(`[${account.username}] Desconexão manual confirmada.`);
-            return;
+            account.manual_logout = false;
+        } else {
+            account.status = "Parado"; // Se não for manual e não tiver auto-relogin, apenas para.
         }
-        
-        // Para qualquer outra desconexão, verifica se o auto-relogin está ativo.
-        if (account.settings.autoRelogin) {
+    });
+    
+    // --- LÓGICA DE RECONEXÃO MOVIDA PARA O EVENTO DE ERRO ---
+    account.client.on('error', (err) => {
+        console.log(`[${account.username}] Evento de Erro recebido. Código (EResult): ${err.eresult}, Mensagem: ${err.message}`);
+        account.sessionStartTime = null;
+
+        // Verifica se o erro é 'LoggedInElsewhere' e se o auto-relogin está ativo
+        if (err.eresult === SteamUser.EResult.LoggedInElsewhere && account.settings.autoRelogin) {
             account.status = "Reconectando...";
-            console.log(`[${account.username}] Auto-Relogin ativado. A tentar reconectar em 1 minuto...`);
+            console.log(`[${account.username}] Detectado LoggedInElsewhere. Auto-Relogin ativado. A tentar reconectar em 1 minuto...`);
             setTimeout(() => {
                 console.log(`[${account.username}] A tentar reconexão automática agora...`);
                 account.client.logOn({ accountName: account.username, password: account.password });
             }, 60000);
         } else {
-            account.status = "Parado";
-        }
-    });
-    
-    // --- LÓGICA DE ERRO CORRIGIDA ---
-    account.client.on('error', (err) => {
-        console.log(`[${account.username}] Evento de Erro recebido. Código (EResult): ${err.eresult}, Mensagem: ${err.message}`);
-        // Apenas definimos o status como "Erro" para erros que não sejam o 'LoggedInElsewhere',
-        // pois esse será tratado pelo evento 'disconnected' que vem a seguir.
-        if (err.eresult !== SteamUser.EResult.LoggedInElsewhere) {
+            // Para qualquer outro erro, define o status como "Erro"
             account.status = "Erro";
-            account.sessionStartTime = null;
         }
     });
 
