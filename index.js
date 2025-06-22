@@ -31,7 +31,7 @@ function setupListenersForAccount(account) {
     account.client.on('steamGuard', (domain, callback) => { account.status = "Pendente: Steam Guard"; account.steamGuardCallback = callback; });
     
     account.client.on('disconnected', (eresult, msg) => {
-        console.log(`[${account.username}] Desconectado da Steam. Mensagem: ${msg}, Código (EResult): ${eresult}`); // LOG ADICIONADO
+        console.log(`[${account.username}] Desconectado da Steam. Mensagem: ${msg}, Código (EResult): ${eresult}`);
         account.sessionStartTime = null;
         if (account.manual_logout) {
             account.status = "Parado";
@@ -49,9 +49,17 @@ function setupListenersForAccount(account) {
         }
     });
     
+    // --- LÓGICA CORRIGIDA AQUI ---
     account.client.on('error', (err) => {
-        console.log(`[${account.username}] Evento de Erro recebido. Código (EResult): ${err.eresult}, Mensagem: ${err.message}`); // LOG ADICIONADO
-        account.status = "Erro";
+        console.log(`[${account.username}] Evento de Erro recebido. Código (EResult): ${err.eresult}, Mensagem: ${err.message}`);
+        
+        // Se o erro for LoggedInElsewhere (código 6), não fazemos nada aqui,
+        // pois o evento 'disconnected' vai tratar da reconexão.
+        // Para qualquer outro erro, definimos o status como "Erro".
+        if (err.eresult !== SteamUser.EResult.LoggedInElsewhere) {
+            account.status = "Erro";
+        }
+        
         account.sessionStartTime = null;
     });
 
