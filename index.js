@@ -6,7 +6,7 @@ const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const SteamUser = require('steam-user');
 
-// --- CONFIGURAÇÃO E CRIPTOGRAFIA (sem alterações) ---
+// --- CONFIGURAÇÃO E CRIPTOGRAFIA ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -27,17 +27,32 @@ async function connectToDB() { try { await mongoClient.connect(); console.log("C
 function applyLiveSettings(account) { if (account.status !== "Rodando") return; const personaState = account.settings.appearOffline ? SteamUser.EPersonaState.Offline : SteamUser.EPersonaState.Online; account.client.setPersona(personaState); let gamesToPlay = account.settings.customInGameTitle ? [{ game_id: 0, game_extra_info: account.settings.customInGameTitle }] : [...account.games]; if (gamesToPlay.length > 0) { account.client.gamesPlayed(gamesToPlay); } }
 
 function setupListenersForAccount(account) {
-    account.client.on('loggedOn', () => { account.status = "Rodando"; account.sessionStartTime = Date.now(); applyLiveSettings(account); });
-    account.client.on('steamGuard', (domain, callback) => { account.status = "Pendente: Steam Guard"; account.steamGuardCallback = callback; });
+    account.client.on('loggedOn', () => {
+        account.status = "Rodando";
+        account.sessionStartTime = Date.now();
+        applyLiveSettings(account);
+    });
     
+    account.client.on('steamGuard', (domain, callback) => {
+        account.status = "Pendente: Steam Guard";
+        account.steamGuardCallback = callback;
+    });
+    
+    // --- LÓGICA DE DESCONEXÃO CORRIGIDA ---
     account.client.on('disconnected', (eresult, msg) => {
         console.log(`[${account.username}] Desconectado da Steam. Mensagem: ${msg}, Código (EResult): ${eresult}`);
         account.sessionStartTime = null;
+
+        // Se foi um logoff manual, apenas para e reseta o sinalizador.
         if (account.manual_logout) {
             account.status = "Parado";
-            account.manual_logout = false;
+            account.manual_logout = false; 
             console.log(`[${account.username}] Desconexão manual confirmada.`);
-        } else if (account.settings.autoRelogin) {
+            return;
+        }
+        
+        // Para qualquer outra desconexão, verifica se o auto-relogin está ativo.
+        if (account.settings.autoRelogin) {
             account.status = "Reconectando...";
             console.log(`[${account.username}] Auto-Relogin ativado. A tentar reconectar em 1 minuto...`);
             setTimeout(() => {
@@ -49,18 +64,15 @@ function setupListenersForAccount(account) {
         }
     });
     
-    // --- LÓGICA CORRIGIDA AQUI ---
+    // --- LÓGICA DE ERRO CORRIGIDA ---
     account.client.on('error', (err) => {
         console.log(`[${account.username}] Evento de Erro recebido. Código (EResult): ${err.eresult}, Mensagem: ${err.message}`);
-        
-        // Se o erro for LoggedInElsewhere (código 6), não fazemos nada aqui,
-        // pois o evento 'disconnected' vai tratar da reconexão.
-        // Para qualquer outro erro, definimos o status como "Erro".
+        // Apenas definimos o status como "Erro" para erros que não sejam o 'LoggedInElsewhere',
+        // pois esse será tratado pelo evento 'disconnected' que vem a seguir.
         if (err.eresult !== SteamUser.EResult.LoggedInElsewhere) {
             account.status = "Erro";
+            account.sessionStartTime = null;
         }
-        
-        account.sessionStartTime = null;
     });
 
     account.client.on('friendRelationship', (steamID, relationship) => { if (relationship === SteamUser.EFriendRelationship.RequestRecipient && account.settings.autoAcceptFriends) { account.client.addFriend(steamID); } });
