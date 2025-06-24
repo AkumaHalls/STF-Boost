@@ -74,6 +74,10 @@
                     <label>Reconectar Automaticamente:</label>
                     <label class="switch"><input type="checkbox" id="autoReloginToggle"><span class="slider"></span></label>
                 </div>
+                 <div class="settings-form-row">
+                    <label for="sharedSecretInput">Shared Secret (TOTP):</label>
+                    <input type="password" id="sharedSecretInput" placeholder="Cole aqui para automação total">
+                </div>
             </div>
             <button id="saveSettingsButton">Salvar</button>
             <button id="closeSettingsModalButton" class="remove-btn">Cancelar</button>
@@ -121,10 +125,7 @@
                         const row = document.createElement('tr');
                         row.innerHTML = `<td>${acc.username}</td><td class="status-cell">${acc.status}</td><td>${formatUptime(acc.uptime)}</td><td class="actions-cell"></td>`;
                         const statusCell = row.querySelector('.status-cell');
-                        statusCell.className = 'status-cell';
-                        if (acc.status === 'Rodando') { statusCell.classList.add('status-running');
-                        } else if (acc.status === 'Parado') { statusCell.classList.add('status-stopped');
-                        } else { statusCell.classList.add('status-pending'); }
+                        statusCell.className = `status-cell ${acc.status === 'Rodando' ? 'status-running' : (acc.status === 'Parado' ? 'status-stopped' : 'status-pending')}`;
                         const actionsCell = row.querySelector('.actions-cell');
                         
                         const startStopBtn = document.createElement('button');
@@ -153,6 +154,7 @@
                             document.getElementById('appearOfflineToggle').checked = currentSettings.appearOffline;
                             document.getElementById('autoAcceptFriendsToggle').checked = currentSettings.autoAcceptFriends;
                             document.getElementById('autoReloginToggle').checked = currentSettings.autoRelogin;
+                            document.getElementById('sharedSecretInput').value = currentSettings.sharedSecret || '';
                             settingsModal.style.display = 'block';
                         };
 
@@ -172,6 +174,7 @@
             closeGamesModalButton.addEventListener('click', hideGamesModal);
             window.addEventListener('click', (event) => { if (event.target == gamesModal) hideGamesModal(); });
             saveGamesButton.addEventListener('click', () => { if (!currentlyEditingGamesFor) return; const gamesArray = appIdsInput.value.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0); fetch(`/set-games/${currentlyEditingGamesFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ games: gamesArray }) }).then(res => res.json()).then(data => { showToast(data.message); hideGamesModal(); }); });
+            
             const hideSettingsModal = () => { settingsModal.style.display = 'none'; currentlyEditingSettingsFor = null; }
             closeSettingsModalButton.addEventListener('click', hideSettingsModal);
             window.addEventListener('click', (event) => { if (event.target == settingsModal) hideSettingsModal(); });
@@ -182,7 +185,8 @@
                     customAwayMessage: document.getElementById('customAwayMessageInput').value,
                     appearOffline: document.getElementById('appearOfflineToggle').checked,
                     autoAcceptFriends: document.getElementById('autoAcceptFriendsToggle').checked,
-                    autoRelogin: document.getElementById('autoReloginToggle').checked
+                    autoRelogin: document.getElementById('autoReloginToggle').checked,
+                    sharedSecret: document.getElementById('sharedSecretInput').value.trim()
                 };
                 fetch(`/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: newSettings }) }).then(res => res.json()).then(data => { showToast(data.message); hideSettingsModal(); });
             });
