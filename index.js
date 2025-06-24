@@ -6,13 +6,15 @@ const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const SteamUser = require('steam-user');
 
-// --- CONFIGURAÇÃO E CRIPTOGRAFIA ---
+// --- CONFIGURAÇÃO ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const APP_SECRET = process.env.APP_SECRET;
 const SITE_PASSWORD = process.env.SITE_PASSWORD;
 if (!MONGODB_URI || !APP_SECRET || !SITE_PASSWORD) { console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI, APP_SECRET e SITE_PASSWORD precisam de ser definidas!"); process.exit(1); }
+
+// --- CRIPTOGRAFIA ---
 const ALGORITHM = 'aes-256-cbc';
 const key = crypto.createHash('sha256').update(String(APP_SECRET)).digest('base64').substr(0, 32);
 const encrypt = (text) => { const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, key, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
@@ -30,59 +32,106 @@ function setupListenersForAccount(account) {
     account.client.on('loggedOn', () => { account.status = "Rodando"; account.sessionStartTime = Date.now(); applyLiveSettings(account); });
     account.client.on('steamGuard', (domain, callback) => { account.status = "Pendente: Steam Guard"; account.steamGuardCallback = callback; });
     
-    // O evento disconnected agora só lida com desconexões "normais" ou manuais
     account.client.on('disconnected', (eresult, msg) => {
-        console.log(`[${account.username}] Desconectado da Steam. Mensagem: ${msg}, Código (EResult): ${eresult}`);
+        console.log(`[${account.username}] Desconectado da Steam: ${msg}`);
         account.sessionStartTime = null;
         if (account.manual_logout) {
             account.status = "Parado";
             account.manual_logout = false;
+        } else if (account.settings.autoRelogin) {
+            account.status = "Reconectando...";
+            setTimeout(() => { account.client.logOn(getLogonOptions(account)); }, 60000);
         } else {
-            account.status = "Parado"; // Se não for manual e não tiver auto-relogin, apenas para.
+            account.status = "Parado";
         }
     });
     
-    // --- LÓGICA DE RECONEXÃO MOVIDA PARA O EVENTO DE ERRO ---
     account.client.on('error', (err) => {
-        console.log(`[${account.username}] Evento de Erro recebido. Código (EResult): ${err.eresult}, Mensagem: ${err.message}`);
+        console.log(`[${account.username}] Evento de Erro recebido. Código: ${err.eresult}`);
         account.sessionStartTime = null;
-
-        // Verifica se o erro é 'LoggedInElsewhere' e se o auto-relogin está ativo
         if (err.eresult === SteamUser.EResult.LoggedInElsewhere && account.settings.autoRelogin) {
             account.status = "Reconectando...";
-            console.log(`[${account.username}] Detectado LoggedInElsewhere. Auto-Relogin ativado. A tentar reconectar em 1 minuto...`);
-            setTimeout(() => {
-                console.log(`[${account.username}] A tentar reconexão automática agora...`);
-                account.client.logOn({ accountName: account.username, password: account.password });
-            }, 60000);
+            setTimeout(() => { account.client.logOn(getLogonOptions(account)); }, 60000);
         } else {
-            // Para qualquer outro erro, define o status como "Erro"
             account.status = "Erro";
         }
+    });
+
+    // --- NOVO OUVINTE PARA GUARDAR A "CHAVE DIGITAL" ---
+    account.client.on('sentry', (sentryHash) => {
+        console.log(`[${account.username}] Recebida nova 'chave digital' (sentry hash) da Steam.`);
+        const hashString = sentryHash.toString('base64');
+        account.sentryFileHash = hashString;
+        accountsCollection.updateOne({ username: account.username }, { $set: { sentryFileHash: hashString } });
     });
 
     account.client.on('friendRelationship', (steamID, relationship) => { if (relationship === SteamUser.EFriendRelationship.RequestRecipient && account.settings.autoAcceptFriends) { account.client.addFriend(steamID); } });
     account.client.on('friendMessage', (sender, message) => { if (account.settings.customAwayMessage) { account.client.chatMessage(sender, account.settings.customAwayMessage); } });
 }
 
-async function loadAccountsIntoMemory() { const defaultSettings = { customInGameTitle: '', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false, autoRelogin: true }; const savedAccounts = await accountsCollection.find({}).toArray(); for (const acc of savedAccounts) { liveAccounts[acc.username] = { username: acc.username, password: decrypt(acc.password), games: acc.games || [730], settings: { ...defaultSettings, ...(acc.settings || {}) }, status: 'Parado', client: new SteamUser(), sessionStartTime: null, steamGuardCallback: null, manual_logout: false }; setupListenersForAccount(liveAccounts[acc.username]); } console.log(`${Object.keys(liveAccounts).length} contas carregadas na memória.`); }
+// Constrói as opções de login, usando a "chave digital" se ela existir
+function getLogonOptions(account) {
+    const options = {
+        accountName: account.username,
+        password: account.password
+    };
+    if (account.sentryFileHash) {
+        options.shaSentryfile = Buffer.from(account.sentryFileHash, 'base64');
+    }
+    return options;
+}
 
-// --- CONFIGURAÇÃO DA APLICAÇÃO E ROTAS COMPLETAS ---
+async function loadAccountsIntoMemory() {
+    const defaultSettings = { customInGameTitle: '', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false, autoRelogin: true };
+    const savedAccounts = await accountsCollection.find({}).toArray();
+    for (const acc of savedAccounts) {
+        liveAccounts[acc.username] = {
+            username: acc.username,
+            password: decrypt(acc.password),
+            games: acc.games || [730],
+            settings: { ...defaultSettings, ...(acc.settings || {}) },
+            sentryFileHash: acc.sentryFileHash || null, // Carrega a chave
+            status: 'Parado',
+            client: new SteamUser(),
+            sessionStartTime: null,
+            steamGuardCallback: null,
+            manual_logout: false
+        };
+        setupListenersForAccount(liveAccounts[acc.username]);
+    }
+    console.log(`${Object.keys(liveAccounts).length} contas carregadas na memória.`);
+}
+
+// --- CONFIGURAÇÃO DA APLICAÇÃO E ROTAS ---
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({ secret: APP_SECRET, resave: false, saveUninitialized: false, store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf_boost_db', collectionName: 'sessions', ttl: 24 * 60 * 60 }), cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }}));
 const isAuthenticated = (req, res, next) => { if (req.session.isLoggedIn) { return next(); } res.redirect('/login?error=unauthorized'); };
+
 app.get('/login', (req, res) => { if (req.session.isLoggedIn) { return res.redirect('/'); } res.sendFile(path.join(__dirname, 'public', 'login.html')); });
 app.post('/login', async (req, res) => { let settings = await siteSettingsCollection.findOne({ _id: 'config' }); const submittedPass = req.body.password; if (settings && submittedPass && decrypt(settings.sitePassword) === submittedPass) { req.session.isLoggedIn = true; res.redirect('/'); } else { res.redirect('/login?error=1'); } });
 app.get('/health', (req, res) => { res.status(200).send('OK'); });
 app.get('/', isAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 app.use(express.static(path.join(__dirname, 'public'), { index: false }));
+
 const apiRouter = express.Router();
 apiRouter.use(isAuthenticated);
+
 apiRouter.get('/status', (req, res) => { const publicState = { accounts: {} }; for (const username in liveAccounts) { const acc = liveAccounts[username]; publicState.accounts[username] = { username: acc.username, status: acc.status, games: acc.games, uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0, settings: acc.settings }; } res.json(publicState); });
-apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); const existing = await accountsCollection.findOne({ username }); if (existing) return res.status(400).json({ message: "Conta já existe." }); const newAccountData = { username, password: encrypt(password), games: [730], settings: { customInGameTitle: 'STF Boost', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false, autoRelogin: true } }; await accountsCollection.insertOne(newAccountData); liveAccounts[username] = { ...newAccountData, password: password, status: 'Parado', client: new SteamUser(), sessionStartTime: null, steamGuardCallback: null, manual_logout: false }; setupListenersForAccount(liveAccounts[username]); res.status(200).json({ message: "Conta adicionada com sucesso." }); });
+apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); const existing = await accountsCollection.findOne({ username }); if (existing) return res.status(400).json({ message: "Conta já existe." }); const newAccountData = { username, password: encrypt(password), games: [730], sentryFileHash: null, settings: { customInGameTitle: 'STF Boost', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false, autoRelogin: true } }; await accountsCollection.insertOne(newAccountData); liveAccounts[username] = { ...newAccountData, password: password, status: 'Parado', client: new SteamUser(), sessionStartTime: null, steamGuardCallback: null, manual_logout: false }; setupListenersForAccount(liveAccounts[username]); res.status(200).json({ message: "Conta adicionada com sucesso." }); });
 apiRouter.delete('/remove-account/:username', async (req, res) => { const { username } = req.params; const account = liveAccounts[username]; if (account) { account.manual_logout = true; if (account.status === "Rodando") account.client.logOff(); delete liveAccounts[username]; await accountsCollection.deleteOne({ username }); res.status(200).json({ message: "Conta removida com sucesso." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
-apiRouter.post('/start/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account) { account.status = "Iniciando..."; account.client.logOn({ accountName: account.username, password: account.password }); res.status(200).json({ message: "Iniciando..." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
+
+apiRouter.post('/start/:username', (req, res) => {
+    const account = liveAccounts[req.params.username];
+    if (account) {
+        account.status = "Iniciando...";
+        account.client.logOn(getLogonOptions(account)); // Usa a nova função
+        res.status(200).json({ message: "Iniciando..." });
+    } else {
+        res.status(404).json({ message: "Conta não encontrada." });
+    }
+});
+
 apiRouter.post('/stop/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account) { account.manual_logout = true; account.status = "Parando..."; account.client.logOff(); res.status(200).json({ message: "Parando..." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
 apiRouter.post('/submit-guard/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account && account.steamGuardCallback) { account.steamGuardCallback(req.body.code); account.steamGuardCallback = null; res.status(200).json({ message: "Código enviado." }); } else { res.status(400).json({ message: "Pedido de Steam Guard não estava ativo." }); } });
 apiRouter.post('/set-games/:username', async (req, res) => { const { games } = req.body; const { username } = req.params; const account = liveAccounts[username]; if (account && games && Array.isArray(games)) { account.games = games; await accountsCollection.updateOne({ username }, { $set: { games: games } }); applyLiveSettings(account); res.status(200).json({ message: `Jogos atualizados.` }); } else { res.status(400).json({ message: 'Conta ou formato de jogos inválido.' }); } });
