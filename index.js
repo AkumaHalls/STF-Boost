@@ -6,7 +6,7 @@ const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const SteamUser = require('steam-user');
 
-// --- CONFIGURAÇÃO ---
+// --- CONFIGURAÇÃO ok ok---
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
