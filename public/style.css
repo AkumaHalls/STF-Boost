@@ -3,6 +3,7 @@
     --primary-color: #00ffff;
     --secondary-color: #ff00ff;
     --dark-bg: #0a0a14;
+    --pending-color: #ffd700;
 }
 
 /* Animações */
@@ -30,8 +31,6 @@ body {
     background-size: 400% 400%;
     animation: auroraGlow 18s ease-in-out infinite;
 }
-
-/* Estilos Específicos por Página */
 body.panel-page {
     padding: 20px;
 }
@@ -50,6 +49,8 @@ button:disabled { border-color: #4f5255; color: #4f5255; background-color: trans
 .stop-btn:hover { background-color: var(--secondary-color); color: var(--dark-bg); box-shadow: 0 0 15px var(--secondary-color); }
 .remove-btn { border-color: #4f5255; color: #4f5255; }
 .remove-btn:hover { background-color: #4f5255; color: #c7d5e0; box-shadow: 0 0 10px #4f5255; }
+.reconnect-btn { border-color: var(--pending-color); color: var(--pending-color); }
+.reconnect-btn:hover { background-color: var(--pending-color); color: var(--dark-bg); box-shadow: 0 0 15px var(--pending-color); }
 .pulse-attention { animation: pulse 1.5s infinite; }
 .settings-btn svg { transition: transform 0.5s ease; }
 .settings-btn:hover svg { transform: rotate(180deg); }
@@ -69,7 +70,7 @@ header .glitch-title { font-size: 24px; }
 .accounts-table th, .accounts-table td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(0, 255, 255, 0.2); vertical-align: middle; }
 .accounts-table th { color: var(--primary-color); text-transform: uppercase; }
 .actions-cell { display: flex; flex-wrap: wrap; gap: 5px; }
-.status-stopped { color: #ff6B6B; } .status-running { color: #90ee90; } .status-pending { color: #ffd700; } .status-error { color: #ffd700; }
+.status-stopped { color: #ff6B6B; } .status-running { color: #90ee90; } .status-pending { color: var(--pending-color); } .status-error { color: var(--pending-color); }
 
 /* Página de Login */
 .login-box { position: relative; background: rgba(10, 10, 20, 0.7); padding: 40px; border-radius: 4px; border: 1px solid var(--primary-color); box-shadow: 0 0 25px var(--primary-color); text-align: center; width: 90%; max-width: 400px; backdrop-filter: blur(5px); box-sizing: border-box; }
@@ -82,12 +83,12 @@ header .glitch-title { font-size: 24px; }
 .modal { display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
 .modal-content { background-color: rgba(27, 40, 56, 0.9); border: 1px solid var(--primary-color); margin: 10% auto; padding: 20px; width: 80%; max-width: 500px; border-radius: 8px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.5); }
 .modal-content h2 { color: var(--primary-color); margin-top: 0; }
-.modal-content textarea, .modal-content input[type="text"] { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid var(--primary-color); background-color: var(--dark-bg); color: #c7d5e0; box-sizing: border-box; resize: vertical; font-family: 'Share Tech Mono', monospace; }
+.modal-content textarea, .modal-content input[type="text"], .modal-content input[type="password"] { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid var(--primary-color); background-color: var(--dark-bg); color: #c7d5e0; box-sizing: border-box; resize: vertical; font-family: 'Share Tech Mono', monospace; }
 
 /* Modal de Configurações */
 .settings-form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
 .settings-form-row label { color: #c7d5e0; }
-.settings-form-row input[type="text"] { width: 55%; }
+.settings-form-row input[type="text"], .settings-form-row input[type="password"] { width: 55%; margin: 0; }
 .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
 .switch input { opacity: 0; width: 0; height: 0; }
 .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #4f5255; transition: .4s; border-radius: 24px; }
