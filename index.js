@@ -57,21 +57,7 @@ function startWorkerForAccount(accountData) {
         const { type, payload } = message;
         if (liveAccounts[username]) {
             if (type === 'statusUpdate') {
-                // ===================================================================
-                // NOVO LOG DE DIAGNÓSTICO PARA VER O ESTADO EM DETALHE
-                // ===================================================================
-                console.log(`\n\n================= DIAGNÓSTICO DE ESTADO PARA ${username} =================`);
-                const { worker: w, ...stateBefore } = liveAccounts[username];
-                console.log("==> ESTADO ANTES DA ATUALIZAÇÃO:", JSON.stringify(stateBefore, null, 2));
-                console.log("==> MENSAGEM RECEBIDA DO WORKER (payload):", JSON.stringify(payload, null, 2));
-
                 Object.assign(liveAccounts[username], payload);
-
-                const { worker: w2, ...stateAfter } = liveAccounts[username];
-                console.log("==> ESTADO DEPOIS DA ATUALIZAÇÃO:", JSON.stringify(stateAfter, null, 2));
-                console.log(`=================================================================\n\n`);
-                // ===================================================================
-
             }
             if (type === 'sentryUpdate') {
                 liveAccounts[username].sentryFileHash = payload.sentryFileHash;
@@ -120,7 +106,24 @@ app.use(express.json()); app.use(express.urlencoded({ extended: true })); app.us
 app.get('/login', async (req, res) => { if (req.session.isLoggedIn) { return res.redirect('/'); } res.sendFile(path.join(__dirname, 'public', 'login.html')); });
 app.post('/login', async (req, res) => { let settings = await siteSettingsCollection.findOne({ _id: 'config' }); const submittedPass = req.body.password; const decryptedSitePassword = decrypt(settings.sitePassword); if (decryptedSitePassword && decryptedSitePassword === submittedPass) { req.session.isLoggedIn = true; res.redirect('/'); } else { res.status(401).redirect('/login?error=1'); } });
 app.get('/health', (req, res) => { res.status(200).send('OK'); }); app.get('/', isAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); }); app.use(express.static(path.join(__dirname, 'public'), { index: false })); const apiRouter = express.Router(); apiRouter.use(isAuthenticated);
-apiRouter.get('/status', (req, res) => { const publicState = { accounts: {} }; for (const username in liveAccounts) { const { worker, encryptedPassword, ...accData } = liveAccounts[username]; publicState.accounts[username] = accData; } res.json(publicState); });
+
+apiRouter.get('/status', (req, res) => {
+    const publicState = { accounts: {} };
+    for (const username in liveAccounts) {
+        const acc = liveAccounts[username];
+        // CORREÇÃO FINAL: A lógica para calcular o uptime está de volta!
+        const publicData = {
+            username: acc.username,
+            status: acc.status,
+            games: acc.games,
+            settings: acc.settings,
+            uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0
+        };
+        publicState.accounts[username] = publicData;
+    }
+    res.json(publicState);
+});
+
 apiRouter.post('/start/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account) { const accountData = { ...account, password: decrypt(account.encryptedPassword) }; if (accountData.password) { startWorkerForAccount(accountData); res.status(200).json({ message: "Iniciando worker..." }); } else { res.status(500).json({ message: "Erro ao desencriptar senha."}); } } else { res.status(404).json({ message: "Conta não encontrada." }); } });
 apiRouter.post('/stop/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account && account.worker) { account.manual_logout = true; account.worker.kill(); account.status = "Parado"; res.status(200).json({ message: "Parando worker..." }); } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); } });
 apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); const existing = await accountsCollection.findOne({ username }); if (existing) return res.status(400).json({ message: "Conta já existe." }); const encryptedPassword = encrypt(password); if (!encryptedPassword) { return res.status(500).json({ message: "Falha ao encriptar senha ao adicionar conta."}); } const newAccountData = { username, password: encryptedPassword, games: [730], settings: {}, sentryFileHash: null }; await accountsCollection.insertOne(newAccountData); liveAccounts[username] = { ...newAccountData, encryptedPassword: newAccountData.password, status: 'Parado', worker: null }; res.status(200).json({ message: "Conta adicionada." }); });
