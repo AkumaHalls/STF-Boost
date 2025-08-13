@@ -75,7 +75,10 @@ function startWorkerForAccount(accountData) {
                 if (accData.password) startWorkerForAccount(accData);
             }, 30000);
         } else {
-            if (liveAccounts[username]) liveAccounts[username].status = "Parado";
+            if (liveAccounts[username]) {
+                liveAccounts[username].status = "Parado";
+                liveAccounts[username].sessionStartTime = null; // Garante que o tempo zera também na reconexão falhada
+            }
         }
     });
 }
@@ -111,7 +114,6 @@ apiRouter.get('/status', (req, res) => {
     const publicState = { accounts: {} };
     for (const username in liveAccounts) {
         const acc = liveAccounts[username];
-        // CORREÇÃO FINAL: A lógica para calcular o uptime está de volta!
         const publicData = {
             username: acc.username,
             status: acc.status,
@@ -125,7 +127,21 @@ apiRouter.get('/status', (req, res) => {
 });
 
 apiRouter.post('/start/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account) { const accountData = { ...account, password: decrypt(account.encryptedPassword) }; if (accountData.password) { startWorkerForAccount(accountData); res.status(200).json({ message: "Iniciando worker..." }); } else { res.status(500).json({ message: "Erro ao desencriptar senha."}); } } else { res.status(404).json({ message: "Conta não encontrada." }); } });
-apiRouter.post('/stop/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account && account.worker) { account.manual_logout = true; account.worker.kill(); account.status = "Parado"; res.status(200).json({ message: "Parando worker..." }); } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); } });
+
+apiRouter.post('/stop/:username', (req, res) => {
+    const account = liveAccounts[req.params.username];
+    if (account && account.worker) {
+        account.manual_logout = true;
+        account.worker.kill();
+        account.status = "Parado";
+        // A CORREÇÃO FINAL: Zerar o cronómetro!
+        account.sessionStartTime = null; 
+        res.status(200).json({ message: "Parando worker..." });
+    } else {
+        res.status(404).json({ message: "Conta ou worker não encontrado." });
+    }
+});
+
 apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); const existing = await accountsCollection.findOne({ username }); if (existing) return res.status(400).json({ message: "Conta já existe." }); const encryptedPassword = encrypt(password); if (!encryptedPassword) { return res.status(500).json({ message: "Falha ao encriptar senha ao adicionar conta."}); } const newAccountData = { username, password: encryptedPassword, games: [730], settings: {}, sentryFileHash: null }; await accountsCollection.insertOne(newAccountData); liveAccounts[username] = { ...newAccountData, encryptedPassword: newAccountData.password, status: 'Parado', worker: null }; res.status(200).json({ message: "Conta adicionada." }); });
 apiRouter.delete('/remove-account/:username', async (req, res) => { const account = liveAccounts[req.params.username]; if (account) { if (account.worker) { account.manual_logout = true; account.worker.kill(); } delete liveAccounts[req.params.username]; await accountsCollection.deleteOne({ username: req.params.username }); res.status(200).json({ message: "Conta removida." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
 apiRouter.post('/submit-guard/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account && account.worker) { account.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); res.status(200).json({ message: "Código enviado ao worker." }); } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); } });
