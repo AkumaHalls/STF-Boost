@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const session = require('express-session'); // CORRIGIDO
+const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
@@ -16,29 +16,8 @@ const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
 
 // --- FUNÇÕES DE CRIPTOGRAFIA ---
-const encrypt = (text) => {
-    if (!appSecretKey) {
-        console.error("[ENCRIPTAR] ERRO CRÍTICO: appSecretKey não está definida!");
-        return null;
-    }
-    const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`;
-};
-const decrypt = (text) => {
-    try {
-        if (!appSecretKey) {
-            console.error("[DESENCRIPTAR] ERRO CRÍTICO: appSecretKey não está definida no momento da chamada!");
-            return "";
-        }
-        if (!text) {
-            console.warn("[DESENCRIPTAR] Aviso: Texto para desencriptar está vazio ou nulo.");
-            return "";
-        }
-        const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted;
-    } catch (error) {
-        console.error("[DESENCRIPTAR] Falha crítica na função de desencriptar:", error);
-        return "";
-    }
-};
+const encrypt = (text) => { if (!appSecretKey) { console.error("[ENCRIPTAR] ERRO CRÍTICO: appSecretKey não está definida!"); return null; } const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
+const decrypt = (text) => { try { if (!appSecretKey) { return ""; } if (!text) { return ""; } const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { console.error("[DESENCRIPTAR] Falha crítica na função de desencriptar:", error); return ""; }};
 
 // --- GESTÃO DE CONTAS E BANCO DE DADOS ---
 const mongoClient = new MongoClient(MONGODB_URI);
@@ -53,25 +32,55 @@ async function initializeMasterKey() {
         console.log("[GESTOR] Nenhuma chave mestra encontrada. A gerar uma nova...");
         const newSecret = crypto.randomBytes(32).toString('hex');
         appSecretKey = crypto.createHash('sha256').update(newSecret).digest('base64').substr(0, 32);
-        
-        console.log(`[GESTOR] Chave Mestra GERADA (appSecretKey): ${appSecretKey ? 'Definida' : 'NÃO Definida'}`);
-
         const sitePasswordEncrypted = encrypt(SITE_PASSWORD);
-
-        await siteSettingsCollection.updateOne(
-            { _id: 'config' },
-            { $set: { appSecret: newSecret, sitePassword: sitePasswordEncrypted } },
-            { upsert: true }
-        );
+        await siteSettingsCollection.updateOne( { _id: 'config' }, { $set: { appSecret: newSecret, sitePassword: sitePasswordEncrypted } }, { upsert: true } );
         console.log("[GESTOR] Nova chave mestra gerada e guardada na base de dados.");
     } else {
         console.log("[GESTOR] Chave mestra carregada da base de dados.");
         appSecretKey = crypto.createHash('sha256').update(settings.appSecret).digest('base64').substr(0, 32);
-        console.log(`[GESTOR] Chave Mestra CARREGADA (appSecretKey): ${appSecretKey ? 'Definida' : 'NÃO Definida'}`);
     }
 }
 
-function startWorkerForAccount(accountData) { const username = accountData.username; console.log(`[GESTOR] A iniciar worker para ${username}`); if (liveAccounts[username] && liveAccounts[username].worker) { console.log(`[GESTOR] Worker para ${username} já existe. A terminar o antigo.`); liveAccounts[username].worker.kill(); } const worker = fork(path.join(__dirname, 'worker.js')); liveAccounts[username].worker = worker; liveAccounts[username].status = "Iniciando..."; liveAccounts[username].manual_logout = false; worker.send({ command: 'start', data: accountData }); worker.on('message', (message) => { const { type, payload } = message; if (type === 'statusUpdate') { console.log(`[GESTOR] Atualização de status de ${username}: ${payload.status}`); liveAccounts[username] = { ...liveAccounts[username], ...payload }; } if (type === 'sentryUpdate') { console.log(`[GESTOR] A guardar nova sentry para ${username}`); liveAccounts[username].sentryFileHash = payload.sentryFileHash; accountsCollection.updateOne({ username }, { $set: { sentryFileHash: payload.sentryFileHash } }); } }); worker.on('exit', (code) => { console.log(`[GESTOR] Worker para ${username} saiu com código ${code}.`); if (liveAccounts[username] && !liveAccounts[username].manual_logout && liveAccounts[username].settings.autoRelogin) { console.log(`[GESTOR] A reiniciar worker para ${username} em 30 segundos...`); setTimeout(() => { const accData = { ...liveAccounts[username], password: decrypt(liveAccounts[username].encryptedPassword) }; if (accData.password) startWorkerForAccount(accData); }, 30000); } else { if (liveAccounts[username]) liveAccounts[username].status = "Parado"; } }); }
+function startWorkerForAccount(accountData) {
+    const username = accountData.username;
+    console.log(`[GESTOR] A iniciar worker para ${username}`);
+    if (liveAccounts[username] && liveAccounts[username].worker) {
+        liveAccounts[username].worker.kill();
+    }
+    const worker = fork(path.join(__dirname, 'worker.js'));
+    liveAccounts[username].worker = worker;
+    liveAccounts[username].status = "Iniciando...";
+    liveAccounts[username].manual_logout = false;
+    worker.send({ command: 'start', data: accountData });
+
+    worker.on('message', (message) => {
+        const { type, payload } = message;
+        if (liveAccounts[username]) {
+            if (type === 'statusUpdate') {
+                // CORREÇÃO FINAL: Usando Object.assign para garantir a fusão correta dos dados
+                Object.assign(liveAccounts[username], payload);
+            }
+            if (type === 'sentryUpdate') {
+                liveAccounts[username].sentryFileHash = payload.sentryFileHash;
+                accountsCollection.updateOne({ username }, { $set: { sentryFileHash: payload.sentryFileHash } });
+            }
+        }
+    });
+
+    worker.on('exit', (code) => {
+        console.log(`[GESTOR] Worker para ${username} saiu com código ${code}.`);
+        if (liveAccounts[username] && !liveAccounts[username].manual_logout && liveAccounts[username].settings.autoRelogin) {
+            console.log(`[GESTOR] A reiniciar worker para ${username} em 30 segundos...`);
+            setTimeout(() => {
+                const accData = { ...liveAccounts[username], password: decrypt(liveAccounts[username].encryptedPassword) };
+                if (accData.password) startWorkerForAccount(accData);
+            }, 30000);
+        } else {
+            if (liveAccounts[username]) liveAccounts[username].status = "Parado";
+        }
+    });
+}
+
 async function loadAccountsIntoMemory() {
     const defaultSettings = { customInGameTitle: '', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false, autoRelogin: true, sharedSecret: '' };
     const savedAccounts = await accountsCollection.find({}).toArray();
@@ -81,7 +90,6 @@ async function loadAccountsIntoMemory() {
             const delay = index * 15000;
             console.log(`[GESTOR] Worker para ${acc.username} agendado para iniciar em ${delay / 1000}s.`);
             setTimeout(() => {
-                console.log(`[GESTOR] A preparar início automático para ${acc.username}. Senha encriptada do DB: ${acc.password ? 'Existe' : 'NÃO Existe'}`);
                 const accountData = { ...liveAccounts[acc.username], password: decrypt(acc.password) };
                 if (accountData.password) {
                     startWorkerForAccount(accountData);
@@ -97,35 +105,12 @@ async function loadAccountsIntoMemory() {
 // --- EXPRESS APP E ROTAS ---
 app.use(express.json()); app.use(express.urlencoded({ extended: true })); app.use(session({ secret: 'FallbackSecretForSession', resave: false, saveUninitialized: false, store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf_boost_db' }), cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }})); const isAuthenticated = (req, res, next) => { if (req.session.isLoggedIn) { return next(); } res.redirect('/login?error=unauthorized'); };
 app.get('/login', async (req, res) => { if (req.session.isLoggedIn) { return res.redirect('/'); } res.sendFile(path.join(__dirname, 'public', 'login.html')); });
-app.post('/login', async (req, res) => {
-    let settings = await siteSettingsCollection.findOne({ _id: 'config' });
-    const submittedPass = req.body.password;
-    console.log(`[LOGIN] Tentativa de login. Senha do site no DB: ${settings.sitePassword ? 'Existe' : 'NÃO Existe'}`);
-    const decryptedSitePassword = decrypt(settings.sitePassword);
-    if (decryptedSitePassword && decryptedSitePassword === submittedPass) {
-        req.session.isLoggedIn = true;
-        res.redirect('/');
-    } else {
-        console.error('[LOGIN] Falha no login: senha do site desencriptada não corresponde.');
-        res.status(401).redirect('/login?error=1');
-    }
-});
+app.post('/login', async (req, res) => { let settings = await siteSettingsCollection.findOne({ _id: 'config' }); const submittedPass = req.body.password; const decryptedSitePassword = decrypt(settings.sitePassword); if (decryptedSitePassword && decryptedSitePassword === submittedPass) { req.session.isLoggedIn = true; res.redirect('/'); } else { res.status(401).redirect('/login?error=1'); } });
 app.get('/health', (req, res) => { res.status(200).send('OK'); }); app.get('/', isAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); }); app.use(express.static(path.join(__dirname, 'public'), { index: false })); const apiRouter = express.Router(); apiRouter.use(isAuthenticated);
 apiRouter.get('/status', (req, res) => { const publicState = { accounts: {} }; for (const username in liveAccounts) { const { worker, encryptedPassword, ...accData } = liveAccounts[username]; publicState.accounts[username] = accData; } res.json(publicState); });
 apiRouter.post('/start/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account) { const accountData = { ...account, password: decrypt(account.encryptedPassword) }; if (accountData.password) { startWorkerForAccount(accountData); res.status(200).json({ message: "Iniciando worker..." }); } else { res.status(500).json({ message: "Erro ao desencriptar senha."}); } } else { res.status(404).json({ message: "Conta não encontrada." }); } });
 apiRouter.post('/stop/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account && account.worker) { account.manual_logout = true; account.worker.kill(); account.status = "Parado"; res.status(200).json({ message: "Parando worker..." }); } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); } });
-apiRouter.post('/add-account', async (req, res) => {
-    const { username, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); const existing = await accountsCollection.findOne({ username }); if (existing) return res.status(400).json({ message: "Conta já existe." });
-    const encryptedPassword = encrypt(password);
-    console.log(`[ADD-ACCOUNT] Adicionando conta ${username}. Senha encriptada: ${encryptedPassword ? 'Gerada' : 'FALHOU'}`);
-    if (!encryptedPassword) {
-        return res.status(500).json({ message: "Falha ao encriptar senha ao adicionar conta."});
-    }
-    const newAccountData = { username, password: encryptedPassword, games: [730], settings: {}, sentryFileHash: null };
-    await accountsCollection.insertOne(newAccountData);
-    liveAccounts[username] = { ...newAccountData, encryptedPassword: newAccountData.password, status: 'Parado', worker: null };
-    res.status(200).json({ message: "Conta adicionada." });
-});
+apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); const existing = await accountsCollection.findOne({ username }); if (existing) return res.status(400).json({ message: "Conta já existe." }); const encryptedPassword = encrypt(password); if (!encryptedPassword) { return res.status(500).json({ message: "Falha ao encriptar senha ao adicionar conta."}); } const newAccountData = { username, password: encryptedPassword, games: [730], settings: {}, sentryFileHash: null }; await accountsCollection.insertOne(newAccountData); liveAccounts[username] = { ...newAccountData, encryptedPassword: newAccountData.password, status: 'Parado', worker: null }; res.status(200).json({ message: "Conta adicionada." }); });
 apiRouter.delete('/remove-account/:username', async (req, res) => { const account = liveAccounts[req.params.username]; if (account) { if (account.worker) { account.manual_logout = true; account.worker.kill(); } delete liveAccounts[req.params.username]; await accountsCollection.deleteOne({ username: req.params.username }); res.status(200).json({ message: "Conta removida." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
 apiRouter.post('/submit-guard/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account && account.worker) { account.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); res.status(200).json({ message: "Código enviado ao worker." }); } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); } });
 apiRouter.post('/save-settings/:username', async (req, res) => { const { username } = req.params; const { settings } = req.body; const account = liveAccounts[username]; if (account && settings) { await accountsCollection.updateOne({ username }, { $set: { settings } }); account.settings = settings; if (account.worker) { account.worker.send({ command: 'updateSettings', data: { settings, games: account.games } }); } res.status(200).json({ message: "Configurações salvas." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
