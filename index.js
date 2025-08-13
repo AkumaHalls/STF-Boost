@@ -57,8 +57,21 @@ function startWorkerForAccount(accountData) {
         const { type, payload } = message;
         if (liveAccounts[username]) {
             if (type === 'statusUpdate') {
-                // CORREÇÃO FINAL: Usando Object.assign para garantir a fusão correta dos dados
+                // ===================================================================
+                // NOVO LOG DE DIAGNÓSTICO PARA VER O ESTADO EM DETALHE
+                // ===================================================================
+                console.log(`\n\n================= DIAGNÓSTICO DE ESTADO PARA ${username} =================`);
+                const { worker: w, ...stateBefore } = liveAccounts[username];
+                console.log("==> ESTADO ANTES DA ATUALIZAÇÃO:", JSON.stringify(stateBefore, null, 2));
+                console.log("==> MENSAGEM RECEBIDA DO WORKER (payload):", JSON.stringify(payload, null, 2));
+
                 Object.assign(liveAccounts[username], payload);
+
+                const { worker: w2, ...stateAfter } = liveAccounts[username];
+                console.log("==> ESTADO DEPOIS DA ATUALIZAÇÃO:", JSON.stringify(stateAfter, null, 2));
+                console.log(`=================================================================\n\n`);
+                // ===================================================================
+
             }
             if (type === 'sentryUpdate') {
                 liveAccounts[username].sentryFileHash = payload.sentryFileHash;
