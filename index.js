@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const session = require('session');
+const session = require('express-session'); // CORRIGIDO
 const MongoStore = require('connect-mongo');
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
@@ -17,7 +17,6 @@ let appSecretKey;
 
 // --- FUNÇÕES DE CRIPTOGRAFIA ---
 const encrypt = (text) => {
-    // DIAGNÓSTICO
     if (!appSecretKey) {
         console.error("[ENCRIPTAR] ERRO CRÍTICO: appSecretKey não está definida!");
         return null;
@@ -26,13 +25,11 @@ const encrypt = (text) => {
 };
 const decrypt = (text) => {
     try {
-        // DIAGNÓSTICO
         if (!appSecretKey) {
             console.error("[DESENCRIPTAR] ERRO CRÍTICO: appSecretKey não está definida no momento da chamada!");
             return "";
         }
         if (!text) {
-            // DIAGNÓSTICO
             console.warn("[DESENCRIPTAR] Aviso: Texto para desencriptar está vazio ou nulo.");
             return "";
         }
@@ -57,7 +54,6 @@ async function initializeMasterKey() {
         const newSecret = crypto.randomBytes(32).toString('hex');
         appSecretKey = crypto.createHash('sha256').update(newSecret).digest('base64').substr(0, 32);
         
-        // DIAGNÓSTICO
         console.log(`[GESTOR] Chave Mestra GERADA (appSecretKey): ${appSecretKey ? 'Definida' : 'NÃO Definida'}`);
 
         const sitePasswordEncrypted = encrypt(SITE_PASSWORD);
@@ -71,7 +67,6 @@ async function initializeMasterKey() {
     } else {
         console.log("[GESTOR] Chave mestra carregada da base de dados.");
         appSecretKey = crypto.createHash('sha256').update(settings.appSecret).digest('base64').substr(0, 32);
-        // DIAGNÓSTICO
         console.log(`[GESTOR] Chave Mestra CARREGADA (appSecretKey): ${appSecretKey ? 'Definida' : 'NÃO Definida'}`);
     }
 }
@@ -86,7 +81,6 @@ async function loadAccountsIntoMemory() {
             const delay = index * 15000;
             console.log(`[GESTOR] Worker para ${acc.username} agendado para iniciar em ${delay / 1000}s.`);
             setTimeout(() => {
-                // DIAGNÓSTICO
                 console.log(`[GESTOR] A preparar início automático para ${acc.username}. Senha encriptada do DB: ${acc.password ? 'Existe' : 'NÃO Existe'}`);
                 const accountData = { ...liveAccounts[acc.username], password: decrypt(acc.password) };
                 if (accountData.password) {
@@ -106,7 +100,6 @@ app.get('/login', async (req, res) => { if (req.session.isLoggedIn) { return res
 app.post('/login', async (req, res) => {
     let settings = await siteSettingsCollection.findOne({ _id: 'config' });
     const submittedPass = req.body.password;
-    // DIAGNÓSTICO
     console.log(`[LOGIN] Tentativa de login. Senha do site no DB: ${settings.sitePassword ? 'Existe' : 'NÃO Existe'}`);
     const decryptedSitePassword = decrypt(settings.sitePassword);
     if (decryptedSitePassword && decryptedSitePassword === submittedPass) {
@@ -124,7 +117,6 @@ apiRouter.post('/stop/:username', (req, res) => { const account = liveAccounts[r
 apiRouter.post('/add-account', async (req, res) => {
     const { username, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); const existing = await accountsCollection.findOne({ username }); if (existing) return res.status(400).json({ message: "Conta já existe." });
     const encryptedPassword = encrypt(password);
-    // DIAGNÓSTICO
     console.log(`[ADD-ACCOUNT] Adicionando conta ${username}. Senha encriptada: ${encryptedPassword ? 'Gerada' : 'FALHOU'}`);
     if (!encryptedPassword) {
         return res.status(500).json({ message: "Falha ao encriptar senha ao adicionar conta."});
