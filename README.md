@@ -1,112 +1,105 @@
-# STF Steam Boost 🚀
+# STF Steam Boost - O Seu Exército de Horas Pessoal! 🚀
 
-Bem-vindo ao **STF Steam Boost**! O seu painel pessoal, elegante e poderoso para impulsionar as horas dos seus jogos favoritos da Steam. Este projeto foi construído do zero para ser leve, seguro, e super fácil de usar. Se você seguiu este guia, você agora é o mestre do seu próprio sistema de boost!
+![Painel do STF Steam Boost em Ação!](https://i.imgur.com/KPGG1fJ.png)
 
-Este painel permite que você adicione múltiplas contas Steam e controle o processo de "farm" de horas de forma simples e visual, diretamente do seu navegador. Vamos começar!
+Bem-vindo, Comandante, ao painel de controlo da sua operação de boosting de horas na Steam! 🤯
 
-![Painel em Ação](https://i.imgur.com/gK98h83.png)
+Este não é um simples script. É uma aplicação web completa, robusta e poderosa, construída para gerir um exército de contas Steam 24 horas por dia, 7 dias por semana, de forma totalmente automática e com controlo total a partir de qualquer lugar do mundo.
 
-## ✨ Funcionalidades Incríveis
-
-* **Painel Web Cyberpunk:** Uma interface com identidade visual única, ícones, e transições suaves.
-* **Acesso Seguro por Senha:** O seu painel é protegido por uma senha mestra para garantir que apenas você tenha acesso.
-* **Suporte a Múltiplas Contas:** Adicione, remova e gira quantas contas Steam você quiser.
-* **Gestão de Jogos por AppID:** Controlo total sobre quais jogos impulsionar, bastando inserir os seus AppIDs.
-* **Contador de Tempo Ativo:** Acompanhe há quanto tempo cada conta está a "farmar" horas, em tempo real, incluindo dias!
-* **Configurações por Conta:** Personalize cada conta com status offline, títulos customizados e respostas automáticas.
-* **Armazenamento Seguro:** As suas senhas são criptografadas antes de serem guardadas num banco de dados seguro na nuvem.
-* **Notificações Inteligentes:** Diga adeus aos `alertas`! Receba feedback através de notificações elegantes no canto do ecrã.
-* **100% Gratuito:** Todo o sistema foi construído para funcionar nos planos gratuitos do Render.com e do MongoDB Atlas.
-
-## ⚙️ Tecnologias Utilizadas
-
-* **Backend:** Node.js + Express
-* **Frontend:** HTML5, CSS3, JavaScript (Vanilla JS)
-* **Banco de Dados:** MongoDB Atlas (Plano Gratuito)
-* **Interação com a Steam:** `steam-user`
-* **Hospedagem:** Render.com (Plano Gratuito)
+Construímos esta fortaleza digital do zero, e agora ela está pronta para dominar!
 
 ---
 
-## 🚀 Tutorial de Configuração: Do Zero ao Lançamento!
+## O Arsenal Completo! 🦾
 
-Vamos embarcar nesta missão e colocar a sua plataforma no ar. Siga os passos com atenção e prepare-se para o lançamento!
+Esta não é uma ferramenta qualquer. É uma verdadeira suíte de automação com funcionalidades de nível profissional. Veja o que ela faz:
 
-### **🌌 Parte 1: A Base de Dados - O Cofre Secreto**
-
-Primeiro, precisamos de um lugar seguro na nuvem para guardar os dados das suas contas. Usaremos o MongoDB Atlas, que é gratuito e perfeito para o nosso projeto.
-
-1.  **Crie uma Conta Gratuita:** Vá a [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register) e registe-se.
-
-2.  **Crie o seu "Cluster" Gratuito:** Após o login, a plataforma irá guiá-lo. Procure pela opção **M0 FREE** (geralmente já vem selecionada, é a que não tem custo!). Pode manter as configurações padrão (AWS, mesma região, etc.) e clicar no grande botão **"Create Cluster"**. A criação pode demorar 2-3 minutos. Tenha paciência, coisas incríveis estão a ser construídas!
-
-3.  **Crie o Acesso ao Cofre (Usuário):**
-    * No menu lateral do seu cluster, vá a **Database Access** > **Add New Database User**.
-    * **Authentication Method:** Password.
-    * **Username:** Escolha um nome, por exemplo: `stf_user`.
-    * **Password:** Crie uma senha forte e clique em **"Autogenerate Secure Password"** ou crie a sua. **🚨 Anote esta senha num local seguro!** Vamos precisar dela já a seguir.
-    * Clique em **Add User**.
-
-4.  **Abra os Portões (Acesso de Rede):**
-    * No menu lateral, vá a **Network Access** > **Add IP Address**.
-    * Uma janela irá abrir. Clique no botão **ALLOW ACCESS FROM ANYWHERE**.
-    * O campo de texto será preenchido automaticamente com `0.0.0.0/0`. Isto significa que a sua aplicação, não importa onde esteja hospedada no mundo (como no Render), poderá comunicar com o seu banco de dados.
-    * Clique em **Confirm**.
-
-5.  **Obtenha a Chave Mágica (Connection String):**
-    * Volte à secção **Database** no menu lateral.
-    * Clique no botão **Connect** do seu cluster.
-    * Na janela que abrir, selecione a opção **Drivers**.
-    * Copie a **Connection String** que aparece no passo 2. Ela será parecida com isto:
-        `mongodb+srv://stf_user:<password>@cluster0.xxxx.mongodb.net/?retryWrites=true&w=majority`
-    * Agora, o passo mais importante: cole esta string num bloco de notas e **substitua `<password>` pela senha que você criou no passo 3**.
-    * **Exemplo:** Se a sua senha for `MinhaSenhaSuperSegura123`, a string final ficará:
-        `mongodb+srv://stf_user:MinhaSenhaSuperSegura123@cluster0.xxxx.mongodb.net/?retryWrites=true&w=majority`
-    * Guarde esta string final. É a chave secreta do seu cofre!
-
-### **🛰️ Parte 2: A Hospedagem - A Estação Espacial**
-
-Agora que temos o nosso cofre de dados, vamos construir a nossa base de operações no Render.com.
-
-1.  **Envie o Código para o GitHub:** Crie um repositório no GitHub e envie todos os ficheiros do projeto para lá.
-
-2.  **Crie uma Conta no Render:** Vá a [Render.com](https://render.com/) e crie uma conta gratuita, ligando-a à sua conta do GitHub para facilitar o processo.
-
-3.  **Crie o "Web Service":**
-    * No painel do Render, clique em **New +** > **Web Service**.
-    * Selecione **"Build and deploy from a Git repository"** e escolha o repositório do seu projeto.
-    * **Name:** Dê um nome único para o seu serviço (ex: `meu-stf-boost`). Este nome fará parte do seu URL.
-    * Verifique se as configurações estão corretas: **Runtime** deve ser `Node`, **Build Command** `npm install`, e **Start Command** `node index.js`. O Render é inteligente e geralmente acerta nisto tudo sozinho.
-
-4.  **Configure as Variáveis de Ambiente (O Painel Secreto!):**
-    * Antes de finalizar, desça até à secção **Environment Variables**. É aqui que vamos contar os nossos segredos ao servidor de forma segura.
-    * Clique em **"Add Environment Variable"** três vezes para criar as seguintes variáveis:
-
-| Key (Chave) | Value (Valor) | Descrição |
-| :--- | :--- | :--- |
-| `APP_SECRET` | `UmaSenhaBemLongaParaCriptografia123!@#` | 🔑 Crie qualquer senha longa e secreta aqui. É usada para criptografar as senhas da Steam. |
-| `MONGODB_URI`| `mongodb+srv://stf_user:SuaSenhaDoDBAqui@...`| 🌍 Cole aqui a sua "Connection String" completa e final que você preparou na Parte 1. |
-| `SITE_PASSWORD`| `senha_para_entrar_no_site` | 🚪 A senha que **VOCÊ** usará para entrar no painel. Escolha uma senha boa! |
-
-5.  **Lance o Foguete!**
-    * Vá até ao final da página e clique em **"Create Web Service"**.
-
-O Render vai começar a construir a sua aplicação. Pode acompanhar a magia a acontecer na aba de "Logs". Em poucos minutos, o seu serviço estará "Live" e pronto para a ação!
-
-### **✨ Parte 3: Usando o Seu Painel!**
-
-1.  **Acesse o seu URL:** `https://o-nome-do-seu-servico.onrender.com`.
-2.  **Login Cyberpunk:** Você será recebido pela nossa página de login! Use a `SITE_PASSWORD` que você definiu nas variáveis de ambiente para entrar.
-3.  **Adicione Contas:** O painel estará vazio. Clique no botão **"Adicionar Conta"** para começar a adicionar as suas contas Steam.
-4.  **Domine as Ações:** Cada conta terá a sua própria linha de controlo:
-    * **Iniciar/Parar:** Inicia ou para o processo de boost.
-    * **Guard:** Se o status pedir um código do Steam Guard, este botão ficará a pulsar. Clique para inserir o código.
-    * **Jogos:** Abre uma janela para você colar os AppIDs dos jogos que quer impulsionar.
-    * **Config.:** Abre as configurações avançadas para essa conta (status offline, mensagens automáticas, etc.).
-    * **Remover:** Apaga a conta do sistema.
+* **👨‍👩‍👧‍👦 Gestão de Múltiplas Contas:** Adicione, remova e gira quantas contas Steam você quiser. O céu é o limite!
+* **💻 Painel de Controlo Web:** Uma interface gráfica moderna, reativa e super estilosa para monitorizar e controlar tudo em tempo real.
+* **▶️ Controlo Individual:** Inicie ou pare cada conta individualmente com um único clique.
+* **🎮 Boosting de Múltiplos Jogos:** Faça o "farm" de horas em até 32 jogos **ao mesmo tempo** por conta.
+* **✍️ Título de Jogo Personalizado:** Não quer mostrar os jogos? Crie um status "Em Jogo" totalmente personalizado, como "A ver Netflix" ou "A dominar o universo".
+* **🛡️ Suporte a Steam Guard:**
+    * **Manual:** Um botão de "Guard" aparece quando a Steam pede um código, permitindo que você o insira facilmente.
+    * **Automático (TOTP):** Adicione o seu `shared_secret` e a autenticação de dois fatores torna-se 100% automática!
+* **⚙️ Configurações Detalhadas por Conta:**
+    * Aparecer offline na Steam.
+    * Aceitar pedidos de amizade automaticamente.
+    * Responder a mensagens com uma frase customizada.
+* **🔐 Segurança de Ponta:**
+    * Acesso ao painel protegido por senha.
+    * Todas as senhas das contas Steam são **encriptadas** na base de dados com uma chave mestra única e auto-gerida. Segurança em primeiro lugar!
+* **🧠 Arquitetura Imbatível (Gestor/Trabalhador):**
+    * Cada conta corre num processo isolado ("Trabalhador").
+    * **À prova de apocalipses:** Se uma conta tiver um erro crítico e crashar, ela **NÃO derruba o sistema**. As outras contas continuam a funcionar perfeitamente!
+    * O sistema principal ("Gestor") monitoriza tudo e reinicia automaticamente os trabalhadores que falham.
+* **✨ Inicialização Inteligente:**
+    * Quando o servidor reinicia, todas as contas configuradas para tal iniciam sozinhas.
+    * **Login Escalonado:** Para não irritar a Steam, cada conta espera alguns segundos antes de iniciar, simulando um comportamento humano e evitando bloqueios.
 
 ---
 
-É isso! Você agora tem o seu próprio sistema de hour boost para a Steam, totalmente funcional, seguro, estiloso e configurado por si.
+## A Magia por Trás da Cortina 🧙‍♂️
 
-**Parabéns pelo projeto incrível! Divirta-se a ver as horas a subir! 🎉**
+Como é que esta maravilha funciona sem nunca falhar? Com uma arquitetura profissional!
+
+Pense no nosso sistema como uma empresa:
+
+* **O Gestor (`index.js`):** É o "Chefe". Ele gere o site, o painel, fala consigo, e anota os pedidos. Ele não faz o trabalho sujo.
+* **Os Trabalhadores (`worker.js`):** Para cada conta que você inicia, o Gestor contrata um "Funcionário" novo e isolado. A única tarefa deste funcionário é cuidar de UMA conta Steam. Ele faz o login, mantém a conta online e reporta o status ao chefe.
+
+Se um funcionário tiver um problema e "desmaiar" (crashar), os outros funcionários nem reparam. O Chefe simplesmente vê o que aconteceu e contrata um novo funcionário para o substituir. É por isso que o nosso sistema é tão robusto!
+
+---
+
+## Lançando o Foguete! 🚀 Como Colocar Online no Render.com
+
+Levar o seu exército para a nuvem é fácil! Siga estes passos:
+
+1.  **Pré-requisitos:**
+    * Uma conta no [**GitHub**](https://github.com/).
+    * Uma conta no [**Render.com**](https://render.com/) (o plano gratuito é suficiente).
+    * Uma conta no [**MongoDB Atlas**](https://www.mongodb.com/cloud/atlas) para ter uma base de dados gratuita.
+
+2.  **Passo 1: MongoDB Atlas**
+    * Crie um novo projeto e um Cluster gratuito (M0).
+    * Vá a `Database Access` e crie um utilizador com senha. Anote-os.
+    * Vá a `Network Access` e adicione o IP `0.0.0.0/0` para permitir conexões de qualquer lugar (incluindo do Render).
+    * Vá à sua base de dados, clique em `Connect` -> `Connect your application` e copie a sua **Connection String** (string de conexão). Substitua `<password>` pela senha que você criou.
+
+3.  **Passo 2: Render.com**
+    * No seu Dashboard, clique em **New +** -> **Web Service**.
+    * Conecte o seu repositório do GitHub.
+    * Defina as seguintes configurações:
+        * **Build Command:** `npm install`
+        * **Start Command:** `node index.js`
+    * Vá para a secção **Environment** (Variáveis de Ambiente) e adicione as seguintes variáveis:
+        * **Key:** `MONGODB_URI`
+        * **Value:** A sua string de conexão do MongoDB Atlas que você copiou.
+        * **Key:** `SITE_PASSWORD`
+        * **Value:** A senha que você quer usar para aceder ao seu painel.
+    * Clique em **Create Web Service**. Espere o deploy terminar. Está no ar!
+
+4.  **Passo 3 (Opcional, mas recomendado): Manter o Serviço "Acordado"**
+    * O plano gratuito do Render "dorme" após 15 minutos de inatividade. Para manter os seus bots a rodar 24/7, use um serviço como [Cron-Job.org](https://cron-job.org/).
+    * Crie um novo CronJob que faça um pedido `HTTP GET` ao endereço do seu painel, seguido de `/health` (ex: `https://seu-site.onrender.com/health`) a cada 10-15 minutos. Isto mantém o serviço sempre ativo!
+
+---
+
+## Pilotando a Nave-Mãe 🛸
+
+Usar o painel é a parte mais fácil e divertida!
+
+1.  **Login:** Aceda ao URL do seu site no Render e use a `SITE_PASSWORD` que você configurou.
+2.  **Adicionar Contas:** Clique no botão "Adicionar Conta", insira o nome de usuário e a senha da Steam. A senha será encriptada e guardada de forma segura.
+3.  **Iniciar/Parar:** Use os botões "Iniciar" e "Parar" para controlar cada conta.
+4.  **Steam Guard Manual:** Se uma conta precisar de um código, o status mudará para "Pendente: Steam Guard". Clique no botão "Guard", insira o código do seu e-mail e pronto!
+5.  **Configurações:** Clique no botão "Config." (a engrenagem) para abrir um mundo de opções: jogos, título personalizado, modo offline e muito mais!
+
+---
+
+## A Jornada Épica ✨
+
+Esta jornada de programação foi uma das mais incríveis, e o resultado é esta ferramenta fantástica que construímos juntos, passando por todas as fases de desenvolvimento e depuração.
+
+**Obrigado, e que a farm de horas comece!** 🏆
