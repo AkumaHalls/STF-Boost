@@ -5,15 +5,68 @@ const MongoStore = require('connect-mongo');
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const { fork } = require('child_process');
+const https = require('https'); // Módulo para fazer requisições HTTPS
 
 // --- CONFIGURAÇÃO ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const SITE_PASSWORD = process.env.SITE_PASSWORD;
+// Adiciona a variável de ambiente para o Webhook do Discord
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; 
+
 if (!MONGODB_URI || !SITE_PASSWORD) { console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI e SITE_PASSWORD precisam de ser definidas!"); process.exit(1); }
 const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
+
+// --- FUNÇÃO DE NOTIFICAÇÃO DISCORD ---
+/**
+ * Envia uma notificação para o webhook do Discord.
+ * @param {string} title O título da notificação.
+ * @param {string} message A mensagem principal.
+ * @param {number} color A cor da embed em formato decimal (ex: verde: 5763719, vermelho: 15548997).
+ * @param {string} username O nome de usuário da conta Steam associada.
+ */
+function sendDiscordNotification(title, message, color, username) {
+    if (!DISCORD_WEBHOOK_URL) return; // Se o webhook não estiver configurado, não faz nada.
+
+    const embed = {
+        title: title,
+        description: message,
+        color: color,
+        fields: [{ name: "Conta", value: `\`${username}\``, inline: true }],
+        footer: { text: "STF Boost Notifier" },
+        timestamp: new Date().toISOString()
+    };
+
+    const payload = JSON.stringify({ embeds: [embed] });
+
+    try {
+        const url = new URL(DISCORD_WEBHOOK_URL);
+        const options = {
+            hostname: url.hostname,
+            path: url.pathname,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length }
+        };
+
+        const req = https.request(options, res => {
+            if (res.statusCode < 200 || res.statusCode >= 300) {
+                console.error(`[DISCORD] Falha ao enviar notificação, status: ${res.statusCode}`);
+            }
+        });
+
+        req.on('error', error => {
+            console.error('[DISCORD] Erro na requisição do webhook:', error);
+        });
+
+        req.write(payload);
+        req.end();
+    } catch (e) {
+        console.error("[DISCORD] URL do webhook inválida.", e);
+    }
+}
+
 
 // --- FUNÇÕES DE CRIPTOGRAFIA ---
 const encrypt = (text) => { if (!appSecretKey) { console.error("[ENCRIPTAR] ERRO CRÍTICO: appSecretKey não está definida!"); return null; } const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
@@ -57,30 +110,44 @@ function startWorkerForAccount(accountData) {
     liveAccounts[username].worker = worker;
     liveAccounts[username].status = "Iniciando...";
     liveAccounts[username].manual_logout = false;
-    liveAccounts[username].timed_out = false; // Flag para controlar reinicialização por timeout
+    liveAccounts[username].timed_out = false; 
 
-    // Implementação do Timeout de Inicialização Melhorado
     const startupTimeout = setTimeout(() => {
         if (liveAccounts[username] && liveAccounts[username].status === "Iniciando...") {
             console.error(`[GESTOR] Worker para ${username} demorou muito para iniciar (Timeout). Acionando reinicialização automática.`);
-            liveAccounts[username].timed_out = true; // Define a flag
-            worker.kill(); // Mata o processo. O handler 'on.exit' vai tratar da reinicialização.
+            // Notificação de Timeout
+            sendDiscordNotification("❄️ Conta Congelada (Timeout)", "O worker não respondeu a tempo e será reiniciado.", 16776960, username); // Laranja
+            liveAccounts[username].timed_out = true; 
+            worker.kill(); 
         }
-    }, 60000); // 60 segundos de tolerância
+    }, 60000); 
 
     liveAccounts[username].startupTimeout = startupTimeout;
 
     worker.send({ command: 'start', data: accountData });
 
     worker.on('message', (message) => {
-        if (!liveAccounts[username]) return; // Impede erro se a conta for removida enquanto uma mensagem está em trânsito
-        // Quando uma mensagem chega, significa que o worker está vivo. Cancelamos o timeout.
+        if (!liveAccounts[username]) return;
         clearTimeout(liveAccounts[username].startupTimeout);
         liveAccounts[username].startupTimeout = null;
 
         const { type, payload } = message;
         if (liveAccounts[username]) {
             if (type === 'statusUpdate') {
+                 // Lógica de notificação baseada na mudança de status
+                const oldStatus = liveAccounts[username].status;
+                const newStatus = payload.status;
+                
+                if (oldStatus !== newStatus) {
+                    if (newStatus === 'Rodando') {
+                        sendDiscordNotification("✅ Conta Online", "A conta conectou-se com sucesso e está a farmar horas.", 5763719, username); // Verde
+                    } else if (newStatus === 'Pendente: Steam Guard') {
+                        sendDiscordNotification("🛡️ Steam Guard Requerido", "A conta precisa de um código de autenticação para continuar.", 3447003, username); // Azul
+                    } else if (newStatus.startsWith('Erro:')) {
+                        sendDiscordNotification("❌ Erro Crítico", `Ocorreu um erro: **${newStatus}**. A conta parou.`, 15548997, username); // Vermelho
+                    }
+                }
+                
                 Object.assign(liveAccounts[username], payload);
             }
             if (type === 'sentryUpdate') {
@@ -91,34 +158,35 @@ function startWorkerForAccount(accountData) {
     });
 
     worker.on('exit', (code) => {
-        // Garante que o timeout é limpo quando o worker sai, por qualquer motivo.
         if (liveAccounts[username] && liveAccounts[username].startupTimeout) {
             clearTimeout(liveAccounts[username].startupTimeout);
             liveAccounts[username].startupTimeout = null;
         }
         
-        const accountExited = liveAccounts[username]; // Captura a referência para evitar erros se a conta for deletada
+        const accountExited = liveAccounts[username];
         if (!accountExited) return;
 
         const wasTimeout = accountExited.timed_out;
-        accountExited.timed_out = false; // Reseta a flag
+        accountExited.timed_out = false; 
 
         console.log(`[GESTOR] Worker para ${username} saiu com código ${code}.`);
         if (accountExited.manual_logout === false && accountExited.settings.autoRelogin === true) {
-            const restartDelay = wasTimeout ? 5000 : 30000; // Reinicia mais rápido após um timeout (5s vs 30s)
+            const restartDelay = wasTimeout ? 5000 : 30000;
+            // Notificação de Reinicialização
+            const reason = wasTimeout ? "devido a um timeout" : "após uma desconexão";
+            sendDiscordNotification("🔄 A Reiniciar Conta", `A conta será reiniciada em ${restartDelay / 1000}s ${reason}.`, 16776960, username); // Laranja
+
             console.log(`[GESTOR] A reiniciar worker para ${username} em ${restartDelay / 1000} segundos...`);
             
-            accountExited.status = "Reiniciando..."; // Atualiza o status para feedback na UI
+            accountExited.status = "Reiniciando...";
 
             setTimeout(() => {
-                // Confirma que a conta ainda existe antes de tentar reiniciar
                 if(liveAccounts[username]) {
                     const accData = { ...liveAccounts[username], password: decrypt(liveAccounts[username].encryptedPassword) };
                     if (accData.password) startWorkerForAccount(accData);
                 }
             }, restartDelay);
         } else {
-            // Se não for para reiniciar, define o status final apropriado
             accountExited.status = wasTimeout ? "Erro: Timeout" : "Parado";
             accountExited.sessionStartTime = null;
         }
@@ -173,7 +241,6 @@ apiRouter.post('/start/:username', (req, res) => { const account = liveAccounts[
 apiRouter.post('/stop/:username', (req, res) => {
     const account = liveAccounts[req.params.username];
     if (account && account.worker) {
-        // NOVO: Limpa o timeout ao parar manualmente
         if(account.startupTimeout) {
             clearTimeout(account.startupTimeout);
             account.startupTimeout = null;
@@ -203,4 +270,3 @@ async function startServer() {
     app.listen(PORT, () => console.log(`[GESTOR] Servidor iniciado na porta ${PORT}`));
 }
 startServer();
-
