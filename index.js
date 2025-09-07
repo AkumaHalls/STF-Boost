@@ -12,7 +12,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const SITE_PASSWORD = process.env.SITE_PASSWORD;
-// Adiciona a variável de ambiente para o Webhook do Discord
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; 
 
 if (!MONGODB_URI || !SITE_PASSWORD) { console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI e SITE_PASSWORD precisam de ser definidas!"); process.exit(1); }
@@ -20,18 +19,10 @@ const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
 
 // --- FUNÇÃO DE NOTIFICAÇÃO DISCORD ---
-/**
- * Envia uma notificação para o webhook do Discord.
- * @param {string} title O título da notificação.
- * @param {string} message A mensagem principal.
- * @param {number} color A cor da embed em formato decimal (ex: verde: 5763719, vermelho: 15548997).
- * @param {string} username O nome de usuário da Steam associada.
- */
 function sendDiscordNotification(title, message, color, username) {
-    if (!DISCORD_WEBHOOK_URL) return; // Se o webhook não estiver configurado, não faz nada.
+    if (!DISCORD_WEBHOOK_URL) return;
     
-    // NOVO: Garante que os campos nunca estão vazios para evitar o erro 400 do Discord.
-    const safeTitle = title || '\u200b';
+    const safeTitle = title || '\u200b'; // Caractere invisível para campos vazios
     const safeMessage = message || '\u200b';
     const safeUsername = username || 'N/A';
 
@@ -45,6 +36,9 @@ function sendDiscordNotification(title, message, color, username) {
     };
 
     const payload = JSON.stringify({ embeds: [embed] });
+    
+    // CORREÇÃO FINAL: Usar Buffer.byteLength para calcular o tamanho correto em bytes.
+    const payloadByteLength = Buffer.byteLength(payload);
 
     try {
         const url = new URL(DISCORD_WEBHOOK_URL);
@@ -52,14 +46,17 @@ function sendDiscordNotification(title, message, color, username) {
             hostname: url.hostname,
             path: url.pathname,
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length }
+            headers: { 
+                'Content-Type': 'application/json',
+                'Content-Length': payloadByteLength // Usar o tamanho em bytes
+            }
         };
 
         const req = https.request(options, res => {
             if (res.statusCode < 200 || res.statusCode >= 300) {
                 console.error(`[DISCORD] Falha ao enviar notificação, status: ${res.statusCode}`);
                  res.on('data', (d) => {
-                    process.stdout.write(d); // Mostra a resposta de erro do Discord para depuração
+                    console.error(`[DISCORD] Resposta de erro: ${d.toString()}`);
                 });
             }
         });
@@ -123,8 +120,7 @@ function startWorkerForAccount(accountData) {
     const startupTimeout = setTimeout(() => {
         if (liveAccounts[username] && liveAccounts[username].status === "Iniciando...") {
             console.error(`[GESTOR] Worker para ${username} demorou muito para iniciar (Timeout). Acionando reinicialização automática.`);
-            // Notificação de Timeout
-            sendDiscordNotification("❄️ Conta Congelada (Timeout)", "O worker não respondeu a tempo e será reiniciado.", 16776960, username); // Laranja
+            sendDiscordNotification("❄️ Conta Congelada (Timeout)", "O worker não respondeu a tempo e será reiniciado.", 16776960, username);
             liveAccounts[username].timed_out = true; 
             worker.kill(); 
         }
@@ -142,17 +138,16 @@ function startWorkerForAccount(accountData) {
         const { type, payload } = message;
         if (liveAccounts[username]) {
             if (type === 'statusUpdate') {
-                 // Lógica de notificação baseada na mudança de status
                 const oldStatus = liveAccounts[username].status;
                 const newStatus = payload.status;
                 
                 if (oldStatus !== newStatus) {
                     if (newStatus === 'Rodando') {
-                        sendDiscordNotification("✅ Conta Online", "A conta conectou-se com sucesso e está a farmar horas.", 5763719, username); // Verde
+                        sendDiscordNotification("✅ Conta Online", "A conta conectou-se com sucesso e está a farmar horas.", 5763719, username);
                     } else if (newStatus === 'Pendente: Steam Guard') {
-                        sendDiscordNotification("🛡️ Steam Guard Requerido", "A conta precisa de um código de autenticação para continuar.", 3447003, username); // Azul
+                        sendDiscordNotification("🛡️ Steam Guard Requerido", "A conta precisa de um código de autenticação para continuar.", 3447003, username);
                     } else if (newStatus.startsWith('Erro:')) {
-                        sendDiscordNotification("❌ Erro Crítico", `Ocorreu um erro: **${newStatus}**. A conta parou.`, 15548997, username); // Vermelho
+                        sendDiscordNotification("❌ Erro Crítico", `Ocorreu um erro: **${newStatus}**. A conta parou.`, 15548997, username);
                     }
                 }
                 
@@ -180,9 +175,8 @@ function startWorkerForAccount(accountData) {
         console.log(`[GESTOR] Worker para ${username} saiu com código ${code}.`);
         if (accountExited.manual_logout === false && accountExited.settings.autoRelogin === true) {
             const restartDelay = wasTimeout ? 5000 : 30000;
-            // Notificação de Reinicialização
             const reason = wasTimeout ? "devido a um timeout" : "após uma desconexão";
-            sendDiscordNotification("🔄 A Reiniciar Conta", `A conta será reiniciada em ${restartDelay / 1000}s ${reason}.`, 16776960, username); // Laranja
+            sendDiscordNotification("🔄 A Reiniciar Conta", `A conta será reiniciada em ${restartDelay / 1000}s ${reason}.`, 16776960, username);
 
             console.log(`[GESTOR] A reiniciar worker para ${username} em ${restartDelay / 1000} segundos...`);
             
