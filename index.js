@@ -25,16 +25,21 @@ let appSecretKey;
  * @param {string} title O título da notificação.
  * @param {string} message A mensagem principal.
  * @param {number} color A cor da embed em formato decimal (ex: verde: 5763719, vermelho: 15548997).
- * @param {string} username O nome de usuário da conta Steam associada.
+ * @param {string} username O nome de usuário da Steam associada.
  */
 function sendDiscordNotification(title, message, color, username) {
     if (!DISCORD_WEBHOOK_URL) return; // Se o webhook não estiver configurado, não faz nada.
+    
+    // NOVO: Garante que os campos nunca estão vazios para evitar o erro 400 do Discord.
+    const safeTitle = title || '\u200b';
+    const safeMessage = message || '\u200b';
+    const safeUsername = username || 'N/A';
 
     const embed = {
-        title: title,
-        description: message,
+        title: safeTitle,
+        description: safeMessage,
         color: color,
-        fields: [{ name: "Conta", value: `\`${username}\``, inline: true }],
+        fields: [{ name: "Conta", value: `\`${safeUsername}\``, inline: true }],
         footer: { text: "STF Boost Notifier" },
         timestamp: new Date().toISOString()
     };
@@ -53,6 +58,9 @@ function sendDiscordNotification(title, message, color, username) {
         const req = https.request(options, res => {
             if (res.statusCode < 200 || res.statusCode >= 300) {
                 console.error(`[DISCORD] Falha ao enviar notificação, status: ${res.statusCode}`);
+                 res.on('data', (d) => {
+                    process.stdout.write(d); // Mostra a resposta de erro do Discord para depuração
+                });
             }
         });
 
@@ -270,3 +278,4 @@ async function startServer() {
     app.listen(PORT, () => console.log(`[GESTOR] Servidor iniciado na porta ${PORT}`));
 }
 startServer();
+
