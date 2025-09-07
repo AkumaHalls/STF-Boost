@@ -44,16 +44,40 @@ async function initializeMasterKey() {
 function startWorkerForAccount(accountData) {
     const username = accountData.username;
     console.log(`[GESTOR] A iniciar worker para ${username}`);
+
     if (liveAccounts[username] && liveAccounts[username].worker) {
         liveAccounts[username].worker.kill();
     }
+    
+    if (liveAccounts[username] && liveAccounts[username].startupTimeout) {
+        clearTimeout(liveAccounts[username].startupTimeout);
+    }
+
     const worker = fork(path.join(__dirname, 'worker.js'));
     liveAccounts[username].worker = worker;
     liveAccounts[username].status = "Iniciando...";
     liveAccounts[username].manual_logout = false;
+    liveAccounts[username].timed_out = false; // Flag para controlar reinicialização por timeout
+
+    // Implementação do Timeout de Inicialização Melhorado
+    const startupTimeout = setTimeout(() => {
+        if (liveAccounts[username] && liveAccounts[username].status === "Iniciando...") {
+            console.error(`[GESTOR] Worker para ${username} demorou muito para iniciar (Timeout). Acionando reinicialização automática.`);
+            liveAccounts[username].timed_out = true; // Define a flag
+            worker.kill(); // Mata o processo. O handler 'on.exit' vai tratar da reinicialização.
+        }
+    }, 60000); // 60 segundos de tolerância
+
+    liveAccounts[username].startupTimeout = startupTimeout;
+
     worker.send({ command: 'start', data: accountData });
 
     worker.on('message', (message) => {
+        if (!liveAccounts[username]) return; // Impede erro se a conta for removida enquanto uma mensagem está em trânsito
+        // Quando uma mensagem chega, significa que o worker está vivo. Cancelamos o timeout.
+        clearTimeout(liveAccounts[username].startupTimeout);
+        liveAccounts[username].startupTimeout = null;
+
         const { type, payload } = message;
         if (liveAccounts[username]) {
             if (type === 'statusUpdate') {
@@ -67,18 +91,36 @@ function startWorkerForAccount(accountData) {
     });
 
     worker.on('exit', (code) => {
+        // Garante que o timeout é limpo quando o worker sai, por qualquer motivo.
+        if (liveAccounts[username] && liveAccounts[username].startupTimeout) {
+            clearTimeout(liveAccounts[username].startupTimeout);
+            liveAccounts[username].startupTimeout = null;
+        }
+        
+        const accountExited = liveAccounts[username]; // Captura a referência para evitar erros se a conta for deletada
+        if (!accountExited) return;
+
+        const wasTimeout = accountExited.timed_out;
+        accountExited.timed_out = false; // Reseta a flag
+
         console.log(`[GESTOR] Worker para ${username} saiu com código ${code}.`);
-        if (liveAccounts[username] && !liveAccounts[username].manual_logout && liveAccounts[username].settings.autoRelogin) {
-            console.log(`[GESTOR] A reiniciar worker para ${username} em 30 segundos...`);
+        if (accountExited.manual_logout === false && accountExited.settings.autoRelogin === true) {
+            const restartDelay = wasTimeout ? 5000 : 30000; // Reinicia mais rápido após um timeout (5s vs 30s)
+            console.log(`[GESTOR] A reiniciar worker para ${username} em ${restartDelay / 1000} segundos...`);
+            
+            accountExited.status = "Reiniciando..."; // Atualiza o status para feedback na UI
+
             setTimeout(() => {
-                const accData = { ...liveAccounts[username], password: decrypt(liveAccounts[username].encryptedPassword) };
-                if (accData.password) startWorkerForAccount(accData);
-            }, 30000);
+                // Confirma que a conta ainda existe antes de tentar reiniciar
+                if(liveAccounts[username]) {
+                    const accData = { ...liveAccounts[username], password: decrypt(liveAccounts[username].encryptedPassword) };
+                    if (accData.password) startWorkerForAccount(accData);
+                }
+            }, restartDelay);
         } else {
-            if (liveAccounts[username]) {
-                liveAccounts[username].status = "Parado";
-                liveAccounts[username].sessionStartTime = null; // Garante que o tempo zera também na reconexão falhada
-            }
+            // Se não for para reiniciar, define o status final apropriado
+            accountExited.status = wasTimeout ? "Erro: Timeout" : "Parado";
+            accountExited.sessionStartTime = null;
         }
     });
 }
@@ -131,10 +173,14 @@ apiRouter.post('/start/:username', (req, res) => { const account = liveAccounts[
 apiRouter.post('/stop/:username', (req, res) => {
     const account = liveAccounts[req.params.username];
     if (account && account.worker) {
+        // NOVO: Limpa o timeout ao parar manualmente
+        if(account.startupTimeout) {
+            clearTimeout(account.startupTimeout);
+            account.startupTimeout = null;
+        }
         account.manual_logout = true;
         account.worker.kill();
         account.status = "Parado";
-        // A CORREÇÃO FINAL: Zerar o cronómetro!
         account.sessionStartTime = null; 
         res.status(200).json({ message: "Parando worker..." });
     } else {
@@ -157,3 +203,4 @@ async function startServer() {
     app.listen(PORT, () => console.log(`[GESTOR] Servidor iniciado na porta ${PORT}`));
 }
 startServer();
+
