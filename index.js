@@ -5,7 +5,7 @@ const MongoStore = require('connect-mongo');
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const { fork } = require('child_process');
-const https = require('https'); // Módulo para fazer requisições HTTPS
+const https = require('https'); // Módulo para fazer requisições HTTPSa
 
 // --- CONFIGURAÇÃO ---
 const app = express();
@@ -272,4 +272,5 @@ async function startServer() {
     app.listen(PORT, () => console.log(`[GESTOR] Servidor iniciado na porta ${PORT}`));
 }
 startServer();
+
 
