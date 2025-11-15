@@ -106,9 +106,23 @@ async function getSteamAppList() {
     if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 0) {
         return steamAppListCache.data;
     }
+
+    // --- INÍCIO DA CORREÇÃO ---
+    // Precisamos adicionar um User-Agent para a Steam não bloquear a requisição
+    const options = {
+        hostname: 'api.steampowered.com',
+        path: '/ISteamApps/GetAppList/v2/',
+        method: 'GET',
+        headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
+        }
+    };
+    // --- FIM DA CORREÇÃO ---
+
     // Caso contrário, busca da API da Steam
     return new Promise((resolve, reject) => {
-        https.get('https://api.steampowered.com/ISteamApps/GetAppList/v2/', (res) => {
+        // Modificado para usar 'options' em vez de apenas a URL
+        https.get(options, (res) => {
             let data = '';
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
@@ -392,7 +406,7 @@ apiRouter.post('/save-settings/:username', async (req, res) => {
             message += " A conta foi parada para aplicar a nova senha.";
             
             // Se o auto-relogin estiver ativo, ele vai tentar reiniciar com a nova senha na próxima vez
-            // A lógica de reinício já está no 'exit' handler, mas paramos manualmente aqui.
+            // A lógica de reinício já está no 'exit' handler, mas paramos manually aqui.
             // Para garantir que tente reiniciar (se autoRelogin=true), re-configuramos manual_logout
             setTimeout(() => {
                 if (liveAccounts[username]) {
