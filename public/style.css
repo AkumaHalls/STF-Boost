@@ -65,9 +65,50 @@ header .glitch-title { font-size: 24px; }
 .glitch-title::before { left: 2px; text-shadow: -2px 0 var(--secondary-color); animation: glitch-anim-1 2s infinite linear alternate-reverse; }
 .glitch-title::after { left: -2px; text-shadow: -2px 0 var(--primary-color), 2px 2px var(--secondary-color); animation: glitch-anim-2 2s infinite linear alternate-reverse; }
 
+/* Novos Estilos */
+.header-controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.bulk-actions {
+    display: flex;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 4px;
+}
+.bulk-actions button {
+    padding: 8px; /* Remove texto, só ícone */
+    min-width: 40px; /* Largura fixa */
+}
+
+.dashboard-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    padding: 10px;
+    margin-bottom: 15px;
+    background-color: rgba(10, 10, 20, 0.5);
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 4px;
+    font-size: 14px;
+}
+.dashboard-summary span {
+    font-weight: bold;
+}
+.dashboard-summary .status-running { color: #90ee90; }
+.dashboard-summary .status-stopped { color: #ff6B6B; }
+.dashboard-summary .status-pending { color: var(--pending-color); }
+/* Fim Novos Estilos */
+
 /* Tabela */
 .accounts-table table { width: 100%; border-collapse: collapse; }
 .accounts-table th, .accounts-table td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(0, 255, 255, 0.2); vertical-align: middle; }
+.accounts-table th:first-child, .accounts-table td:first-child {
+    width: 20px;
+    text-align: center;
+}
 .accounts-table th { color: var(--primary-color); text-transform: uppercase; }
 .actions-cell { display: flex; flex-wrap: wrap; gap: 5px; }
 .status-stopped { color: #ff6B6B; } .status-running { color: #90ee90; } .status-pending { color: var(--pending-color); } .status-error { color: var(--pending-color); }
@@ -84,6 +125,35 @@ header .glitch-title { font-size: 24px; }
 .modal-content { background-color: rgba(27, 40, 56, 0.9); border: 1px solid var(--primary-color); margin: 10% auto; padding: 20px; width: 80%; max-width: 500px; border-radius: 8px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.5); }
 .modal-content h2 { color: var(--primary-color); margin-top: 0; }
 .modal-content textarea, .modal-content input[type="text"], .modal-content input[type="password"] { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid var(--primary-color); background-color: var(--dark-bg); color: #c7d5e0; box-sizing: border-box; resize: vertical; font-family: 'Share Tech Mono', monospace; }
+
+/* Novos Estilos Modal */
+.search-results {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 4px;
+    margin-bottom: 15px;
+}
+.search-result-item {
+    padding: 8px;
+    cursor: pointer;
+    font-size: 14px;
+}
+.search-result-item:hover {
+    background-color: var(--primary-color);
+    color: var(--dark-bg);
+}
+.settings-form-row.separator {
+    border-top: 1px solid rgba(0, 255, 255, 0.3);
+    margin-top: 15px;
+    padding-top: 15px;
+}
+.settings-form-row.separator label {
+    color: var(--primary-color);
+    font-weight: bold;
+    width: 100%;
+}
+/* Fim Novos Estilos Modal */
 
 /* Modal de Configurações */
 .settings-form-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
