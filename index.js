@@ -250,6 +250,16 @@ function startWorkerForAccount(accountData) {
             accountExited.sessionStartTime = null;
         }
     });
+
+    // --- INÍCIO DA CORREÇÃO ---
+    // Adiciona um ouvinte para o evento 'error' no processo filho
+    worker.on('error', (err) => {
+        // Isso vai apanhar erros como 'ERR_IPC_CHANNEL_CLOSED' e impedir o crash
+        console.error(`[GESTOR] Erro no canal de comunicação do worker ${username}:`, err.message);
+        // Não precisamos fazer mais nada aqui, o evento 'exit' será
+        // disparado logo a seguir e o nosso código de reinício 'exit' tratará disso.
+    });
+    // --- FIM DA CORREÇÃO ---
 }
 
 async function loadAccountsIntoMemory() {
@@ -392,7 +402,16 @@ apiRouter.post('/save-settings/:username', async (req, res) => {
         await accountsCollection.updateOne({ username }, { $set: { settings } });
         account.settings = settings;
         if (account.worker) {
-            account.worker.send({ command: 'updateSettings', data: { settings, games: account.games } });
+            // --- INÍCIO DA CORREÇÃO ---
+            // Adicionamos um 'try...catch' aqui para o caso do worker.send() falhar
+            // Isso impede que o 'catch' principal da rota seja acionado por um erro de IPC
+            try {
+                account.worker.send({ command: 'updateSettings', data: { settings, games: account.games } });
+            } catch (ipcError) {
+                console.error(`[GESTOR] Falha ao enviar 'updateSettings' para ${username} (worker pode estar offline):`, ipcError.message);
+                // Não precisa de 'await' aqui, apenas registramos o erro
+            }
+            // --- FIM DA CORREÇÃO ---
         }
     }
 
@@ -429,7 +448,27 @@ apiRouter.post('/save-settings/:username', async (req, res) => {
     res.status(200).json({ message });
 });
 
-apiRouter.post('/set-games/:username', async (req, res) => { const { username } = req.params; const { games } = req.body; const account = liveAccounts[username]; if (account && games) { await accountsCollection.updateOne({ username }, { $set: { games } }); account.games = games; if (account.worker) { account.worker.send({ command: 'updateSettings', data: { settings: account.settings, games } }); } res.status(200).json({ message: "Jogos atualizados." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
+apiRouter.post('/set-games/:username', async (req, res) => { 
+    const { username } = req.params; 
+    const { games } = req.body; 
+    const account = liveAccounts[username]; 
+    if (account && games) { 
+        await accountsCollection.updateOne({ username }, { $set: { games } }); 
+        account.games = games; 
+        if (account.worker) { 
+            // --- INÍCIO DA CORREÇÃO ---
+            try {
+                account.worker.send({ command: 'updateSettings', data: { settings: account.settings, games } }); 
+            } catch (ipcError) {
+                console.error(`[GESTOR] Falha ao enviar 'set-games' para ${username} (worker pode estar offline):`, ipcError.message);
+            }
+            // --- FIM DA CORREÇÃO ---
+        } 
+        res.status(200).json({ message: "Jogos atualizados." }); 
+    } else { 
+        res.status(404).json({ message: "Conta não encontrada." }); 
+    } 
+});
 
 // --- NOVO ENDPOINT DE BUSCA DE JOGOS ---
 apiRouter.get('/search-game', async (req, res) => {
