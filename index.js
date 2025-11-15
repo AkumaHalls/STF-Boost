@@ -109,8 +109,8 @@ async function getSteamAppList() {
 
     console.log("[GESTOR] Cache da lista de apps da Steam expirado. A buscar nova lista...");
     
-    // --- INÍCIO DA CORREÇÃO COM FETCH ---
-    const url = 'https://api.steampowered.com/ISteamApps/GetAppList/v2/';
+    // --- INÍCIO DA CORREÇÃO (HTTP) ---
+    const url = 'http://api.steampowered.com/ISteamApps/GetAppList/v2/';
     const options = {
         method: 'GET',
         headers: {
@@ -118,6 +118,7 @@ async function getSteamAppList() {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
     };
+    // --- FIM DA CORREÇÃO (HTTP) ---
 
     try {
         // Usa o fetch nativo do Node.js (v18+)
@@ -149,7 +150,6 @@ async function getSteamAppList() {
         // Retorna o cache antigo (se houver) em caso de falha total
         return steamAppListCache.data;
     }
-    // --- FIM DA CORREÇÃO COM FETCH ---
 }
 
 
