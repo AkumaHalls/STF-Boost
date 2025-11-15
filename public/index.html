@@ -173,6 +173,15 @@
             }
 
             async function updateUI() {
+                // --- INÍCIO DA CORREÇÃO ---
+                // 1. Armazena o estado atual dos checkboxes antes de limpar a tabela
+                const selectAllState = selectAllCheckbox.checked;
+                const checkedUsernames = new Set();
+                document.querySelectorAll('.account-checkbox:checked').forEach(cb => {
+                    checkedUsernames.add(cb.dataset.username);
+                });
+                // --- FIM DA CORREÇÃO ---
+
                 try {
                     const response = await fetch('/status');
                     if (!response.ok) { window.location.href = '/login?error=unauthorized'; return; }
@@ -198,6 +207,17 @@
                             <td>${formatUptime(acc.uptime)}</td>
                             <td class="actions-cell"></td>
                         `;
+
+                        // --- INÍCIO DA CORREÇÃO ---
+                        // 2. Re-aplica o estado ao novo checkbox criado
+                        if (checkedUsernames.has(acc.username)) {
+                            const newCheckbox = row.querySelector('.account-checkbox');
+                            if (newCheckbox) {
+                                newCheckbox.checked = true;
+                            }
+                        }
+                        // --- FIM DA CORREÇÃO ---
+
                         const statusCell = row.querySelector('.status-cell');
                         statusCell.className = 'status-cell';
                         if (acc.status === 'Rodando') { 
@@ -271,6 +291,13 @@
                         <span class_total>Total: ${total}</span>
                     `;
                     // --- Fim da atualização do Dashboard Rápido ---
+
+                    // --- INÍCIO DA CORREÇÃO ---
+                    // 3. Restaura o estado do checkbox "Selecionar Todos"
+                    selectAllCheckbox.checked = selectAllState;
+                    // 4. Atualiza os botões de ação em massa com base no estado restaurado
+                    updateBulkButtons(); 
+                    // --- FIM DA CORREÇÃO ---
 
                 } catch(e) { accountsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Erro ao carregar dados.</td></tr>`; } // Colspan 5
             }
@@ -373,6 +400,10 @@
 
             accountsTableBody.addEventListener('change', (e) => {
                 if (e.target.classList.contains('account-checkbox')) {
+                    // Sincroniza o "Selecionar Todos" se todos estiverem marcados ou desmarcados
+                    const totalCheckboxes = document.querySelectorAll('.account-checkbox').length;
+                    const checkedCheckboxes = document.querySelectorAll('.account-checkbox:checked').length;
+                    selectAllCheckbox.checked = totalCheckboxes === checkedCheckboxes;
                     updateBulkButtons();
                 }
             });
