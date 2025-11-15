@@ -100,53 +100,56 @@ async function initializeMasterKey() {
     }
 }
 
-// --- BUSCA DE JOGOS STEAM (VERSÃO COM FETCH) ---
+// --- BUSCA DE JOGOS (COM STEAMSPY) ---
 async function getSteamAppList() {
     // Retorna do cache se for válido (menos de 24h)
     if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 0) {
         return steamAppListCache.data;
     }
 
-    console.log("[GESTOR] Cache da lista de apps da Steam expirado. A buscar nova lista...");
+    console.log("[GESTOR] Cache da lista de apps (SteamSpy) expirado. A buscar nova lista...");
     
-    // --- INÍCIO DA CORREÇÃO (HTTP) ---
-    const url = 'http://api.steampowered.com/ISteamApps/GetAppList/v2/';
+    // --- INÍCIO DA ALTERAÇÃO (STEAMSPY) ---
+    const url = 'https://steamspy.com/api.php?request=all';
     const options = {
         method: 'GET',
         headers: {
-            // Adiciona um User-Agent para simular um navegador
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            // Manter o User-Agent é uma boa prática
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.37 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
     };
-    // --- FIM DA CORREÇÃO (HTTP) ---
+    // --- FIM DA ALTERAÇÃO (STEAMSPY) ---
 
     try {
-        // Usa o fetch nativo do Node.js (v18+)
         const response = await fetch(url, options);
 
         if (!response.ok) {
-            // Se a resposta não for 2xx, lança um erro
-            throw new Error(`Falha ao buscar lista de apps. Status: ${response.status} ${response.statusText}`);
+            throw new Error(`Falha ao buscar lista de apps do SteamSpy. Status: ${response.status} ${response.statusText}`);
         }
 
-        // Tenta processar o JSON
         const jsonData = await response.json();
         
-        if (!jsonData || !jsonData.applist || !jsonData.applist.apps) {
-             throw new Error("Resposta JSON da Steam recebida, mas em formato inesperado.");
+        // --- INÍCIO DA ALTERAÇÃO (Formato do JSON) ---
+        // O SteamSpy retorna um OBJETO onde cada chave é um appid.
+        // Precisamos converter isso num ARRAY de objetos, que é o que o resto do nosso código espera.
+        if (!jsonData) {
+            throw new Error("SteamSpy retornou dados vazios ou inválidos.");
         }
 
+        const appList = Object.values(jsonData); // Converte { "730": {...} } em [ {...}, {...} ]
+
+        if (appList.length === 0) {
+             throw new Error("SteamSpy retornou JSON, mas estava vazio.");
+        }
+        // --- FIM DA ALTERAÇÃO (Formato do JSON) ---
+
         // Se deu tudo certo, salva no cache e retorna
-        steamAppListCache = { data: jsonData.applist.apps, timestamp: Date.now() };
-        console.log("[GESTOR] Cache da lista de apps da Steam atualizado.");
+        steamAppListCache = { data: appList, timestamp: Date.now() };
+        console.log("[GESTOR] Cache da lista de apps (via SteamSpy) atualizado.");
         return steamAppListCache.data;
 
     } catch (e) {
-        // Se 'await response.json()' falhar (ex: HTML), o erro será pego aqui
-        console.error("[GESTOR] Erro ao processar lista de apps da Steam:", e);
-        if (e.name === 'SyntaxError') {
-             console.error("[GESTOR] A API da Steam provavelmente retornou HTML em vez de JSON. Verifique bloqueios de IP no Render.");
-        }
+        console.error("[GESTOR] Erro ao processar lista de apps do SteamSpy:", e);
         // Retorna o cache antigo (se houver) em caso de falha total
         return steamAppListCache.data;
     }
@@ -437,6 +440,13 @@ apiRouter.get('/search-game', async (req, res) => {
     
     try {
         const appList = await getSteamAppList();
+        
+        // --- INÍCIO DA ALTERAÇÃO (Formato do JSON) ---
+        // O appList agora é um array de objetos do SteamSpy
+        // Ex: { appid: 730, name: "Counter-Strike 2", ... }
+        // O código de filtro abaixo já espera este formato, então ele funciona PERFEITAMENTE
+        // --- FIM DA ALTERAÇÃO (Formato do JSON) ---
+
         // Filtra e limita a 50 resultados para performance
         const results = appList
             .filter(app => app.name.toLowerCase().includes(searchTerm))
