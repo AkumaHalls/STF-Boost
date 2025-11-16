@@ -8,8 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=1.7"> 
-</head>
+    <link rel="stylesheet" href="/style.css?v=1.8"> </head>
 <body class="panel-page">
 
     <div class="dashboard-layout">
@@ -190,7 +189,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Seletores
+            // --- Seletores ---
             const accountsTableBody = document.getElementById('accountsTableBody');
             const addAccountButton = document.getElementById('addAccountButton');
             const gamesModal = document.getElementById('gamesModal');
@@ -219,12 +218,14 @@
             const saveLicenseButton = document.getElementById('saveLicenseButton');
             const licenseKeyInput = document.getElementById('licenseKeyInput');
             
-            // --- Novos Seletores (Passo 6 & 7) ---
             const changePasswordButton = document.getElementById('changePasswordButton');
             const passwordModal = document.getElementById('passwordModal');
             const closePasswordModalButton = document.getElementById('closePasswordModalButton');
             const savePasswordButton = document.getElementById('savePasswordButton');
             const renewFreeButton = document.getElementById('renewFreeButton');
+
+            // --- Variável Global para guardar o plano ---
+            let currentUserPlan = 'free';
 
             // --- Ícones (sem alterações) ---
             const icons = {
@@ -255,14 +256,15 @@
                     sidebarUser.textContent = `Bem-vindo, ${userInfo.username}!`;
                     sidebarPlan.textContent = `Plano: ${planName}`;
                     
+                    currentUserPlan = userInfo.plan; // *** GUARDA O PLANO GLOBALMENTE ***
+
                     // Lógica de Exibição de Horas / Expiração
-                    renewFreeButton.style.display = 'none'; // Esconde por padrão
-                    sidebarExpiry.textContent = ''; // Limpa por padrão
+                    renewFreeButton.style.display = 'none'; 
+                    sidebarExpiry.textContent = ''; 
 
                     if (userInfo.plan === 'free') {
                         sidebarExpiry.textContent = `Horas restantes: ${userInfo.freeHoursRemaining}`;
                         if (userInfo.freeHoursRemaining <= 0) {
-                            // *** MOSTRA BOTÃO DE RENOVAR ***
                             renewFreeButton.style.display = 'inline-flex';
                         }
                     } else if (userInfo.plan === 'lifetime') {
@@ -361,17 +363,46 @@
                         const settingsBtn = document.createElement('button');
                         settingsBtn.innerHTML = icons.settings + "Config.";
                         settingsBtn.className = "settings-btn";
+                        
+                        // *** ATUALIZADO: Evento onclick do botão Configurações ***
                         settingsBtn.onclick = () => {
                             currentlyEditingSettingsFor = acc.username;
                             const currentSettings = acc.settings;
-                            document.getElementById('customTitleInput').value = currentSettings.customInGameTitle || '';
-                            document.getElementById('customAwayMessageInput').value = currentSettings.customAwayMessage || '';
-                            document.getElementById('appearOfflineToggle').checked = currentSettings.appearOffline;
-                            document.getElementById('autoAcceptFriendsToggle').checked = currentSettings.autoAcceptFriends;
+                            
+                            // Referências aos inputs do modal
+                            const titleInput = document.getElementById('customTitleInput');
+                            const awayInput = document.getElementById('customAwayMessageInput');
+                            const offlineToggle = document.getElementById('appearOfflineToggle');
+                            const friendsToggle = document.getElementById('autoAcceptFriendsToggle');
+
+                            // Preenche os valores
+                            titleInput.value = currentSettings.customInGameTitle || '';
+                            awayInput.value = currentSettings.customAwayMessage || '';
+                            offlineToggle.checked = currentSettings.appearOffline;
+                            friendsToggle.checked = currentSettings.autoAcceptFriends;
                             document.getElementById('autoReloginToggle').checked = currentSettings.autoRelogin;
                             document.getElementById('sharedSecretInput').value = currentSettings.sharedSecret || '';
+
+                            // --- LÓGICA DE DESABILITAR (PAYWALL) ---
+                            // Zera as desabilitações
+                            titleInput.disabled = false;
+                            awayInput.disabled = false;
+                            offlineToggle.disabled = false;
+                            friendsToggle.disabled = false;
+
+                            if (currentUserPlan === 'free') {
+                                titleInput.disabled = true;
+                                awayInput.disabled = true;
+                                offlineToggle.disabled = true;
+                                friendsToggle.disabled = true;
+                            } else if (currentUserPlan === 'basic') {
+                                friendsToggle.disabled = true;
+                            }
+                            // Planos Plus, Premium, Ultimate, Lifetime podem tudo
+                            
                             settingsModal.style.display = 'block';
                         };
+
                         const removeBtn = document.createElement('button');
                         removeBtn.innerHTML = icons.remove + "Remover";
                         removeBtn.className = "remove-btn";
@@ -484,8 +515,8 @@
                     headers: { 'Content-Type': 'application/json' }, 
                     body: JSON.stringify(payload) 
                 }).then(res => res.json()).then(data => { 
-                    showToast(data.message); 
-                    hideSettingsModal(); 
+                    showToast(data.message, res.ok ? 'info' : 'error'); // Mostra erro se a API bloquear
+                    if (res.ok) hideSettingsModal(); 
                 });
             });
             
@@ -515,7 +546,7 @@
                 const usernames = getSelectedUsernames();
                 if (usernames.length === 0) return;
                 fetch('/api/bulk-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames }) })
-                    .then(res => res.json()).then(data => { showToast(data.message, response.ok ? 'info' : 'error'); setTimeout(updateUI, 1000); });
+                    .then(res => res.json()).then(data => { showToast(data.message); setTimeout(updateUI, 1000); });
             });
             bulkStopButton.addEventListener('click', () => {
                 const usernames = getSelectedUsernames();
@@ -559,9 +590,7 @@
                         body: JSON.stringify({ licenseKey })
                     });
                     const result = await response.json();
-                    
                     showToast(result.message, response.ok ? 'info' : 'error');
-                    
                     if (response.ok) {
                         hideLicenseModal();
                         fetchUserInfo(); 
