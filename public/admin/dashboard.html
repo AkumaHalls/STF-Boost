@@ -59,6 +59,8 @@
                         </select>
                         <label for="quantityInput">Quantidade:</label>
                         <input type="number" id="quantityInput" value="1" min="1" max="50">
+                        <label for="durationInput">Duração (dias):</label>
+                        <input type="number" id="durationInput" placeholder="Ex: 30 (0 = Vitalício)">
                         <button id="generateKeysButton">Gerar</button>
                     </div>
                     <div id="generatedKeys">
@@ -75,12 +77,13 @@
                                     <th>Usuário</th>
                                     <th>Email</th>
                                     <th>Plano</th>
+                                    <th>Expira Em</th>
                                     <th>Status</th>
                                     <th>Ações</th>
                                 </tr>
                             </thead>
                             <tbody id="usersTableBody">
-                                <tr><td colspan="5" style="text-align: center;">A carregar...</td></tr>
+                                <tr><td colspan="6" style="text-align: center;">A carregar...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -93,7 +96,7 @@
     <div id="toastContainer"></div>
 
     <script>
-        // Funções de Toast (copiadas para serem independentes)
+        // Funções de Toast
         function showToast(message, type = 'info') { 
             const container = document.getElementById('toastContainer'); 
             const toast = document.createElement('div'); 
@@ -104,11 +107,15 @@
             setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 4000); 
         }
 
+        // --- Lista de Planos Válidos ---
+        const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime'];
+
         document.addEventListener('DOMContentLoaded', () => {
             const usersTableBody = document.getElementById('usersTableBody');
             const generateKeysButton = document.getElementById('generateKeysButton');
             const planSelect = document.getElementById('planSelect');
             const quantityInput = document.getElementById('quantityInput');
+            const durationInput = document.getElementById('durationInput'); // Novo
             const generatedKeys = document.getElementById('generatedKeys');
             const keysOutput = document.getElementById('keysOutput');
 
@@ -127,26 +134,48 @@
                 }
             }
 
+            // --- Formata a Data ---
+            function formatDate(dateString) {
+                if (!dateString) return 'N/A';
+                try {
+                    return new Date(dateString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                } catch (e) {
+                    return 'Data Inválida';
+                }
+            }
+
             // --- Renderiza a tabela de usuários ---
             function renderUsers(users) {
                 usersTableBody.innerHTML = '';
                 if (users.length === 0) {
-                    usersTableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Nenhum usuário registrado.</td></tr>';
+                    usersTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Nenhum usuário registrado.</td></tr>';
                     return;
                 }
                 users.forEach(user => {
                     const row = document.createElement('tr');
                     const isBanned = user.isBanned || false;
                     
+                    // Cria o dropdown de planos
+                    let planOptions = '';
+                    ALL_PLANS.forEach(plan => {
+                        planOptions += `<option value="${plan}" ${user.plan === plan ? 'selected' : ''}>${plan}</option>`;
+                    });
+
                     row.innerHTML = `
                         <td>${user.username}</td>
                         <td>${user.email}</td>
-                        <td>${user.plan}</td>
+                        <td>
+                            <select class="plan-select" data-userid="${user._id}">
+                                ${planOptions}
+                            </select>
+                        </td>
+                        <td>${user.planExpiresAt ? formatDate(user.planExpiresAt) : (user.plan === 'free' ? 'N/A' : 'Vitalício')}</td>
                         <td class="${isBanned ? 'status-banned' : ''}">${isBanned ? 'Banido' : 'Ativo'}</td>
                         <td class="actions-cell">
                             <button class="${isBanned ? 'unban-btn' : 'ban-btn'}" data-userid="${user._id}">
                                 ${isBanned ? 'Desbanir' : 'Banir'}
                             </button>
+                            <button class="delete-btn" data-userid="${user._id}">Excluir</button>
                         </td>
                     `;
                     usersTableBody.appendChild(row);
@@ -157,12 +186,13 @@
             generateKeysButton.addEventListener('click', async () => {
                 const plan = planSelect.value;
                 const quantity = quantityInput.value;
+                const durationDays = durationInput.value || 0; // 0 ou nulo
                 
                 try {
                     const response = await fetch('/api/admin/generate-keys', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ plan, quantity })
+                        body: JSON.stringify({ plan, quantity, durationDays })
                     });
                     const result = await response.json();
                     showToast(result.message, response.ok ? 'info' : 'error');
@@ -178,15 +208,26 @@
                 }
             });
 
-            // --- Event Listener para botões de Banir/Desbanir ---
+            // --- Event Listener para botões de Ação (Banir, Desbanir, Excluir) ---
             usersTableBody.addEventListener('click', async (e) => {
                 const target = e.target;
-                if (!target.dataset.userid) return;
-
                 const userId = target.dataset.userid;
-                const isBanned = target.classList.contains('ban-btn');
-                const url = isBanned ? '/api/admin/ban-user' : '/api/admin/unban-user';
-                const actionText = isBanned ? 'banir' : 'desbanir';
+                if (!userId) return;
+
+                let url, actionText, body;
+
+                if (target.classList.contains('ban-btn') || target.classList.contains('unban-btn')) {
+                    const isBanning = target.classList.contains('ban-btn');
+                    url = isBanning ? '/api/admin/ban-user' : '/api/admin/unban-user';
+                    actionText = isBanning ? 'banir' : 'desbanir';
+                    body = JSON.stringify({ userId });
+                } else if (target.classList.contains('delete-btn')) {
+                    url = '/api/admin/delete-user';
+                    actionText = 'EXCLUIR PERMANENTEMENTE';
+                    body = JSON.stringify({ userId });
+                } else {
+                    return; // Não é um botão de ação
+                }
 
                 if (!confirm(`Tem certeza que deseja ${actionText} este usuário?`)) return;
 
@@ -194,7 +235,7 @@
                     const response = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId })
+                        body: body
                     });
                     const result = await response.json();
                     showToast(result.message, response.ok ? 'info' : 'error');
@@ -204,6 +245,36 @@
                     }
                 } catch (e) {
                     showToast(`Erro ao ${actionText} usuário.`, 'error');
+                }
+            });
+
+            // --- NOVO Event Listener para Mudar Plano ---
+            usersTableBody.addEventListener('change', async (e) => {
+                const target = e.target;
+                if (!target.classList.contains('plan-select')) return;
+
+                const userId = target.dataset.userid;
+                const newPlan = target.value;
+
+                if (!confirm(`Tem certeza que deseja mudar o plano deste usuário para "${newPlan}"?`)) {
+                    fetchUsers(); // Reseta o dropdown para o valor antigo
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/admin/update-plan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, newPlan })
+                    });
+                    const result = await response.json();
+                    showToast(result.message, response.ok ? 'info' : 'error');
+                    
+                    if (response.ok) {
+                        fetchUsers(); // Recarrega a tabela
+                    }
+                } catch (e) {
+                    showToast('Erro ao atualizar plano.', 'error');
                 }
             });
 
