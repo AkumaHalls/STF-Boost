@@ -307,7 +307,7 @@ apiRouter.post('/register', async (req, res) => {
             plan: 'free', 
             freeHoursRemaining: FREE_HOURS_MS, 
             isBanned: false, 
-            planExpiresAt: null, // *** NOVO CAMPO: Data de expiração ***
+            planExpiresAt: null, 
             createdAt: new Date()
         });
         res.status(201).json({ message: "Usuário registado com sucesso!" });
@@ -341,26 +341,17 @@ apiRouter.post('/login', async (req, res) => {
 });
 apiRouter.use(isAuthenticated); 
 apiRouter.get('/user-info', async (req, res) => {
-    // *** ATUALIZADO: para mostrar data de expiração ***
+    // (Sem alterações)
     try {
         const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
         if (!user) { return res.status(404).json({ message: "Usuário não encontrado." }); }
-        
         let freeHours = 0;
-        if (user.plan === 'free' && user.freeHoursRemaining) { 
-            freeHours = Math.ceil(user.freeHoursRemaining / (60 * 60 * 1000)); 
-        }
-
-        res.status(200).json({
-            username: user.username,
-            plan: user.plan,
-            freeHoursRemaining: freeHours,
-            planExpiresAt: user.planExpiresAt // Envia a data de expiração
-        });
+        if (user.plan === 'free' && user.freeHoursRemaining) { freeHours = Math.ceil(user.freeHoursRemaining / (60 * 60 * 1000)); }
+        res.status(200).json({ username: user.username, plan: user.plan, freeHoursRemaining: freeHours, planExpiresAt: user.planExpiresAt });
     } catch (error) { console.error("Erro ao buscar info do usuário:", error); res.status(500).json({ message: "Erro ao buscar informações do usuário." }); }
 });
 apiRouter.post('/activate-license', async (req, res) => {
-    // *** ATUALIZADO: para usar 'durationDays' ***
+    // (Sem alterações)
     const { licenseKey } = req.body;
     const currentUserID = req.session.userId;
     if (!licenseKey) { return res.status(400).json({ message: "Chave de licença não fornecida." }); }
@@ -379,8 +370,8 @@ apiRouter.post('/activate-license', async (req, res) => {
             { _id: new ObjectId(currentUserID) },
             { $set: { 
                 plan: key.plan,
-                planExpiresAt: key.plan === 'lifetime' ? null : newExpiryDate, // Planos lifetime não expiram
-                freeHoursRemaining: 0 // Zera horas grátis ao ativar
+                planExpiresAt: key.plan === 'lifetime' ? null : newExpiryDate, 
+                freeHoursRemaining: 0 
             }}
         );
 
@@ -731,7 +722,7 @@ adminApiRouter.post('/update-plan', async (req, res) => {
     try {
         let updateData = {
             plan: newPlan,
-            planExpiresAt: null // Mudança manual de admin é vitalícia
+            planExpiresAt: null // Mudança manual de admin é vitalícia por padrão
         };
 
         if (newPlan === 'free') {
@@ -750,6 +741,32 @@ adminApiRouter.post('/update-plan', async (req, res) => {
         res.status(500).json({ message: "Erro ao atualizar plano." });
     }
 });
+
+// *** NOVAS ROTAS ADMIN: Gerir Licenças ***
+adminApiRouter.get('/licenses', async (req, res) => {
+    try {
+        const licenses = await licensesCollection.find({}).sort({ createdAt: -1 }).toArray(); // Ordena por mais recentes
+        res.json(licenses);
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao buscar licenças." });
+    }
+});
+adminApiRouter.post('/delete-license', async (req, res) => {
+    const { licenseId } = req.body;
+    try {
+        const result = await licensesCollection.deleteOne({ 
+            _id: new ObjectId(licenseId), 
+            isUsed: false // Apenas deleta se NÃO estiver em uso
+        });
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: "Licença não encontrada ou já está em uso e não pode ser deletada." });
+        }
+        res.status(200).json({ message: "Licença não utilizada deletada com sucesso." });
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao deletar licença." });
+    }
+});
+
 
 app.use('/api/admin', adminApiRouter); // Monta a API de admin
 
@@ -798,15 +815,14 @@ async function deductFreeTime() {
     }
 }
 
-// --- *** NOVO: RELÓGIO DE EXPIRAÇÃO DE PLANO *** ---
+// --- RELÓGIO DE EXPIRAÇÃO DE PLANO ---
 const PLAN_EXPIRATION_INTERVAL = 60 * 60 * 1000; // 1 hora
-
 async function checkExpiredPlans() {
     console.log("[GESTOR DE PLANOS] A verificar planos expirados...");
     try {
         const expiredUsers = await usersCollection.find({
-            plan: { $ne: 'free' }, // Não é 'free'
-            planExpiresAt: { $ne: null, $lt: new Date() } // Tem uma data de expiração E ela já passou
+            plan: { $ne: 'free' }, 
+            planExpiresAt: { $ne: null, $lt: new Date() } 
         }).toArray();
 
         if (expiredUsers.length === 0) {
@@ -817,17 +833,15 @@ async function checkExpiredPlans() {
         for (const user of expiredUsers) {
             console.log(`[GESTOR DE PLANOS] O plano '${user.plan}' do usuário ${user.username} expirou. Revertendo para 'free'.`);
             
-            // Reverte para o plano free
             await usersCollection.updateOne(
                 { _id: user._id },
                 { $set: { 
                     plan: 'free', 
                     planExpiresAt: null,
-                    freeHoursRemaining: FREE_HOURS_MS // Reseta as horas grátis
+                    freeHoursRemaining: FREE_HOURS_MS 
                 }}
             );
 
-            // Para todas as contas ativas desse usuário
             for (const username in liveAccounts) {
                 const account = liveAccounts[username];
                 if (account.ownerUserID === user._id.toString() && account.worker) {
