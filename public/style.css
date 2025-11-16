@@ -12,6 +12,22 @@
 @keyframes glitch-anim-1 { 0%{clip-path:polygon(0 0,100% 0,100% 5%,0 5%)}10%{clip-path:polygon(0 15%,100% 15%,100% 20%,0 20%)}20%{clip-path:polygon(0 10%,100% 10%,100% 20%,0 20%)}30%{clip-path:polygon(0 30%,100% 30%,100% 30%,0 30%)}40%{clip-path:polygon(0 5%,100% 5%,100% 10%,0 10%)}50%{clip-path:polygon(0 25%,100% 25%,100% 30%,0 30%)}60%{clip-path:polygon(0 40%,100% 40%,100% 40%,0 40%)}70%{clip-path:polygon(0 50%,100% 50%,100% 55%,0 55%)}80%{clip-path:polygon(0 70%,100% 70%,100% 75%,0 75%)}90%{clip-path:polygon(0 80%,100% 80%,100% 85%,0 85%)}100%{clip-path:polygon(0 50%,100% 50%,100% 55%,0 55%)} }
 @keyframes glitch-anim-2 { 0%{clip-path:polygon(0 65%,100% 65%,100% 70%,0 70%)}10%{clip-path:polygon(0 85%,100% 85%,100% 90%,0 90%)}20%{clip-path:polygon(0 45%,100% 45%,100% 50%,0 50%)}30%{clip-path:polygon(0 90%,100% 90%,100% 95%,0 95%)}40%{clip-path:polygon(0 75%,100% 75%,100% 80%,0 80%)}50%{clip-path:polygon(0 55%,100% 55%,100% 60%,0 60%)}60%{clip-path:polygon(0 10%,100% 10%,100% 15%,0 15%)}70%{clip-path:polygon(0 30%,100% 30%,100% 35%,0 35%)}80%{clip-path:polygon(0 0,100% 0,100% 5%,0 5%)}90%{clip-path:polygon(0 20%,100% 20%,100% 25%,0 25%)}100%{clip-path:polygon(0 60%,100% 60%,100% 65%,0 65%)} }
 
+/* *** NOVA ANIMAÇÃO DE FOGO *** */
+@keyframes fire-glow {
+    0% {
+        box-shadow: 0 0 10px rgba(255, 165, 0, 0.5), 0 0 20px rgba(255, 69, 0, 0.4);
+        border-color: rgba(255, 165, 0, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 20px rgba(255, 165, 0, 0.8), 0 0 40px rgba(255, 69, 0, 0.7);
+        border-color: rgba(255, 165, 0, 1);
+    }
+    100% {
+        box-shadow: 0 0 10px rgba(255, 165, 0, 0.5), 0 0 20px rgba(255, 69, 0, 0.4);
+        border-color: rgba(255, 165, 0, 0.7);
+    }
+}
+
 /* Estilos Globais do Body */
 html {
     height: 100%;
@@ -43,6 +59,30 @@ body.login-page {
     align-items: center;
     height: 100vh;
 }
+
+/* *** ESTILO MELHORADO DOS CARDS DE PLANO *** */
+.feature-card {
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(0, 255, 255, 0.3); /* Borda ciano sutil */
+    backdrop-filter: blur(10px);
+    border-radius: 0.5rem; /* 8px */
+    padding: 1.5rem; /* 24px */
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.1); /* Glow ciano sutil */
+}
+.feature-card:hover {
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.3);
+    transform: translateY(-5px);
+}
+/* *** ESTILO DO PLANO PREMIUM COM FOGO *** */
+.premium-highlight {
+    border-width: 2px;
+    /* A animação 'fire-glow' substitui o box-shadow e border-color normais */
+    animation: fire-glow 2s ease-in-out infinite;
+}
+
 
 /* Botões */
 button { background-color: transparent; border: 1px solid var(--primary-color); color: var(--primary-color); padding: 8px 12px; margin: 0 4px; border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.3s ease; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-family: 'Share Tech Mono', monospace; text-transform: uppercase; }
@@ -112,7 +152,6 @@ header .glitch-title { font-size: 24px; }
 .modal-content h2 { color: var(--primary-color); margin-top: 0; }
 .modal-content p { margin-bottom: 10px; color: #c7d5e0; }
 .modal-content textarea, .modal-content input[type="text"], .modal-content input[type="password"] { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid var(--primary-color); background-color: var(--dark-bg); color: #c7d5e0; box-sizing: border-box; resize: vertical; font-family: 'Share Tech Mono', monospace; }
-/* *** NOVO: Estilo para inputs desabilitados (Paywall) *** */
 .modal-content input:disabled {
     background-color: #222;
     border-color: #4f5255;
@@ -135,7 +174,6 @@ header .glitch-title { font-size: 24px; }
 .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
 input:checked + .slider { background-color: var(--primary-color); }
 input:checked + .slider:before { transform: translateX(26px); }
-/* *** NOVO: Estilo para Toggles desabilitados (Paywall) *** */
 .switch input:disabled + .slider {
     background-color: #222;
     border: 1px solid #4f5255;
