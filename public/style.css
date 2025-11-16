@@ -112,6 +112,13 @@ header .glitch-title { font-size: 24px; }
 .modal-content h2 { color: var(--primary-color); margin-top: 0; }
 .modal-content p { margin-bottom: 10px; color: #c7d5e0; }
 .modal-content textarea, .modal-content input[type="text"], .modal-content input[type="password"] { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid var(--primary-color); background-color: var(--dark-bg); color: #c7d5e0; box-sizing: border-box; resize: vertical; font-family: 'Share Tech Mono', monospace; }
+/* *** NOVO: Estilo para inputs desabilitados (Paywall) *** */
+.modal-content input:disabled {
+    background-color: #222;
+    border-color: #4f5255;
+    color: #888;
+    cursor: not-allowed;
+}
 .search-results { max-height: 150px; overflow-y: auto; border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 4px; margin-bottom: 15px; }
 .search-result-item { padding: 8px; cursor: pointer; font-size: 14px; }
 .search-result-item:hover { background-color: var(--primary-color); color: var(--dark-bg); }
@@ -128,6 +135,15 @@ header .glitch-title { font-size: 24px; }
 .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
 input:checked + .slider { background-color: var(--primary-color); }
 input:checked + .slider:before { transform: translateX(26px); }
+/* *** NOVO: Estilo para Toggles desabilitados (Paywall) *** */
+.switch input:disabled + .slider {
+    background-color: #222;
+    border: 1px solid #4f5255;
+    cursor: not-allowed;
+}
+.switch input:disabled + .slider:before {
+    background-color: #888;
+}
 
 /* Notificações "Toast" */
 #toastContainer { position: fixed; top: 20px; right: 20px; z-index: 1000; }
@@ -146,9 +162,8 @@ input:checked + .slider:before { transform: translateX(26px); }
 .sidebar-user { display: flex; flex-direction: column; padding: 10px; background-color: rgba(0, 255, 255, 0.05); border: 1px solid rgba(0, 255, 255, 0.2); border-radius: 4px; font-size: 14px; }
 #sidebarUser { color: var(--primary-color); font-weight: bold; }
 #sidebarPlan { color: var(--pending-color); font-size: 12px; margin-top: 4px; }
-/* *** NOVO ESTILO PARA A DATA DE EXPIRAÇÃO *** */
 #sidebarExpiry {
-    color: #c7d5e0; /* Cor de texto normal */
+    color: #c7d5e0; 
     font-size: 12px;
     margin-top: 4px;
 }
@@ -223,7 +238,7 @@ input:checked + .slider:before { transform: translateX(26px); }
     max-height: 150px;
     overflow-y: auto;
     font-size: 12px;
-    display: none; /* Começa escondido */
+    display: none; 
 }
 #generatedKeys pre {
     margin: 0;
