@@ -12,10 +12,10 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
-const ADMIN_PASSWORD = process.env.SITE_PASSWORD; 
+const ADMIN_PASSWORD = process.env.SITE_PASSWORD; // A SENHA MESTRA DO ADMIN
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; 
 
-if (!MONGODB_URI) { console.error("ERRO CRÍTICO: A variável de ambiente MONGODB_URI precisa de ser definida!"); process.exit(1); }
+if (!MONGODB_URI || !ADMIN_PASSWORD) { console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI e SITE_PASSWORD precisam de ser definidas!"); process.exit(1); }
 const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
 let steamAppListCache = { data: [], timestamp: 0 }; 
@@ -53,6 +53,7 @@ let licensesCollection;
 let liveAccounts = {};
 
 async function connectToDB() { 
+    // (Sem alterações)
     try { 
         await mongoClient.connect(); 
         console.log("Conectado ao MongoDB Atlas com sucesso!"); 
@@ -168,9 +169,10 @@ function startWorkerForAccount(accountData) {
         
         if (accountExited.manual_logout === false && accountExited.settings.autoRelogin === true) {
             usersCollection.findOne({ _id: new ObjectId(accountExited.ownerUserID) }).then(user => {
-                if (user && user.plan === 'free' && user.freeHoursRemaining <= 0) {
-                    console.log(`[GESTOR] ${username} não será reiniciado. Usuário 'free' sem tempo.`);
-                    accountExited.status = "Tempo Esgotado";
+                if (!user || (user.plan === 'free' && user.freeHoursRemaining <= 0) || user.isBanned) {
+                    let reason = user.isBanned ? "Usuário banido." : "Usuário 'free' sem tempo.";
+                    console.log(`[GESTOR] ${username} não será reiniciado. ${reason}`);
+                    accountExited.status = user.isBanned ? "Banido" : "Tempo Esgotado";
                     accountExited.sessionStartTime = null;
                 } else {
                     const restartDelay = wasTimeout ? 5000 : 30000;
@@ -187,7 +189,12 @@ function startWorkerForAccount(accountData) {
                 }
             });
         } else {
-            accountExited.status = wasTimeout ? "Erro: Timeout" : (accountExited.status === "Tempo Esgotado" ? "Tempo Esgotado" : "Parado");
+            let finalStatus = "Parado";
+            if (wasTimeout) finalStatus = "Erro: Timeout";
+            if (accountExited.status === "Tempo Esgotado") finalStatus = "Tempo Esgotado";
+            if (accountExited.status === "Banido") finalStatus = "Banido";
+            
+            accountExited.status = finalStatus;
             accountExited.sessionStartTime = null;
         }
     });
@@ -217,7 +224,6 @@ async function loadAccountsIntoMemory() {
 }
 
 // --- EXPRESS APP E ROTAS ---
-// (Sem alterações)
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
 app.use(session({ 
@@ -227,67 +233,97 @@ app.use(session({
     store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), 
     cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
 })); 
+
+// --- MIDDLEWARES DE AUTENTICAÇÃO ---
 const isAuthenticated = (req, res, next) => { 
     if (req.session.userId) { 
         return next(); 
     } 
     res.redirect('/login?error=unauthorized'); 
 };
+// *** NOVO MIDDLEWARE: Autenticação de Admin ***
+const isAdminAuthenticated = (req, res, next) => {
+    if (req.session.isAdmin) {
+        return next();
+    }
+    res.redirect('/admin/login?error=unauthorized');
+};
 
-// --- ROTAS DE PÁGINAS ---
-// (Sem alterações)
+// --- ROTAS DE PÁGINAS (Públicas e de Usuário) ---
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 app.get('/login', (req, res) => { if (req.session.userId) { return res.redirect('/dashboard'); } res.sendFile(path.join(__dirname, 'public', 'login.html')); });
 app.get('/register', (req, res) => { if (req.session.userId) { return res.redirect('/dashboard'); } res.sendFile(path.join(__dirname, 'public', 'register.html')); });
 app.get('/dashboard', isAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'public', 'dashboard.html')); });
 app.get('/logout', (req, res) => { req.session.destroy(err => { if (err) { console.error("Erro ao fazer logout:", err); return res.status(500).send("Não foi possível fazer logout."); } res.clearCookie('connect.sid'); res.redirect('/'); }); });
+
+// --- *** NOVAS ROTAS (Painel de Admin) *** ---
+app.get('/admin', (req, res) => res.redirect('/admin/dashboard'));
+
+app.get('/admin/login', (req, res) => {
+    if (req.session.isAdmin) { return res.redirect('/admin/dashboard'); }
+    res.sendFile(path.join(__dirname, 'public', 'admin', 'login.html'));
+});
+
+app.post('/admin/login', (req, res) => {
+    const { password } = req.body;
+    if (password === ADMIN_PASSWORD) {
+        req.session.isAdmin = true;
+        res.redirect('/admin/dashboard');
+    } else {
+        res.redirect('/admin/login?error=invalid');
+    }
+});
+
+app.get('/admin/dashboard', isAdminAuthenticated, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html'));
+});
+
+app.get('/admin/logout', (req, res) => {
+    req.session.destroy(err => {
+        if (err) { return res.status(500).send("Não foi possível fazer logout."); }
+        res.redirect('/');
+    });
+});
+
+// --- ROTAS ESTÁTICAS ---
 app.use(express.static(path.join(__dirname, 'public'))); 
 app.get('/health', (req, res) => { res.status(200).send('OK'); }); 
 
-// --- ROTAS DE API (Autenticação) ---
+// --- ROTAS DE API (Usuário) ---
 const apiRouter = express.Router();
-
-// *** ROTA /register (COM 50 HORAS) ***
 apiRouter.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
-    if (!username || !email || !password) {
-        return res.status(400).json({ message: "Todos os campos são obrigatórios." });
-    }
+    if (!username || !email || !password) { return res.status(400).json({ message: "Todos os campos são obrigatórios." }); }
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
         await usersCollection.insertOne({
-            username,
-            email,
-            password: hashedPassword,
+            username, email, password: hashedPassword,
             plan: 'free', 
-            freeHoursRemaining: 50 * 60 * 60 * 1000, // *** CORRIGIDO PARA 50 HORAS ***
+            freeHoursRemaining: 50 * 60 * 60 * 1000, // 50 HORAS
+            isBanned: false, // *** NOVO CAMPO: Banido ***
             createdAt: new Date()
         });
         res.status(201).json({ message: "Usuário registado com sucesso!" });
     } catch (error) {
-        if (error.code === 11000) { 
-            res.status(409).json({ message: "Username ou email já existe." });
-        } else {
-            console.error("Erro no registo:", error);
-            res.status(500).json({ message: "Erro interno ao registar usuário." });
-        }
+        if (error.code === 11000) { res.status(409).json({ message: "Username ou email já existe." }); } 
+        else { console.error("Erro no registo:", error); res.status(500).json({ message: "Erro interno ao registar usuário." }); }
     }
 });
 apiRouter.post('/login', async (req, res) => {
-    // (Sem alterações)
     const { username, password } = req.body;
-    if (!username || !password) {
-        return res.status(400).json({ message: "Username e senha são obrigatórios." });
-    }
+    if (!username || !password) { return res.status(400).json({ message: "Username e senha são obrigatórios." }); }
     try {
         const user = await usersCollection.findOne({ username });
-        if (!user) {
-            return res.status(401).json({ message: "Credenciais inválidas." });
+        if (!user) { return res.status(401).json({ message: "Credenciais inválidas." }); }
+        
+        // *** VERIFICAÇÃO DE BANIDO ***
+        if (user.isBanned) {
+            return res.status(403).json({ message: "Esta conta foi banida." });
         }
+
         const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(401).json({ message: "Credenciais inválidas." });
-        }
+        if (!isMatch) { return res.status(401).json({ message: "Credenciais inválidas." }); }
+        
         req.session.userId = user._id.toString(); 
         req.session.username = user.username;
         res.status(200).json({ message: "Login bem-sucedido!" });
@@ -296,81 +332,35 @@ apiRouter.post('/login', async (req, res) => {
         res.status(500).json({ message: "Erro interno ao fazer login." });
     }
 });
-
-// --- API PROTEGIDA ---
 apiRouter.use(isAuthenticated); 
-
-// Rota /user-info (Sem alterações)
 apiRouter.get('/user-info', async (req, res) => {
+    // (Sem alterações)
     try {
         const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
-        if (!user) {
-            return res.status(404).json({ message: "Usuário não encontrado." });
-        }
-        
+        if (!user) { return res.status(404).json({ message: "Usuário não encontrado." }); }
         let freeHours = 0;
-        if (user.plan === 'free' && user.freeHoursRemaining) {
-            freeHours = Math.ceil(user.freeHoursRemaining / (60 * 60 * 1000)); 
-        }
-
-        res.status(200).json({
-            username: user.username,
-            plan: user.plan,
-            freeHoursRemaining: freeHours 
-        });
-    } catch (error) {
-        console.error("Erro ao buscar info do usuário:", error);
-        res.status(500).json({ message: "Erro ao buscar informações do usuário." });
-    }
+        if (user.plan === 'free' && user.freeHoursRemaining) { freeHours = Math.ceil(user.freeHoursRemaining / (60 * 60 * 1000)); }
+        res.status(200).json({ username: user.username, plan: user.plan, freeHoursRemaining: freeHours });
+    } catch (error) { console.error("Erro ao buscar info do usuário:", error); res.status(500).json({ message: "Erro ao buscar informações do usuário." }); }
 });
-
-// *** ROTA: Ativar Licença ***
 apiRouter.post('/activate-license', async (req, res) => {
+    // (Sem alterações)
     const { licenseKey } = req.body;
     const currentUserID = req.session.userId;
-
-    if (!licenseKey) {
-        return res.status(400).json({ message: "Chave de licença não fornecida." });
-    }
-
+    if (!licenseKey) { return res.status(400).json({ message: "Chave de licença não fornecida." }); }
     try {
-        // 1. Encontra a chave
         const key = await licensesCollection.findOne({ key: licenseKey });
-        if (!key) {
-            return res.status(404).json({ message: "Chave de licença inválida." });
-        }
-
-        // 2. Verifica se já foi usada
-        if (key.isUsed) {
-            return res.status(409).json({ message: "Esta chave de licença já foi utilizada." });
-        }
-
-        // 3. Ativa a chave: Atualiza o usuário
-        const updateResult = await usersCollection.updateOne(
-            { _id: new ObjectId(currentUserID) },
-            { $set: { plan: key.plan } } // 'key.plan' será 'basic', 'plus', 'premium', 'ultimate', 'lifetime'
-        );
-
-        if (updateResult.modifiedCount === 0) {
-            return res.status(500).json({ message: "Não foi possível atualizar o plano do usuário." });
-        }
-
-        // 4. Marca a chave como usada
-        await licensesCollection.updateOne(
-            { _id: key._id },
-            { $set: { isUsed: true, usedBy: new ObjectId(currentUserID), activatedAt: new Date() } }
-        );
-
+        if (!key) { return res.status(404).json({ message: "Chave de licença inválida." }); }
+        if (key.isUsed) { return res.status(409).json({ message: "Esta chave de licença já foi utilizada." }); }
+        const updateResult = await usersCollection.updateOne( { _id: new ObjectId(currentUserID) }, { $set: { plan: key.plan } });
+        if (updateResult.modifiedCount === 0) { return res.status(500).json({ message: "Não foi possível atualizar o plano do usuário." }); }
+        await licensesCollection.updateOne( { _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(currentUserID), activatedAt: new Date() } });
         res.status(200).json({ message: `Plano atualizado para ${key.plan} com sucesso!` });
-
-    } catch (error) {
-        console.error("Erro ao ativar licença:", error);
-        res.status(500).json({ message: "Erro interno ao ativar a licença." });
-    }
+    } catch (error) { console.error("Erro ao ativar licença:", error); res.status(500).json({ message: "Erro interno ao ativar a licença." }); }
 });
 
-// --- API DE GESTÃO DE CONTAS (com filtros) ---
-// (Rotas /status, /start, /stop, /bulk-xxx, /add-account, etc. sem alterações)
+// --- API DE GESTÃO DE CONTAS (Sem alterações) ---
+// (Rotas /status, /start, /stop, /bulk-xxx, /add-account, etc.)
 apiRouter.get('/status', (req, res) => {
     const publicState = { accounts: {} };
     const currentUserID = req.session.userId;
@@ -471,7 +461,7 @@ apiRouter.post('/add-account', async (req, res) => {
     
     let accountLimit = 1; // free
     if (user.plan !== 'free') {
-        accountLimit = 33; // Todos os planos pagos
+        accountLimit = 33; 
     }
     
     if (userAccountsCount >= accountLimit) {
@@ -594,8 +584,86 @@ apiRouter.get('/search-game', async (req, res) => {
         res.json(results);
     } catch (e) { res.status(500).json({ message: "Erro ao buscar lista de jogos." }); }
 });
+app.use('/api', apiRouter); // Monta a API de usuário
 
-app.use('/api', apiRouter);
+// --- *** NOVAS ROTAS DE API (Admin) *** ---
+const adminApiRouter = express.Router();
+adminApiRouter.use(isAdminAuthenticated); // Protege todas as rotas de admin
+
+// Rota para buscar todos os usuários
+adminApiRouter.get('/users', async (req, res) => {
+    try {
+        const users = await usersCollection.find({}, { projection: { password: 0 } }).toArray(); // Nunca envia a senha
+        res.json(users);
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao buscar usuários." });
+    }
+});
+
+// Rota para gerar chaves de licença
+adminApiRouter.post('/generate-keys', async (req, res) => {
+    const { plan, quantity } = req.body;
+    const qty = parseInt(quantity, 10) || 1;
+    const plans = ['basic', 'plus', 'premium', 'ultimate', 'lifetime'];
+
+    if (!plan || !plans.includes(plan)) {
+        return res.status(400).json({ message: "Plano inválido." });
+    }
+
+    try {
+        let generatedKeys = [];
+        for (let i = 0; i < qty; i++) {
+            const key = `${plan.toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+            await licensesCollection.insertOne({
+                key,
+                plan,
+                isUsed: false,
+                createdAt: new Date(),
+                usedBy: null,
+                activatedAt: null
+            });
+            generatedKeys.push(key);
+        }
+        res.status(201).json({ message: `${qty} chave(s) do plano ${plan} geradas com sucesso!`, keys: generatedKeys });
+    } catch (e) {
+        console.error("Erro ao gerar chaves:", e);
+        res.status(500).json({ message: "Erro ao gerar chaves." });
+    }
+});
+
+// Rota para banir um usuário
+adminApiRouter.post('/ban-user', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { isBanned: true } });
+        // Para todas as contas ativas desse usuário
+        for (const username in liveAccounts) {
+            const account = liveAccounts[username];
+            if (account.ownerUserID === userId && account.worker) {
+                console.log(`[ADMIN] A parar ${username} (Dono: ${userId}) - Usuário banido.`);
+                account.status = "Banido";
+                account.manual_logout = true; 
+                account.worker.kill();
+            }
+        }
+        res.status(200).json({ message: "Usuário banido com sucesso." });
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao banir usuário." });
+    }
+});
+
+// Rota para desbanir um usuário
+adminApiRouter.post('/unban-user', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { isBanned: false } });
+        res.status(200).json({ message: "Usuário desbanido com sucesso." });
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao desbanir usuário." });
+    }
+});
+
+app.use('/api/admin', adminApiRouter); // Monta a API de admin
 
 // --- LÓGICA DE DESCONTO DE TEMPO ---
 // (Sem alterações)
