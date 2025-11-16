@@ -308,8 +308,8 @@ app.get('/health', (req, res) => { res.status(200).send('OK'); });
 // --- ROTAS DE API (Usuário) ---
 const apiRouter = express.Router();
 
-// *** NOVA ROTA PÚBLICA: /api/auth-status ***
 apiRouter.get('/auth-status', (req, res) => {
+    // (Sem alterações)
     if (req.session.userId) {
         res.json({
             loggedIn: true,
@@ -321,7 +321,6 @@ apiRouter.get('/auth-status', (req, res) => {
         });
     }
 });
-
 apiRouter.post('/register', async (req, res) => {
     // (Sem alterações)
     const { username, email, password } = req.body;
@@ -388,6 +387,12 @@ apiRouter.post('/activate-license', async (req, res) => {
         const key = await licensesCollection.findOne({ key: licenseKey });
         if (!key) { return res.status(404).json({ message: "Chave de licença inválida." }); }
         if (key.isUsed) { return res.status(409).json({ message: "Esta chave de licença já foi utilizada." }); }
+        
+        // *** LÓGICA DE ATRIBUIÇÃO (Passo 10) ***
+        // Se a chave foi atribuída a alguém, SÓ essa pessoa a pode usar
+        if (key.assignedTo && key.assignedTo.toString() !== currentUserID) {
+            return res.status(403).json({ message: "Esta chave está atribuída a outro usuário." });
+        }
 
         let newExpiryDate = null;
         if (key.durationDays) {
@@ -484,9 +489,24 @@ apiRouter.post('/renew-free-time', async (req, res) => {
     }
 });
 
+// *** NOVA ROTA: Ver "Inventário de Chaves" (Passo 10) ***
+apiRouter.get('/my-keys', async (req, res) => {
+    try {
+        const keys = await licensesCollection.find({
+            assignedTo: new ObjectId(req.session.userId),
+            isUsed: false // Apenas chaves que ele ainda não ativou
+        }, { projection: { key: 1, plan: 1, durationDays: 1 } }).toArray();
+        
+        res.status(200).json(keys);
+    } catch (error) {
+        console.error("Erro ao buscar chaves do usuário:", error);
+        res.status(500).json({ message: "Erro ao buscar suas chaves." });
+    }
+});
+
 // --- API DE GESTÃO DE CONTAS ---
+// (Rotas /status, /start, /stop, /bulk-xxx, /add-account, etc. sem alterações)
 apiRouter.get('/status', (req, res) => {
-    // (Sem alterações)
     const publicState = { accounts: {} };
     const currentUserID = req.session.userId;
     for (const username in liveAccounts) {
@@ -499,7 +519,6 @@ apiRouter.get('/status', (req, res) => {
     res.json(publicState);
 });
 apiRouter.post('/start/:username', async (req, res) => { 
-    // (Sem alterações)
     const account = liveAccounts[req.params.username]; 
     const currentUserID = req.session.userId;
     if (account && account.ownerUserID === currentUserID) { 
@@ -523,7 +542,6 @@ apiRouter.post('/start/:username', async (req, res) => {
     } else { res.status(404).json({ message: "Conta não encontrada." }); } 
 });
 apiRouter.post('/stop/:username', (req, res) => {
-    // (Sem alterações)
     const account = liveAccounts[req.params.username];
     if (account && account.ownerUserID === req.session.userId) {
         if(account.startupTimeout) { clearTimeout(account.startupTimeout); account.startupTimeout = null; }
@@ -535,7 +553,6 @@ apiRouter.post('/stop/:username', (req, res) => {
     } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); }
 });
 apiRouter.post('/bulk-start', async (req, res) => {
-    // (Sem alterações)
     const { usernames } = req.body;
     const currentUserID = req.session.userId;
     if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
@@ -573,7 +590,6 @@ apiRouter.post('/bulk-start', async (req, res) => {
     res.status(200).json({ message });
 });
 apiRouter.post('/bulk-stop', (req, res) => {
-    // (Sem alterações)
     const { usernames } = req.body;
     if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
     let stoppedCount = 0;
@@ -591,7 +607,6 @@ apiRouter.post('/bulk-stop', (req, res) => {
     res.status(200).json({ message: `${stoppedCount} contas paradas.` });
 });
 apiRouter.post('/bulk-remove', async (req, res) => {
-    // (Sem alterações)
     const { usernames } = req.body;
     if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
     const currentUserID = req.session.userId;
@@ -609,7 +624,6 @@ apiRouter.post('/bulk-remove', async (req, res) => {
     res.status(200).json({ message: `${usernames.length} contas removidas.` });
 });
 apiRouter.post('/add-account', async (req, res) => { 
-    // (Sem alterações)
     const { username, password } = req.body; 
     const currentUserID = req.session.userId;
     if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); 
@@ -639,7 +653,6 @@ apiRouter.post('/add-account', async (req, res) => {
     res.status(200).json({ message: "Conta adicionada." }); 
 });
 apiRouter.delete('/remove-account/:username', async (req, res) => { 
-    // (Sem alterações)
     const account = liveAccounts[req.params.username]; 
     const currentUserID = req.session.userId;
     if (account && account.ownerUserID === currentUserID) { 
@@ -657,7 +670,6 @@ apiRouter.delete('/remove-account/:username', async (req, res) => {
     } 
 });
 apiRouter.post('/submit-guard/:username', (req, res) => { 
-    // (Sem alterações)
     const account = liveAccounts[req.params.username]; 
     if (account && account.ownerUserID === req.session.userId && account.worker) { 
         account.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); 
@@ -792,7 +804,9 @@ adminApiRouter.post('/generate-keys', async (req, res) => {
                 isUsed: false,
                 createdAt: new Date(),
                 usedBy: null,
-                activatedAt: null
+                activatedAt: null,
+                assignedTo: null, // *** NOVO CAMPO: Atribuído A ***
+                assignedToUsername: null // *** NOVO CAMPO: Nome de Atribuído ***
             });
             generatedKeys.push(key);
         }
@@ -845,7 +859,7 @@ adminApiRouter.post('/delete-user', async (req, res) => {
                 delete liveAccounts[username];
             }
         }
-        await accountsCollection.deleteMany({ ownerUserID: new ObjectId(userId) }); // Corrigido para ObjectId
+        await accountsCollection.deleteMany({ ownerUserID: new ObjectId(userId) }); 
         await usersCollection.deleteOne({ _id: new ObjectId(userId) });
         res.status(200).json({ message: "Usuário e todas as suas contas foram excluídos." });
     } catch (e) {
@@ -903,6 +917,49 @@ adminApiRouter.post('/delete-license', async (req, res) => {
         res.status(500).json({ message: "Erro ao deletar licença." });
     }
 });
+
+// *** NOVA ROTA ADMIN: Atribuir Chave a Usuário (Passo 10) ***
+adminApiRouter.post('/assign-key', async (req, res) => {
+    const { licenseId, username } = req.body;
+    if (!licenseId || !username) {
+        return res.status(400).json({ message: "ID da licença e nome de usuário são obrigatórios." });
+    }
+
+    try {
+        // 1. Encontra o usuário
+        const user = await usersCollection.findOne({ username: username });
+        if (!user) {
+            return res.status(404).json({ message: `Usuário '${username}' não encontrado.` });
+        }
+
+        // 2. Encontra a licença
+        const license = await licensesCollection.findOne({ _id: new ObjectId(licenseId) });
+        if (!license) {
+            return res.status(404).json({ message: "Licença não encontrada." });
+        }
+        if (license.isUsed) {
+            return res.status(400).json({ message: "Esta licença já foi usada." });
+        }
+        if (license.assignedTo) {
+            return res.status(400).json({ message: "Esta licença já foi atribuída a outro usuário." });
+        }
+
+        // 3. Atribui a licença
+        await licensesCollection.updateOne(
+            { _id: new ObjectId(licenseId) },
+            { $set: {
+                assignedTo: user._id,
+                assignedToUsername: user.username
+            }}
+        );
+        
+        res.status(200).json({ message: `Chave atribuída a ${user.username} com sucesso!` });
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao atribuir chave." });
+    }
+});
+
+
 app.use('/api/admin', adminApiRouter); 
 
 // --- LÓGICA DE DESCONTO DE TEMPO ---
@@ -951,9 +1008,9 @@ async function deductFreeTime() {
 }
 
 // --- RELÓGIO DE EXPIRAÇÃO DE PLANO ---
+// (Sem alterações)
 const PLAN_EXPIRATION_INTERVAL = 60 * 60 * 1000; 
 async function checkExpiredPlans() {
-    // *** ATUALIZADO: com lógica de "Downgrade" de contas ***
     console.log("[GESTOR DE PLANOS] A verificar planos expirados...");
     try {
         const expiredUsers = await usersCollection.find({
@@ -969,7 +1026,6 @@ async function checkExpiredPlans() {
         for (const user of expiredUsers) {
             console.log(`[GESTOR DE PLANOS] O plano '${user.plan}' do usuário ${user.username} expirou. Revertendo para 'free'.`);
             
-            // 1. Reverte o plano do usuário
             await usersCollection.updateOne(
                 { _id: user._id },
                 { $set: { 
@@ -979,7 +1035,6 @@ async function checkExpiredPlans() {
                 }}
             );
 
-            // 2. Para todas as contas ativas desse usuário
             for (const username in liveAccounts) {
                 const account = liveAccounts[username];
                 if (account.ownerUserID === user._id.toString() && account.worker) {
@@ -990,23 +1045,19 @@ async function checkExpiredPlans() {
                 }
             }
 
-            // 3. Busca todas as contas Steam deste usuário na DB
             const userSteamAccounts = await accountsCollection.find({ ownerUserID: user._id.toString() }).toArray();
             
             if (userSteamAccounts.length > 0) {
-                // 3a. Mantém a primeira conta e reseta os jogos dela para 1 (limite do 'free')
                 const firstAccount = userSteamAccounts[0];
                 await accountsCollection.updateOne(
                     { _id: firstAccount._id },
-                    { $set: { games: [730] } } // Reseta para 1 jogo padrão
+                    { $set: { games: [730] } } 
                 );
                 
-                // 3b. Apaga TODAS AS OUTRAS contas (pois o plano 'free' só permite 1)
                 if (userSteamAccounts.length > 1) {
                     const accountsToDelete = userSteamAccounts.slice(1).map(acc => acc._id);
                     await accountsCollection.deleteMany({ _id: { $in: accountsToDelete } });
                     
-                    // Remove da memória também, se estiverem lá
                     userSteamAccounts.slice(1).forEach(acc => {
                         if (liveAccounts[acc.username]) {
                             delete liveAccounts[acc.username];
