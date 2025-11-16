@@ -42,6 +42,15 @@
                     class="w-full px-3 py-2 mt-1 bg-gray-900 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
             
+            <div class="bg-gray-800 p-3 rounded border border-gray-600">
+                <label class="block text-sm font-medium text-gray-300 mb-1">Pergunta de Segurança:</label>
+                <div class="flex items-center gap-3">
+                    <span id="captchaQuestion" class="text-lg font-bold text-blue-400 tracking-widest select-none">Carregando...</span>
+                    <input type="number" id="captchaInput" required placeholder="Resposta"
+                        class="w-24 px-2 py-1 bg-gray-900 border border-gray-700 rounded text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
             <button type="submit" id="submitButton"
                 class="w-full px-4 py-2 font-semibold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors tech-font disabled:bg-gray-500">
                 Registar
@@ -55,14 +64,38 @@
     </div>
 
     <script>
+        // Lógica do CAPTCHA
+        let captchaAnswer = 0;
+        
+        function generateCaptcha() {
+            const num1 = Math.floor(Math.random() * 10) + 1;
+            const num2 = Math.floor(Math.random() * 10) + 1;
+            captchaAnswer = num1 + num2;
+            document.getElementById('captchaQuestion').textContent = `Quanto é ${num1} + ${num2}?`;
+            document.getElementById('captchaInput').value = '';
+        }
+
+        // Gera o captcha ao carregar
+        generateCaptcha();
+
         document.getElementById('registerForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
+            const captchaInput = document.getElementById('captchaInput').value;
+            
             const submitButton = document.getElementById('submitButton');
             const message = document.getElementById('message');
+
+            // Validação do Captcha
+            if (parseInt(captchaInput) !== captchaAnswer) {
+                message.textContent = 'Resposta do CAPTCHA incorreta. Tente novamente.';
+                message.className = 'p-3 rounded-md bg-red-800 border border-red-500 text-white block';
+                generateCaptcha(); // Gera um novo desafio
+                return;
+            }
 
             submitButton.disabled = true;
             submitButton.textContent = 'Aguarde...';
@@ -83,16 +116,19 @@
 
                 // Sucesso!
                 message.textContent = 'Registo bem-sucedido! A redirecionar para o login...';
-                message.className = 'p-3 rounded-md bg-green-800 border border-green-500 text-white';
+                message.className = 'p-3 rounded-md bg-green-800 border border-green-500 text-white block'; // Força display block
+                message.classList.remove('hidden');
                 setTimeout(() => {
                     window.location.href = '/login';
                 }, 2000);
 
             } catch (error) {
                 message.textContent = error.message;
-                message.className = 'p-3 rounded-md bg-red-800 border border-red-500 text-white';
+                message.className = 'p-3 rounded-md bg-red-800 border border-red-500 text-white block';
+                message.classList.remove('hidden');
                 submitButton.disabled = false;
                 submitButton.textContent = 'Registar';
+                generateCaptcha(); // Gera novo captcha em caso de erro
             }
         });
     </script>
