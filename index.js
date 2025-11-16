@@ -49,7 +49,7 @@ const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection;
 let siteSettingsCollection;
 let usersCollection; 
-let licensesCollection; // *** NOVA COLEÇÃO PARA LICENÇAS ***
+let licensesCollection; 
 let liveAccounts = {};
 
 async function connectToDB() { 
@@ -61,11 +61,11 @@ async function connectToDB() {
         accountsCollection = db.collection("accounts");
         siteSettingsCollection = db.collection("site_settings");
         usersCollection = db.collection("users"); 
-        licensesCollection = db.collection("licenses"); // *** NOVA COLEÇÃO ***
+        licensesCollection = db.collection("licenses"); 
         
         await usersCollection.createIndex({ username: 1 }, { unique: true });
         await usersCollection.createIndex({ email: 1 }, { unique: true });
-        await licensesCollection.createIndex({ key: 1 }, { unique: true }); // Chaves de licença devem ser únicas
+        await licensesCollection.createIndex({ key: 1 }, { unique: true }); 
 
     } catch (e) { 
         console.error("Não foi possível conectar ao MongoDB", e); 
@@ -246,7 +246,8 @@ app.get('/health', (req, res) => { res.status(200).send('OK'); });
 
 // --- ROTAS DE API (Autenticação) ---
 const apiRouter = express.Router();
-// (Rotas /register e /login sem alterações)
+
+// *** ROTA /register (COM 50 HORAS) ***
 apiRouter.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
     if (!username || !email || !password) {
@@ -259,7 +260,7 @@ apiRouter.post('/register', async (req, res) => {
             email,
             password: hashedPassword,
             plan: 'free', 
-            freeHoursRemaining: 100 * 60 * 60 * 1000, 
+            freeHoursRemaining: 50 * 60 * 60 * 1000, // *** CORRIGIDO PARA 50 HORAS ***
             createdAt: new Date()
         });
         res.status(201).json({ message: "Usuário registado com sucesso!" });
@@ -273,6 +274,7 @@ apiRouter.post('/register', async (req, res) => {
     }
 });
 apiRouter.post('/login', async (req, res) => {
+    // (Sem alterações)
     const { username, password } = req.body;
     if (!username || !password) {
         return res.status(400).json({ message: "Username e senha são obrigatórios." });
@@ -322,7 +324,7 @@ apiRouter.get('/user-info', async (req, res) => {
     }
 });
 
-// *** NOVA ROTA: Ativar Licença ***
+// *** ROTA: Ativar Licença ***
 apiRouter.post('/activate-license', async (req, res) => {
     const { licenseKey } = req.body;
     const currentUserID = req.session.userId;
@@ -368,8 +370,7 @@ apiRouter.post('/activate-license', async (req, res) => {
 });
 
 // --- API DE GESTÃO DE CONTAS (com filtros) ---
-
-// Rota /status (Sem alterações)
+// (Rotas /status, /start, /stop, /bulk-xxx, /add-account, etc. sem alterações)
 apiRouter.get('/status', (req, res) => {
     const publicState = { accounts: {} };
     const currentUserID = req.session.userId;
@@ -382,8 +383,6 @@ apiRouter.get('/status', (req, res) => {
     }
     res.json(publicState);
 });
-
-// Rota /start/:username (Sem alterações)
 apiRouter.post('/start/:username', async (req, res) => { 
     const account = liveAccounts[req.params.username]; 
     const currentUserID = req.session.userId;
@@ -397,8 +396,6 @@ apiRouter.post('/start/:username', async (req, res) => {
         else { res.status(500).json({ message: "Erro ao desencriptar senha."}); } 
     } else { res.status(404).json({ message: "Conta não encontrada." }); } 
 });
-
-// Rota /stop/:username (Sem alterações)
 apiRouter.post('/stop/:username', (req, res) => {
     const account = liveAccounts[req.params.username];
     if (account && account.ownerUserID === req.session.userId) {
@@ -410,8 +407,6 @@ apiRouter.post('/stop/:username', (req, res) => {
         res.status(200).json({ message: "Parando worker..." });
     } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); }
 });
-
-// Rotas /bulk-xxx (Sem alterações)
 apiRouter.post('/bulk-start', async (req, res) => {
     const { usernames } = req.body;
     const currentUserID = req.session.userId;
@@ -467,8 +462,6 @@ apiRouter.post('/bulk-remove', async (req, res) => {
     await accountsCollection.deleteMany({ username: { $in: usernames }, ownerUserID: currentUserID });
     res.status(200).json({ message: `${usernames.length} contas removidas.` });
 });
-
-// *** ROTA /add-account (COM NOVOS LIMITES DE CONTA) ***
 apiRouter.post('/add-account', async (req, res) => { 
     const { username, password } = req.body; 
     const currentUserID = req.session.userId;
@@ -476,7 +469,6 @@ apiRouter.post('/add-account', async (req, res) => {
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
     const userAccountsCount = await accountsCollection.countDocuments({ ownerUserID: currentUserID });
     
-    // Define o limite de contas baseado no plano (como no freehourboost, 1 conta para free, 33 para pagos)
     let accountLimit = 1; // free
     if (user.plan !== 'free') {
         accountLimit = 33; // Todos os planos pagos
@@ -502,8 +494,6 @@ apiRouter.post('/add-account', async (req, res) => {
     liveAccounts[username] = { ...newAccountData, encryptedPassword: newAccountData.password, status: 'Parado', worker: null }; 
     res.status(200).json({ message: "Conta adicionada." }); 
 });
-
-// Rota /remove-account, /submit-guard, /save-settings (Sem alterações)
 apiRouter.delete('/remove-account/:username', async (req, res) => { 
     const account = liveAccounts[req.params.username]; 
     const currentUserID = req.session.userId;
@@ -566,8 +556,6 @@ apiRouter.post('/save-settings/:username', async (req, res) => {
     }
     res.status(200).json({ message });
 });
-
-// *** ROTA /set-games (COM NOVOS LIMITES DE JOGO) ***
 apiRouter.post('/set-games/:username', async (req, res) => { 
     const { username } = req.params; 
     const { games } = req.body; 
@@ -575,7 +563,6 @@ apiRouter.post('/set-games/:username', async (req, res) => {
     const currentUserID = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
     
-    // Define o limite de JOGOS baseado nos planos das screenshots
     let gameLimit = 1; // free
     if (user.plan === 'basic') gameLimit = 6;
     if (user.plan === 'plus') gameLimit = 12;
@@ -598,8 +585,6 @@ apiRouter.post('/set-games/:username', async (req, res) => {
         res.status(404).json({ message: "Conta não encontrada." }); 
     } 
 });
-
-// Rota /search-game (Sem alterações)
 apiRouter.get('/search-game', async (req, res) => {
     const searchTerm = req.query.q ? req.query.q.toLowerCase() : '';
     if (searchTerm.length < 2) { return res.json([]); }
