@@ -139,7 +139,7 @@ input:checked + .slider:before { transform: translateX(26px); }
 
 
 /* ============================================= */
-/* --- NOVOS ESTILOS (Layout do Dashboard) --- */
+/* --- ESTILOS (Layout do Dashboard) --- */
 /* ============================================= */
 
 .dashboard-layout {
@@ -191,6 +191,7 @@ input:checked + .slider:before { transform: translateX(26px); }
 #sidebarPlan {
     color: var(--pending-color);
     font-size: 12px;
+    margin-top: 4px; /* <--- CORREÇÃO ESTÉTICA ADICIONADA AQUI */
 }
 
 .sidebar-nav {
