@@ -23,6 +23,16 @@ const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime'];
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; // 50 horas
 const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 horas
 
+// --- MAPEAMENTO DE LIMITES DOS PLANOS ---
+const PLAN_LIMITS = {
+    'free': { accounts: 1, games: 1 },
+    'basic': { accounts: 2, games: 6 },
+    'plus': { accounts: 4, games: 12 },
+    'premium': { accounts: 6, games: 24 },
+    'ultimate': { accounts: 10, games: 33 },
+    'lifetime': { accounts: 10, games: 33 }
+};
+
 // --- (Funções sendDiscordNotification, encrypt, decrypt) ---
 // (Sem alterações)
 function sendDiscordNotification(title, message, color, username) {
@@ -341,9 +351,7 @@ apiRouter.post('/login', async (req, res) => {
         res.status(500).json({ message: "Erro interno ao fazer login." });
     }
 });
-
 apiRouter.use(isAuthenticated); 
-
 apiRouter.get('/user-info', async (req, res) => {
     // (Sem alterações)
     try {
@@ -384,7 +392,6 @@ apiRouter.post('/activate-license', async (req, res) => {
         res.status(200).json({ message: `Plano atualizado para ${key.plan} com sucesso!` });
     } catch (error) { console.error("Erro ao ativar licença:", error); res.status(500).json({ message: "Erro interno ao ativar a licença." }); }
 });
-
 apiRouter.post('/change-password', async (req, res) => {
     // (Sem alterações)
     const { currentPassword, newPassword, confirmPassword } = req.body;
@@ -461,8 +468,8 @@ apiRouter.post('/renew-free-time', async (req, res) => {
 });
 
 // --- API DE GESTÃO DE CONTAS ---
-// (Rotas /status, /start, /stop, /bulk-xxx, /add-account, etc. sem alterações)
 apiRouter.get('/status', (req, res) => {
+    // (Sem alterações)
     const publicState = { accounts: {} };
     const currentUserID = req.session.userId;
     for (const username in liveAccounts) {
@@ -474,23 +481,34 @@ apiRouter.get('/status', (req, res) => {
     }
     res.json(publicState);
 });
+
 apiRouter.post('/start/:username', async (req, res) => { 
+    // *** ATUALIZADO: com verificação de limite de jogos ***
     const account = liveAccounts[req.params.username]; 
     const currentUserID = req.session.userId;
     if (account && account.ownerUserID === currentUserID) { 
         const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
+        
         if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
             return res.status(403).json({ message: "Suas horas grátis acabaram. Renove seu tempo para continuar." });
         }
         if (user.plan !== 'free' && user.planExpiresAt && user.planExpiresAt < new Date()) {
              return res.status(403).json({ message: "Seu plano expirou. Renove ou ative uma nova licença." });
         }
+
+        // *** NOVO: Verificação de Limite de Jogos ao Iniciar ***
+        const gameLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].games : 1;
+        if (account.games.length > gameLimit) {
+            return res.status(403).json({ message: `Seu plano (${user.plan}) só permite ${gameLimit} jogo(s). Por favor, remova jogos em 'Gerir Jogos' para iniciar.` });
+        }
+
         const accountData = { ...account, password: decrypt(account.encryptedPassword) }; 
         if (accountData.password) { startWorkerForAccount(accountData); res.status(200).json({ message: "Iniciando worker..." }); } 
         else { res.status(500).json({ message: "Erro ao desencriptar senha."}); } 
     } else { res.status(404).json({ message: "Conta não encontrada." }); } 
 });
 apiRouter.post('/stop/:username', (req, res) => {
+    // (Sem alterações)
     const account = liveAccounts[req.params.username];
     if (account && account.ownerUserID === req.session.userId) {
         if(account.startupTimeout) { clearTimeout(account.startupTimeout); account.startupTimeout = null; }
@@ -502,6 +520,7 @@ apiRouter.post('/stop/:username', (req, res) => {
     } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); }
 });
 apiRouter.post('/bulk-start', async (req, res) => {
+    // (Sem alterações)
     const { usernames } = req.body;
     const currentUserID = req.session.userId;
     if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
@@ -512,20 +531,35 @@ apiRouter.post('/bulk-start', async (req, res) => {
     if (user.plan !== 'free' && user.planExpiresAt && user.planExpiresAt < new Date()) {
          return res.status(403).json({ message: "Seu plano expirou. Renove ou ative uma nova licença." });
     }
+
+    // *** NOVO: Verificação de Limite de Jogos (apenas informa, não bloqueia em massa) ***
+    const gameLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].games : 1;
+    let blockedCount = 0;
+    
     let startedCount = 0;
-    usernames.forEach(username => {
+    for (const username of usernames) {
         const account = liveAccounts[username];
         if (account && account.ownerUserID === currentUserID) {
-            const accountData = { ...account, password: decrypt(account.encryptedPassword) };
-            if (accountData.password) {
-                startWorkerForAccount(accountData);
-                startedCount++;
+            if (account.games.length > gameLimit) {
+                blockedCount++;
+            } else {
+                const accountData = { ...account, password: decrypt(account.encryptedPassword) };
+                if (accountData.password) {
+                    startWorkerForAccount(accountData);
+                    startedCount++;
+                }
             }
         }
-    });
-    res.status(200).json({ message: `${startedCount} contas enviadas para início.` });
+    }
+    
+    let message = `${startedCount} contas enviadas para início.`;
+    if (blockedCount > 0) {
+        message += ` ${blockedCount} contas não iniciadas (limite de jogos do plano excedido).`;
+    }
+    res.status(200).json({ message });
 });
 apiRouter.post('/bulk-stop', (req, res) => {
+    // (Sem alterações)
     const { usernames } = req.body;
     if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
     let stoppedCount = 0;
@@ -543,6 +577,7 @@ apiRouter.post('/bulk-stop', (req, res) => {
     res.status(200).json({ message: `${stoppedCount} contas paradas.` });
 });
 apiRouter.post('/bulk-remove', async (req, res) => {
+    // (Sem alterações)
     const { usernames } = req.body;
     if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
     const currentUserID = req.session.userId;
@@ -560,16 +595,15 @@ apiRouter.post('/bulk-remove', async (req, res) => {
     res.status(200).json({ message: `${usernames.length} contas removidas.` });
 });
 apiRouter.post('/add-account', async (req, res) => { 
+    // *** ATUALIZADO: com novos limites de CONTA ***
     const { username, password } = req.body; 
     const currentUserID = req.session.userId;
     if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); 
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
     const userAccountsCount = await accountsCollection.countDocuments({ ownerUserID: currentUserID });
     
-    let accountLimit = 1; // free
-    if (user.plan !== 'free') {
-        accountLimit = 33; 
-    }
+    // Define o limite de CONTAS baseado no plano
+    const accountLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].accounts : 1;
     
     if (userAccountsCount >= accountLimit) {
         return res.status(403).json({ message: `Seu plano (${user.plan}) permite apenas ${accountLimit} conta(s) Steam.` });
@@ -592,6 +626,7 @@ apiRouter.post('/add-account', async (req, res) => {
     res.status(200).json({ message: "Conta adicionada." }); 
 });
 apiRouter.delete('/remove-account/:username', async (req, res) => { 
+    // (Sem alterações)
     const account = liveAccounts[req.params.username]; 
     const currentUserID = req.session.userId;
     if (account && account.ownerUserID === currentUserID) { 
@@ -609,6 +644,7 @@ apiRouter.delete('/remove-account/:username', async (req, res) => {
     } 
 });
 apiRouter.post('/submit-guard/:username', (req, res) => { 
+    // (Sem alterações)
     const account = liveAccounts[req.params.username]; 
     if (account && account.ownerUserID === req.session.userId && account.worker) { 
         account.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); 
@@ -616,12 +652,12 @@ apiRouter.post('/submit-guard/:username', (req, res) => {
     } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); } 
 });
 apiRouter.post('/save-settings/:username', async (req, res) => {
+    // (Sem alterações)
     const { username } = req.params;
     const { settings, newPassword } = req.body; 
     const account = liveAccounts[username];
     const currentUserID = req.session.userId;
 
-    // *** INÍCIO DA VERIFICAÇÃO DE PLANO (PAYWALL) ***
     try {
         const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
 
@@ -638,9 +674,7 @@ apiRouter.post('/save-settings/:username', async (req, res) => {
     } catch (e) {
         return res.status(500).json({ message: "Erro ao verificar o plano do usuário." });
     }
-    // *** FIM DA VERIFICAÇÃO DE PLANO (PAYWALL) ***
 
-    // Se passou, o usuário tem permissão
     if (!account || account.ownerUserID !== currentUserID) {
         const dbAccount = await accountsCollection.findOne({ username: username, ownerUserID: currentUserID });
         if (!dbAccount) {
@@ -682,12 +716,7 @@ apiRouter.post('/set-games/:username', async (req, res) => {
     const currentUserID = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
     
-    let gameLimit = 1; // free
-    if (user.plan === 'basic') gameLimit = 6;
-    if (user.plan === 'plus') gameLimit = 12;
-    if (user.plan === 'premium') gameLimit = 24;
-    if (user.plan === 'ultimate') gameLimit = 33;
-    if (user.plan === 'lifetime') gameLimit = 33;
+    const gameLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].games : 1;
     
     if (games.length > gameLimit) {
         return res.status(403).json({ message: `Seu plano (${user.plan}) permite um máximo de ${gameLimit} jogos.`});
@@ -721,8 +750,8 @@ app.use('/api', apiRouter); // Monta a API de usuário
 const adminApiRouter = express.Router();
 adminApiRouter.use(isAdminAuthenticated); 
 adminApiRouter.get('/users', async (req, res) => {
+    // (Sem alterações)
     try {
-        // *** ATUALIZADO: para incluir 'freeHoursRemaining' ***
         const users = await usersCollection.find({}, { projection: { password: 0 } }).toArray(); 
         res.json(users);
     } catch (e) {
@@ -908,7 +937,6 @@ async function deductFreeTime() {
 }
 
 // --- RELÓGIO DE EXPIRAÇÃO DE PLANO ---
-// (Sem alterações)
 const PLAN_EXPIRATION_INTERVAL = 60 * 60 * 1000; 
 async function checkExpiredPlans() {
     console.log("[GESTOR DE PLANOS] A verificar planos expirados...");
@@ -926,6 +954,9 @@ async function checkExpiredPlans() {
         for (const user of expiredUsers) {
             console.log(`[GESTOR DE PLANOS] O plano '${user.plan}' do usuário ${user.username} expirou. Revertendo para 'free'.`);
             
+            // *** INÍCIO DO "DOWNGRADE" INTELIGENTE ***
+            
+            // 1. Reverte o plano do usuário
             await usersCollection.updateOne(
                 { _id: user._id },
                 { $set: { 
@@ -935,6 +966,7 @@ async function checkExpiredPlans() {
                 }}
             );
 
+            // 2. Para todas as contas do usuário
             for (const username in liveAccounts) {
                 const account = liveAccounts[username];
                 if (account.ownerUserID === user._id.toString() && account.worker) {
@@ -944,6 +976,25 @@ async function checkExpiredPlans() {
                     account.worker.kill();
                 }
             }
+
+            // 3. Busca todas as contas Steam deste usuário na DB
+            const userSteamAccounts = await accountsCollection.find({ ownerUserID: user._id.toString() }).toArray();
+            if (userSteamAccounts.length > 0) {
+                // 3a. Mantém a primeira conta e reseta os jogos dela
+                const firstAccount = userSteamAccounts[0];
+                await accountsCollection.updateOne(
+                    { _id: firstAccount._id },
+                    { $set: { games: [730] } } // Reseta para 1 jogo padrão
+                );
+                
+                // 3b. Apaga TODAS AS OUTRAS contas (pois o plano 'free' só permite 1)
+                if (userSteamAccounts.length > 1) {
+                    const accountsToDelete = userSteamAccounts.slice(1).map(acc => acc._id);
+                    await accountsCollection.deleteMany({ _id: { $in: accountsToDelete } });
+                    console.log(`[GESTOR DE PLANOS] Downgrade: Apagadas ${accountsToDelete.length} contas extra do usuário ${user.username}.`);
+                }
+            }
+            // *** FIM DO "DOWNGRADE" INTELIGENTE ***
         }
 
     } catch(e) {
