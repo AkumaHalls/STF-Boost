@@ -49,6 +49,7 @@ const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection;
 let siteSettingsCollection;
 let usersCollection; 
+let licensesCollection; // *** NOVA COLEÇÃO PARA LICENÇAS ***
 let liveAccounts = {};
 
 async function connectToDB() { 
@@ -60,9 +61,11 @@ async function connectToDB() {
         accountsCollection = db.collection("accounts");
         siteSettingsCollection = db.collection("site_settings");
         usersCollection = db.collection("users"); 
+        licensesCollection = db.collection("licenses"); // *** NOVA COLEÇÃO ***
         
         await usersCollection.createIndex({ username: 1 }, { unique: true });
         await usersCollection.createIndex({ email: 1 }, { unique: true });
+        await licensesCollection.createIndex({ key: 1 }, { unique: true }); // Chaves de licença devem ser únicas
 
     } catch (e) { 
         console.error("Não foi possível conectar ao MongoDB", e); 
@@ -164,14 +167,12 @@ function startWorkerForAccount(accountData) {
         console.log(`[GESTOR] Worker para ${username} (Dono: ${accountExited.ownerUserID}) saiu com código ${code}.`);
         
         if (accountExited.manual_logout === false && accountExited.settings.autoRelogin === true) {
-            // VERIFICA SE O PLANO AINDA PERMITE REINICIAR
             usersCollection.findOne({ _id: new ObjectId(accountExited.ownerUserID) }).then(user => {
                 if (user && user.plan === 'free' && user.freeHoursRemaining <= 0) {
                     console.log(`[GESTOR] ${username} não será reiniciado. Usuário 'free' sem tempo.`);
                     accountExited.status = "Tempo Esgotado";
                     accountExited.sessionStartTime = null;
                 } else {
-                    // Usuário pago ou free com tempo, reinicia normalmente
                     const restartDelay = wasTimeout ? 5000 : 30000;
                     const reason = wasTimeout ? "devido a um timeout" : "após uma desconexão";
                     sendDiscordNotification("🔄 A Reiniciar Conta", `A conta será reiniciada em ${restartDelay / 1000}s ${reason}.`, 16776960, username);
@@ -201,7 +202,6 @@ async function loadAccountsIntoMemory() {
     const savedAccounts = await accountsCollection.find({ "settings.autoRelogin": true }).toArray(); 
     savedAccounts.forEach((acc, index) => {
         liveAccounts[acc.username] = { ...acc, encryptedPassword: acc.password, settings: { ...defaultSettings, ...(acc.settings || {}) }, status: 'Parado', worker: null, sessionStartTime: null, manual_logout: false };
-        
         const delay = index * 15000;
         console.log(`[GESTOR] Worker para ${acc.username} (Dono: ${acc.ownerUserID}) agendado para iniciar em ${delay / 1000}s.`);
         setTimeout(() => {
@@ -217,7 +217,7 @@ async function loadAccountsIntoMemory() {
 }
 
 // --- EXPRESS APP E ROTAS ---
-// (Sem alterações na configuração)
+// (Sem alterações)
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
 app.use(session({ 
@@ -259,7 +259,7 @@ apiRouter.post('/register', async (req, res) => {
             email,
             password: hashedPassword,
             plan: 'free', 
-            freeHoursRemaining: 100 * 60 * 60 * 1000, // 100 horas grátis
+            freeHoursRemaining: 100 * 60 * 60 * 1000, 
             createdAt: new Date()
         });
         res.status(201).json({ message: "Usuário registado com sucesso!" });
@@ -308,7 +308,6 @@ apiRouter.get('/user-info', async (req, res) => {
         
         let freeHours = 0;
         if (user.plan === 'free' && user.freeHoursRemaining) {
-            // Arredonda para cima
             freeHours = Math.ceil(user.freeHoursRemaining / (60 * 60 * 1000)); 
         }
 
@@ -323,40 +322,76 @@ apiRouter.get('/user-info', async (req, res) => {
     }
 });
 
+// *** NOVA ROTA: Ativar Licença ***
+apiRouter.post('/activate-license', async (req, res) => {
+    const { licenseKey } = req.body;
+    const currentUserID = req.session.userId;
+
+    if (!licenseKey) {
+        return res.status(400).json({ message: "Chave de licença não fornecida." });
+    }
+
+    try {
+        // 1. Encontra a chave
+        const key = await licensesCollection.findOne({ key: licenseKey });
+        if (!key) {
+            return res.status(404).json({ message: "Chave de licença inválida." });
+        }
+
+        // 2. Verifica se já foi usada
+        if (key.isUsed) {
+            return res.status(409).json({ message: "Esta chave de licença já foi utilizada." });
+        }
+
+        // 3. Ativa a chave: Atualiza o usuário
+        const updateResult = await usersCollection.updateOne(
+            { _id: new ObjectId(currentUserID) },
+            { $set: { plan: key.plan } } // 'key.plan' será 'basic', 'plus', 'premium', 'ultimate', 'lifetime'
+        );
+
+        if (updateResult.modifiedCount === 0) {
+            return res.status(500).json({ message: "Não foi possível atualizar o plano do usuário." });
+        }
+
+        // 4. Marca a chave como usada
+        await licensesCollection.updateOne(
+            { _id: key._id },
+            { $set: { isUsed: true, usedBy: new ObjectId(currentUserID), activatedAt: new Date() } }
+        );
+
+        res.status(200).json({ message: `Plano atualizado para ${key.plan} com sucesso!` });
+
+    } catch (error) {
+        console.error("Erro ao ativar licença:", error);
+        res.status(500).json({ message: "Erro interno ao ativar a licença." });
+    }
+});
+
+// --- API DE GESTÃO DE CONTAS (com filtros) ---
+
 // Rota /status (Sem alterações)
 apiRouter.get('/status', (req, res) => {
     const publicState = { accounts: {} };
     const currentUserID = req.session.userId;
-
     for (const username in liveAccounts) {
         const acc = liveAccounts[username];
         if (acc.ownerUserID === currentUserID) {
-            const publicData = {
-                username: acc.username,
-                status: acc.status,
-                games: acc.games,
-                settings: acc.settings,
-                uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0
-            };
+            const publicData = { username: acc.username, status: acc.status, games: acc.games, settings: acc.settings, uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0 };
             publicState.accounts[username] = publicData;
         }
     }
     res.json(publicState);
 });
 
-// *** ROTA /start/:username (COM VERIFICAÇÃO DE TEMPO) ***
+// Rota /start/:username (Sem alterações)
 apiRouter.post('/start/:username', async (req, res) => { 
     const account = liveAccounts[req.params.username]; 
     const currentUserID = req.session.userId;
-
     if (account && account.ownerUserID === currentUserID) { 
-        // --- INÍCIO DA VERIFICAÇÃO DE PLANO ---
         const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
         if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
             return res.status(403).json({ message: "Suas horas grátis acabaram. Faça upgrade para continuar." });
         }
-        // --- FIM DA VERIFICAÇÃO DE PLANO ---
-
         const accountData = { ...account, password: decrypt(account.encryptedPassword) }; 
         if (accountData.password) { startWorkerForAccount(accountData); res.status(200).json({ message: "Iniciando worker..." }); } 
         else { res.status(500).json({ message: "Erro ao desencriptar senha."}); } 
@@ -381,14 +416,10 @@ apiRouter.post('/bulk-start', async (req, res) => {
     const { usernames } = req.body;
     const currentUserID = req.session.userId;
     if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
-
-    // --- INÍCIO DA VERIFICAÇÃO DE PLANO ---
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
     if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
         return res.status(403).json({ message: "Suas horas grátis acabaram. Faça upgrade para continuar." });
     }
-    // --- FIM DA VERIFICAÇÃO DE PLANO ---
-
     let startedCount = 0;
     usernames.forEach(username => {
         const account = liveAccounts[username];
@@ -437,26 +468,28 @@ apiRouter.post('/bulk-remove', async (req, res) => {
     res.status(200).json({ message: `${usernames.length} contas removidas.` });
 });
 
-// Rota /add-account (Sem alterações)
+// *** ROTA /add-account (COM NOVOS LIMITES DE CONTA) ***
 apiRouter.post('/add-account', async (req, res) => { 
     const { username, password } = req.body; 
     const currentUserID = req.session.userId;
     if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); 
-
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
     const userAccountsCount = await accountsCollection.countDocuments({ ownerUserID: currentUserID });
     
-    // (Vamos ajustar os limites exatos dos planos mais tarde)
-    if (user.plan === 'free' && userAccountsCount >= 1) {
-        return res.status(403).json({ message: "Seu plano gratuito permite apenas 1 conta Steam. Faça upgrade para adicionar mais." });
+    // Define o limite de contas baseado no plano (como no freehourboost, 1 conta para free, 33 para pagos)
+    let accountLimit = 1; // free
+    if (user.plan !== 'free') {
+        accountLimit = 33; // Todos os planos pagos
+    }
+    
+    if (userAccountsCount >= accountLimit) {
+        return res.status(403).json({ message: `Seu plano (${user.plan}) permite apenas ${accountLimit} conta(s) Steam.` });
     }
 
     const existing = await accountsCollection.findOne({ username }); 
     if (existing) return res.status(400).json({ message: "Esta conta Steam já está a ser usada por outro usuário." }); 
-
     const encryptedPassword = encrypt(password); 
     if (!encryptedPassword) { return res.status(500).json({ message: "Falha ao encriptar senha ao adicionar conta."}); } 
-    
     const newAccountData = { 
         username, 
         password: encryptedPassword, 
@@ -465,13 +498,12 @@ apiRouter.post('/add-account', async (req, res) => {
         sentryFileHash: null,
         ownerUserID: currentUserID 
     }; 
-    
     await accountsCollection.insertOne(newAccountData); 
     liveAccounts[username] = { ...newAccountData, encryptedPassword: newAccountData.password, status: 'Parado', worker: null }; 
     res.status(200).json({ message: "Conta adicionada." }); 
 });
 
-// Rotas /remove-account, /submit-guard, /save-settings, /set-games, /search-game (Sem alterações)
+// Rota /remove-account, /submit-guard, /save-settings (Sem alterações)
 apiRouter.delete('/remove-account/:username', async (req, res) => { 
     const account = liveAccounts[req.params.username]; 
     const currentUserID = req.session.userId;
@@ -534,15 +566,22 @@ apiRouter.post('/save-settings/:username', async (req, res) => {
     }
     res.status(200).json({ message });
 });
+
+// *** ROTA /set-games (COM NOVOS LIMITES DE JOGO) ***
 apiRouter.post('/set-games/:username', async (req, res) => { 
     const { username } = req.params; 
     const { games } = req.body; 
     const account = liveAccounts[username]; 
     const currentUserID = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
-    let gameLimit = 2; // Limite 'free'
-    if (user.plan === 'premium') gameLimit = 24; 
-    if (user.plan === 'lifetime') gameLimit = 33; 
+    
+    // Define o limite de JOGOS baseado nos planos das screenshots
+    let gameLimit = 1; // free
+    if (user.plan === 'basic') gameLimit = 6;
+    if (user.plan === 'plus') gameLimit = 12;
+    if (user.plan === 'premium') gameLimit = 24;
+    if (user.plan === 'ultimate') gameLimit = 33;
+    if (user.plan === 'lifetime') gameLimit = 33;
     
     if (games.length > gameLimit) {
         return res.status(403).json({ message: `Seu plano (${user.plan}) permite um máximo de ${gameLimit} jogos.`});
@@ -559,6 +598,8 @@ apiRouter.post('/set-games/:username', async (req, res) => {
         res.status(404).json({ message: "Conta não encontrada." }); 
     } 
 });
+
+// Rota /search-game (Sem alterações)
 apiRouter.get('/search-game', async (req, res) => {
     const searchTerm = req.query.q ? req.query.q.toLowerCase() : '';
     if (searchTerm.length < 2) { return res.json([]); }
@@ -571,59 +612,46 @@ apiRouter.get('/search-game', async (req, res) => {
 
 app.use('/api', apiRouter);
 
-// --- *** NOVO: LÓGICA DE DESCONTO DE TEMPO *** ---
-const TIME_DEDUCTION_INTERVAL = 5 * 60 * 1000; // 5 minutos
-
+// --- LÓGICA DE DESCONTO DE TEMPO ---
+// (Sem alterações)
+const TIME_DEDUCTION_INTERVAL = 5 * 60 * 1000; 
 async function deductFreeTime() {
     console.log("[GESTOR DE TEMPO] A verificar contas 'free' ativas...");
     const activeUserIDs = new Set();
-
-    // 1. Encontra todos os usuários 'free' que estão com contas ativas
     for (const username in liveAccounts) {
         const account = liveAccounts[username];
         if (account.status === "Rodando") {
             activeUserIDs.add(account.ownerUserID);
         }
     }
-
     if (activeUserIDs.size === 0) {
         console.log("[GESTOR DE TEMPO] Nenhuma conta 'free' ativa encontrada.");
         return;
     }
-
-    // 2. Desconta o tempo desses usuários no MongoDB
     const usersToUpdate = Array.from(activeUserIDs).map(id => new ObjectId(id));
-    
     try {
         const updateResult = await usersCollection.updateMany(
             { _id: { $in: usersToUpdate }, plan: 'free', freeHoursRemaining: { $gt: 0 } },
             { $inc: { freeHoursRemaining: -TIME_DEDUCTION_INTERVAL } }
         );
-
         if (updateResult.modifiedCount > 0) {
             console.log(`[GESTOR DE TEMPO] Descontado tempo de ${updateResult.modifiedCount} usuários 'free'.`);
         }
-
-        // 3. Verifica se algum usuário ficou sem tempo
         const usersOutOfTime = await usersCollection.find(
             { _id: { $in: usersToUpdate }, plan: 'free', freeHoursRemaining: { $lte: 0 } }
         ).toArray();
-
         for (const user of usersOutOfTime) {
             console.log(`[GESTOR DE TEMPO] Usuário ${user.username} (${user._id}) ficou sem tempo. A parar contas...`);
-            
-            // Para todas as contas ativas desse usuário
             for (const username in liveAccounts) {
                 const account = liveAccounts[username];
                 if (account.ownerUserID === user._id.toString() && account.worker) {
                     console.log(`[GESTOR DE TEMPO] A parar ${username} por falta de tempo.`);
                     account.status = "Tempo Esgotado";
-                    account.manual_logout = true; // Impede reinício automático
+                    account.manual_logout = true; 
                     account.worker.kill();
                 }
             }
         }
-
     } catch (e) {
         console.error("[GESTOR DE TEMPO] Erro ao descontar tempo:", e);
     }
@@ -635,7 +663,6 @@ async function startServer() {
     await initializeMasterKey();
     await loadAccountsIntoMemory(); 
     
-    // Inicia o relógio de desconto de tempo
     setInterval(deductFreeTime, TIME_DEDUCTION_INTERVAL);
     console.log(`[GESTOR DE TEMPO] Relógio de desconto de horas iniciado (a cada ${TIME_DEDUCTION_INTERVAL / 60000} minutos).`);
 
