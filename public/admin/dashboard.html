@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - STF Boost</title>
+    <link rel="icon" type="image/png" href="/logo.png?v=1.1">
+    <link rel="stylesheet" href="/style.css?v=1.5"> 
+</head>
+<body class="panel-page">
+
+    <div class="dashboard-layout">
+        
+        <nav class="sidebar">
+            <div class="sidebar-logo">
+                <img src="/logo.png" alt="Logo">
+                <h1 class="glitch-title" data-text="ADMIN">ADMIN</h1>
+            </div>
+            
+            <div class="sidebar-user">
+                <span id="sidebarUser">Painel de Admin</span>
+                <span id="sidebarPlan" style="margin-top: 4px;">Controlo Total</span>
+            </div>
+
+            <div class="sidebar-nav">
+                <span class="nav-title">Gestão</span>
+                <a href="/admin/dashboard" class="active">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Usuários e Licenças
+                </a>
+            </div>
+
+            <div class="sidebar-nav">
+                <span class="nav-title">Site</span>
+                <a href="/">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Ver Landing Page
+                </a>
+                <a href="/admin/logout" class="logout-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                    Logout
+                </a>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <div class="admin-container">
+                
+                <div class="admin-card">
+                    <h2>Gerador de Licenças</h2>
+                    <div class="admin-form">
+                        <label for="planSelect">Plano:</label>
+                        <select id="planSelect">
+                            <option value="basic">Basic</option>
+                            <option value="plus">Plus</option>
+                            <option value="premium">Premium</option>
+                            <option value="ultimate">Ultimate</option>
+                            <option value="lifetime">Lifetime</option>
+                        </select>
+                        <label for="quantityInput">Quantidade:</label>
+                        <input type="number" id="quantityInput" value="1" min="1" max="50">
+                        <button id="generateKeysButton">Gerar</button>
+                    </div>
+                    <div id="generatedKeys">
+                        <pre id="keysOutput"></pre>
+                    </div>
+                </div>
+
+                <div class="admin-card">
+                    <h2>Usuários Registrados</h2>
+                    <div class="admin-table-wrapper">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Usuário</th>
+                                    <th>Email</th>
+                                    <th>Plano</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <tr><td colspan="5" style="text-align: center;">A carregar...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div> 
+
+    <div id="toastContainer"></div>
+
+    <script>
+        // Funções de Toast (copiadas para serem independentes)
+        function showToast(message, type = 'info') { 
+            const container = document.getElementById('toastContainer'); 
+            const toast = document.createElement('div'); 
+            toast.className = `toast ${type}`; 
+            toast.textContent = message; 
+            container.appendChild(toast); 
+            setTimeout(() => toast.classList.add('show'), 10); 
+            setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 4000); 
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const usersTableBody = document.getElementById('usersTableBody');
+            const generateKeysButton = document.getElementById('generateKeysButton');
+            const planSelect = document.getElementById('planSelect');
+            const quantityInput = document.getElementById('quantityInput');
+            const generatedKeys = document.getElementById('generatedKeys');
+            const keysOutput = document.getElementById('keysOutput');
+
+            // --- Carrega a lista de usuários ---
+            async function fetchUsers() {
+                try {
+                    const response = await fetch('/api/admin/users');
+                    if (!response.ok) {
+                        if (response.status === 401) window.location.href = '/admin/login?error=unauthorized';
+                        return;
+                    }
+                    const users = await response.json();
+                    renderUsers(users);
+                } catch (e) {
+                    showToast("Erro ao carregar usuários.", 'error');
+                }
+            }
+
+            // --- Renderiza a tabela de usuários ---
+            function renderUsers(users) {
+                usersTableBody.innerHTML = '';
+                if (users.length === 0) {
+                    usersTableBody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Nenhum usuário registrado.</td></tr>';
+                    return;
+                }
+                users.forEach(user => {
+                    const row = document.createElement('tr');
+                    const isBanned = user.isBanned || false;
+                    
+                    row.innerHTML = `
+                        <td>${user.username}</td>
+                        <td>${user.email}</td>
+                        <td>${user.plan}</td>
+                        <td class="${isBanned ? 'status-banned' : ''}">${isBanned ? 'Banido' : 'Ativo'}</td>
+                        <td class="actions-cell">
+                            <button class="${isBanned ? 'unban-btn' : 'ban-btn'}" data-userid="${user._id}">
+                                ${isBanned ? 'Desbanir' : 'Banir'}
+                            </button>
+                        </td>
+                    `;
+                    usersTableBody.appendChild(row);
+                });
+            }
+
+            // --- Event Listener para Gerar Chaves ---
+            generateKeysButton.addEventListener('click', async () => {
+                const plan = planSelect.value;
+                const quantity = quantityInput.value;
+                
+                try {
+                    const response = await fetch('/api/admin/generate-keys', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ plan, quantity })
+                    });
+                    const result = await response.json();
+                    showToast(result.message, response.ok ? 'info' : 'error');
+
+                    if (response.ok && result.keys) {
+                        keysOutput.textContent = result.keys.join('\n');
+                        generatedKeys.style.display = 'block';
+                    } else {
+                        generatedKeys.style.display = 'none';
+                    }
+                } catch (e) {
+                    showToast("Erro ao gerar chaves.", 'error');
+                }
+            });
+
+            // --- Event Listener para botões de Banir/Desbanir ---
+            usersTableBody.addEventListener('click', async (e) => {
+                const target = e.target;
+                if (!target.dataset.userid) return;
+
+                const userId = target.dataset.userid;
+                const isBanned = target.classList.contains('ban-btn');
+                const url = isBanned ? '/api/admin/ban-user' : '/api/admin/unban-user';
+                const actionText = isBanned ? 'banir' : 'desbanir';
+
+                if (!confirm(`Tem certeza que deseja ${actionText} este usuário?`)) return;
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId })
+                    });
+                    const result = await response.json();
+                    showToast(result.message, response.ok ? 'info' : 'error');
+                    
+                    if (response.ok) {
+                        fetchUsers(); // Recarrega a tabela de usuários
+                    }
+                } catch (e) {
+                    showToast(`Erro ao ${actionText} usuário.`, 'error');
+                }
+            });
+
+            // --- Inicialização ---
+            fetchUsers();
+        });
+    </script>
+</body>
+</html>

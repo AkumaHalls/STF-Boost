@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Login - STF Boost</title>
+    <link rel="icon" type="image/png" href="/logo.png?v=1.1">
+    <link rel="stylesheet" href="/style.css?v=1.5"> 
+    <style>
+        /* Estilos da página de login vêm do style.css principal */
+    </style>
+</head>
+<body class="panel-page login-page">
+
+    <div class="login-box">
+        <div class="sidebar-logo" style="justify-content: center; padding-bottom: 20px;">
+            <img src="/logo.png" alt="Logo STF Steam Boost">
+            <h1 class="glitch-title" data-text="ADMIN">ADMIN</h1>
+        </div>
+        
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+        <form action="/admin/login" method="POST" class="space-y-6">
+            <input type="password" id="password" name="password" required placeholder="SENHA MESTRA">
+            <button type="submit" id="submitButton" class="tech-font">
+                Aceder
+            </button>
+        </form>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const errorDiv = document.getElementById('errorMessage');
+            if (urlParams.get('error') === 'unauthorized') {
+                errorDiv.textContent = 'Você precisa estar logado como admin.';
+                errorDiv.style.display = 'block';
+            } else if (urlParams.get('error') === 'invalid') {
+                errorDiv.textContent = 'Senha mestra incorreta.';
+                errorDiv.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
