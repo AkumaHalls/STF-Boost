@@ -183,7 +183,7 @@ input:checked + .slider:before { transform: translateX(26px); }
 }
 .admin-form {
     display: flex;
-    flex-wrap: wrap; /* Permite quebrar a linha em telas pequenas */
+    flex-wrap: wrap; 
     gap: 10px;
     align-items: center;
 }
@@ -238,7 +238,7 @@ input:checked + .slider:before { transform: translateX(26px); }
     text-align: left;
     border-bottom: 1px solid rgba(0, 255, 255, 0.2);
     vertical-align: middle;
-    white-space: nowrap; /* Impede que o conteúdo quebre linha */
+    white-space: nowrap; 
 }
 .admin-table th {
     color: var(--primary-color);
@@ -263,18 +263,25 @@ input:checked + .slider:before { transform: translateX(26px); }
     background-color: var(--pending-color);
     color: var(--dark-bg);
 }
-.admin-table .delete-btn {
+.admin-table .delete-btn, .admin-table .delete-key-btn {
     border-color: #ff6B6B;
     color: #ff6B6B;
     padding: 5px 10px;
     font-size: 12px;
 }
-.admin-table .delete-btn:hover {
+.admin-table .delete-btn:hover, .admin-table .delete-key-btn:hover {
     background-color: #ff6B6B;
     color: var(--dark-bg);
 }
 .admin-table .status-banned {
     color: var(--secondary-color);
+    font-weight: bold;
+}
+.admin-table .status-used {
+    color: #888;
+}
+.admin-table .status-unused {
+    color: #90ee90;
     font-weight: bold;
 }
 .admin-table select {
