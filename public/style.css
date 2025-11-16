@@ -101,8 +101,8 @@ header .glitch-title { font-size: 24px; }
 
 /* Página de Login */
 .login-box { position: relative; background: rgba(10, 10, 20, 0.7); padding: 40px; border-radius: 4px; border: 1px solid var(--primary-color); box-shadow: 0 0 25px var(--primary-color); text-align: center; width: 90%; max-width: 400px; backdrop-filter: blur(5px); box-sizing: border-box; }
-.login-box input[type="password"] { width: 100%; background: transparent; border: none; border-bottom: 2px solid var(--primary-color); color: #fff; padding: 10px 0; font-size: 18px; margin-bottom: 30px; font-family: 'Share Tech Mono', monospace; box-sizing: border-box; }
-.login-box input[type="password"]:focus { outline: none; border-bottom-color: var(--secondary-color); }
+.login-box input[type="password"], .login-box input[type="text"] { width: 100%; background: transparent; border: none; border-bottom: 2px solid var(--primary-color); color: #fff; padding: 10px 0; font-size: 18px; margin-bottom: 30px; font-family: 'Share Tech Mono', monospace; box-sizing: border-box; }
+.login-box input[type="password"]:focus, .login-box input[type="text"]:focus { outline: none; border-bottom-color: var(--secondary-color); }
 .login-box button { width: 100%; }
 .error-message { color: var(--secondary-color); background-color: rgba(255, 0, 255, 0.1); border: 1px solid var(--secondary-color); padding: 10px; margin-bottom: 20px; border-radius: 4px; font-size: 14px; }
 
@@ -138,109 +138,124 @@ input:checked + .slider:before { transform: translateX(26px); }
 /* ============================================= */
 /* --- ESTILOS (Layout do Dashboard) --- */
 /* ============================================= */
+.dashboard-layout { display: flex; height: 100vh; }
+.sidebar { width: 250px; background-color: rgba(10, 10, 20, 0.8); border-right: 1px solid var(--primary-color); box-shadow: 0 0 20px rgba(0, 255, 255, 0.3); padding: 20px; display: flex; flex-direction: column; gap: 20px; flex-shrink: 0; overflow-y: auto; }
+.sidebar-logo { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid rgba(0, 255, 255, 0.3); padding-bottom: 15px; }
+.sidebar-logo img { width: 30px; height: 30px; }
+.sidebar-logo .glitch-title { font-size: 20px; }
+.sidebar-user { display: flex; flex-direction: column; padding: 10px; background-color: rgba(0, 255, 255, 0.05); border: 1px solid rgba(0, 255, 255, 0.2); border-radius: 4px; font-size: 14px; }
+#sidebarUser { color: var(--primary-color); font-weight: bold; }
+#sidebarPlan { color: var(--pending-color); font-size: 12px; margin-top: 4px; }
+.sidebar-nav { display: flex; flex-direction: column; }
+.sidebar-nav .nav-title { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 10px; }
+.sidebar-nav a { color: #c7d5e0; text-decoration: none; padding: 12px 10px; display: flex; align-items: center; gap: 10px; border-radius: 4px; transition: all 0.2s ease-in-out; border: 1px solid transparent; }
+.sidebar-nav a:hover { background-color: rgba(0, 255, 255, 0.1); color: var(--primary-color); }
+.sidebar-nav a.active { background-color: rgba(0, 255, 255, 0.2); color: var(--primary-color); border-color: var(--primary-color); box-shadow: 0 0 10px rgba(0, 255, 255, 0.3); }
+.sidebar-nav a.logout-btn { margin-top: 20px; color: #ff6B6B; }
+.sidebar-nav a.logout-btn:hover { background-color: rgba(255, 0, 255, 0.1); color: var(--secondary-color); }
+.main-content { flex-grow: 1; padding: 20px; overflow-y: auto; height: 100vh; box-sizing: border-box; }
+.main-content .control-panel { height: auto; min-height: 100%; }
 
-.dashboard-layout {
-    display: flex;
-    height: 100vh;
-}
-
-.sidebar {
-    width: 250px;
-    background-color: rgba(10, 10, 20, 0.8);
-    border-right: 1px solid var(--primary-color);
-    box-shadow: 0 0 20px rgba(0, 255, 255, 0.3);
-    padding: 20px;
+/* ============================================= */
+/* --- NOVOS ESTILOS (Painel Admin) --- */
+/* ============================================= */
+.admin-container {
     display: flex;
     flex-direction: column;
     gap: 20px;
-    flex-shrink: 0; 
-    overflow-y: auto;
 }
-
-.sidebar-logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+.admin-card {
+    background-color: rgba(10, 10, 20, 0.7); 
+    border: 1px solid var(--primary-color); 
+    backdrop-filter: blur(5px); 
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.5); 
+    border-radius: 8px; 
+    padding: 20px; 
+    box-sizing: border-box; 
+}
+.admin-card h2 {
+    color: var(--primary-color);
+    font-size: 1.5em;
+    margin-top: 0;
+    margin-bottom: 15px;
     border-bottom: 1px solid rgba(0, 255, 255, 0.3);
-    padding-bottom: 15px;
+    padding-bottom: 10px;
 }
-.sidebar-logo img {
-    width: 30px;
-    height: 30px;
-}
-.sidebar-logo .glitch-title {
-    font-size: 20px;
-}
-
-.sidebar-user {
+.admin-form {
     display: flex;
-    flex-direction: column;
-    padding: 10px;
-    background-color: rgba(0, 255, 255, 0.05);
-    border: 1px solid rgba(0, 255, 255, 0.2);
+    gap: 10px;
+    align-items: center;
+}
+.admin-form select, .admin-form input {
+    font-family: 'Share Tech Mono', monospace;
+    background-color: var(--dark-bg);
+    border: 1px solid var(--primary-color);
+    color: #c7d5e0;
+    padding: 8px;
     border-radius: 4px;
     font-size: 14px;
 }
-#sidebarUser {
-    color: var(--primary-color);
-    font-weight: bold;
+.admin-form select {
+    width: 200px;
 }
-#sidebarPlan {
-    color: var(--pending-color);
-    font-size: 12px;
-    margin-top: 4px; /* <--- CORREÇÃO ESTÉTICA */
+.admin-form input {
+    width: 100px;
 }
-
-.sidebar-nav {
-    display: flex;
-    flex-direction: column;
-}
-.sidebar-nav .nav-title {
-    font-size: 12px;
-    color: #888;
-    text-transform: uppercase;
-    margin-bottom: 10px;
-}
-.sidebar-nav a {
-    color: #c7d5e0;
-    text-decoration: none;
-    padding: 12px 10px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
+#generatedKeys {
+    margin-top: 15px;
+    padding: 10px;
+    background: rgba(0,0,0,0.3);
+    border: 1px dashed var(--primary-color);
     border-radius: 4px;
-    transition: all 0.2s ease-in-out;
-    border: 1px solid transparent;
+    max-height: 150px;
+    overflow-y: auto;
+    font-size: 12px;
+    display: none; /* Começa escondido */
 }
-.sidebar-nav a:hover {
-    background-color: rgba(0, 255, 255, 0.1);
+#generatedKeys pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.admin-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+}
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+.admin-table th, .admin-table td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+    vertical-align: middle;
+}
+.admin-table th {
     color: var(--primary-color);
 }
-.sidebar-nav a.active {
-    background-color: rgba(0, 255, 255, 0.2);
-    color: var(--primary-color);
-    border-color: var(--primary-color);
-    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-}
-
-.sidebar-nav a.logout-btn {
-    margin-top: 20px;
-    color: #ff6B6B; 
-}
-.sidebar-nav a.logout-btn:hover {
-    background-color: rgba(255, 0, 255, 0.1);
+.admin-table .ban-btn {
+    border-color: var(--secondary-color);
     color: var(--secondary-color);
+    padding: 5px 10px;
+    font-size: 12px;
 }
-
-.main-content {
-    flex-grow: 1; 
-    padding: 20px;
-    overflow-y: auto; 
-    height: 100vh;
-    box-sizing: border-box;
+.admin-table .ban-btn:hover {
+    background-color: var(--secondary-color);
+    color: var(--dark-bg);
 }
-
-.main-content .control-panel {
-    height: auto;
-    min-height: 100%; 
+.admin-table .unban-btn {
+    border-color: var(--pending-color);
+    color: var(--pending-color);
+    padding: 5px 10px;
+    font-size: 12px;
+}
+.admin-table .unban-btn:hover {
+    background-color: var(--pending-color);
+    color: var(--dark-bg);
+}
+.admin-table .status-banned {
+    color: var(--secondary-color);
+    font-weight: bold;
 }
