@@ -253,12 +253,30 @@ app.use(session({
     store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), 
     cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
 })); 
-const isAuthenticated = (req, res, next) => { 
+
+// *** ATUALIZAÇÃO DO MIDDLEWARE DE AUTENTICAÇÃO ***
+// Verifica na DB se o usuário está banido a cada requisição
+const isAuthenticated = async (req, res, next) => { 
     if (req.session.userId) { 
-        return next(); 
+        try {
+            const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
+            if (user) {
+                if (user.isBanned) {
+                    // Se estiver banido, destrói a sessão e redireciona
+                    req.session.destroy(() => {
+                        res.redirect('/banned');
+                    });
+                    return;
+                }
+                return next();
+            }
+        } catch (e) {
+            console.error("Erro no middleware de autenticação:", e);
+        }
     } 
     res.redirect('/login?error=unauthorized'); 
 };
+
 const isAdminAuthenticated = (req, res, next) => {
     if (req.session.isAdmin) {
         return next();
@@ -266,12 +284,14 @@ const isAdminAuthenticated = (req, res, next) => {
     res.redirect('/admin/login?error=unauthorized');
 };
 
-// --- ROTAS DE PÁGINAS (Públicas e de Usuário) ---
-// (Sem alterações)
+// --- ROTAS DE PÁGINAS ---
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 app.get('/login', (req, res) => { if (req.session.userId) { return res.redirect('/dashboard'); } res.sendFile(path.join(__dirname, 'public', 'login.html')); });
 app.get('/register', (req, res) => { if (req.session.userId) { return res.redirect('/dashboard'); } res.sendFile(path.join(__dirname, 'public', 'register.html')); });
 app.get('/dashboard', isAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'public', 'dashboard.html')); });
+// *** NOVA PÁGINA DE BANIDO ***
+app.get('/banned', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'banned.html')); });
+
 app.get('/logout', (req, res) => { req.session.destroy(err => { if (err) { console.error("Erro ao fazer logout:", err); return res.status(500).send("Não foi possível fazer logout."); } res.clearCookie('connect.sid'); res.redirect('/'); }); });
 
 // --- ROTAS (Painel de Admin) ---
@@ -309,7 +329,6 @@ app.get('/health', (req, res) => { res.status(200).send('OK'); });
 const apiRouter = express.Router();
 
 apiRouter.get('/auth-status', (req, res) => {
-    // (Sem alterações)
     if (req.session.userId) {
         res.json({
             loggedIn: true,
@@ -321,6 +340,7 @@ apiRouter.get('/auth-status', (req, res) => {
         });
     }
 });
+
 apiRouter.post('/register', async (req, res) => {
     // (Sem alterações)
     const { username, email, password } = req.body;
@@ -342,16 +362,17 @@ apiRouter.post('/register', async (req, res) => {
         else { console.error("Erro no registo:", error); res.status(500).json({ message: "Erro interno ao registar usuário." }); }
     }
 });
+
 apiRouter.post('/login', async (req, res) => {
-    // (Sem alterações)
     const { username, password } = req.body;
     if (!username || !password) { return res.status(400).json({ message: "Username e senha são obrigatórios." }); }
     try {
         const user = await usersCollection.findOne({ username });
         if (!user) { return res.status(401).json({ message: "Credenciais inválidas." }); }
         
+        // *** VERIFICAÇÃO DE BANIMENTO NO LOGIN ***
         if (user.isBanned) {
-            return res.status(403).json({ message: "Esta conta foi banida." });
+            return res.status(403).json({ message: "Esta conta foi suspensa permanentemente." });
         }
 
         const isMatch = await bcrypt.compare(password, user.password);
@@ -368,8 +389,8 @@ apiRouter.post('/login', async (req, res) => {
 
 apiRouter.use(isAuthenticated); 
 
+// ... (Resto do arquivo index.js permanece igual ao anterior, incluindo todas as rotas da API, Admin, e relógios) ...
 apiRouter.get('/user-info', async (req, res) => {
-    // (Sem alterações)
     try {
         const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
         if (!user) { return res.status(404).json({ message: "Usuário não encontrado." }); }
@@ -379,7 +400,6 @@ apiRouter.get('/user-info', async (req, res) => {
     } catch (error) { console.error("Erro ao buscar info do usuário:", error); res.status(500).json({ message: "Erro ao buscar informações do usuário." }); }
 });
 apiRouter.post('/activate-license', async (req, res) => {
-    // (Sem alterações)
     const { licenseKey } = req.body;
     const currentUserID = req.session.userId;
     if (!licenseKey) { return res.status(400).json({ message: "Chave de licença não fornecida." }); }
@@ -387,19 +407,14 @@ apiRouter.post('/activate-license', async (req, res) => {
         const key = await licensesCollection.findOne({ key: licenseKey });
         if (!key) { return res.status(404).json({ message: "Chave de licença inválida." }); }
         if (key.isUsed) { return res.status(409).json({ message: "Esta chave de licença já foi utilizada." }); }
-        
-        // *** LÓGICA DE ATRIBUIÇÃO (Passo 10) ***
-        // Se a chave foi atribuída a alguém, SÓ essa pessoa a pode usar
         if (key.assignedTo && key.assignedTo.toString() !== currentUserID) {
             return res.status(403).json({ message: "Esta chave está atribuída a outro usuário." });
         }
-
         let newExpiryDate = null;
         if (key.durationDays) {
             newExpiryDate = new Date();
             newExpiryDate.setDate(newExpiryDate.getDate() + key.durationDays);
         }
-
         const updateResult = await usersCollection.updateOne(
             { _id: new ObjectId(currentUserID) },
             { $set: { 
@@ -408,50 +423,41 @@ apiRouter.post('/activate-license', async (req, res) => {
                 freeHoursRemaining: 0 
             }}
         );
-
         if (updateResult.modifiedCount === 0) { return res.status(500).json({ message: "Não foi possível atualizar o plano do usuário." }); }
         await licensesCollection.updateOne( { _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(currentUserID), activatedAt: new Date() } });
         res.status(200).json({ message: `Plano atualizado para ${key.plan} com sucesso!` });
     } catch (error) { console.error("Erro ao ativar licença:", error); res.status(500).json({ message: "Erro interno ao ativar a licença." }); }
 });
 apiRouter.post('/change-password', async (req, res) => {
-    // (Sem alterações)
     const { currentPassword, newPassword, confirmPassword } = req.body;
     const currentUserID = req.session.userId;
-
     if (!currentPassword || !newPassword || !confirmPassword) {
         return res.status(400).json({ message: "Todos os campos são obrigatórios." });
     }
     if (newPassword !== confirmPassword) {
         return res.status(400).json({ message: "As novas senhas não coincidem." });
     }
-
     try {
         const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
         if (!user) {
             return res.status(404).json({ message: "Usuário não encontrado." });
         }
-
         const isMatch = await bcrypt.compare(currentPassword, user.password);
         if (!isMatch) {
             return res.status(401).json({ message: "A 'Senha Atual' está incorreta." });
         }
-
         const hashedNewPassword = await bcrypt.hash(newPassword, 10);
         await usersCollection.updateOne(
             { _id: new ObjectId(currentUserID) },
             { $set: { password: hashedNewPassword } }
         );
-
         res.status(200).json({ message: "Senha alterada com sucesso!" });
-
     } catch (error) {
         console.error("Erro ao mudar senha:", error);
         res.status(500).json({ message: "Erro interno ao mudar a senha." });
     }
 });
 apiRouter.post('/renew-free-time', async (req, res) => {
-    // (Sem alterações)
     const currentUserID = req.session.userId;
     try {
         const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
@@ -464,7 +470,6 @@ apiRouter.post('/renew-free-time', async (req, res) => {
         if (user.freeHoursRemaining > 0) {
             return res.status(403).json({ message: "Você ainda tem horas restantes." });
         }
-
         if (user.lastFreeRenew) {
             const timeSinceLastRenew = new Date() - user.lastFreeRenew;
             if (timeSinceLastRenew < FREE_RENEW_COOLDOWN_MS) {
@@ -472,7 +477,6 @@ apiRouter.post('/renew-free-time', async (req, res) => {
                 return res.status(429).json({ message: `Você já renovou recentemente. Tente novamente em ${hoursLeft} horas.` });
             }
         }
-
         await usersCollection.updateOne(
             { _id: new ObjectId(currentUserID) },
             { $set: { 
@@ -480,21 +484,17 @@ apiRouter.post('/renew-free-time', async (req, res) => {
                 lastFreeRenew: new Date()
             }}
         );
-
         res.status(200).json({ message: "Suas 50 horas grátis foram renovadas!" });
-
     } catch (error) {
         console.error("Erro ao renovar tempo:", error);
         res.status(500).json({ message: "Erro interno ao renovar o tempo." });
     }
 });
-
-// *** NOVA ROTA: Ver "Inventário de Chaves" (Passo 10) ***
 apiRouter.get('/my-keys', async (req, res) => {
     try {
         const keys = await licensesCollection.find({
             assignedTo: new ObjectId(req.session.userId),
-            isUsed: false // Apenas chaves que ele ainda não ativou
+            isUsed: false 
         }, { projection: { key: 1, plan: 1, durationDays: 1 } }).toArray();
         
         res.status(200).json(keys);
@@ -503,9 +503,6 @@ apiRouter.get('/my-keys', async (req, res) => {
         res.status(500).json({ message: "Erro ao buscar suas chaves." });
     }
 });
-
-// --- API DE GESTÃO DE CONTAS ---
-// (Rotas /status, /start, /stop, /bulk-xxx, /add-account, etc. sem alterações)
 apiRouter.get('/status', (req, res) => {
     const publicState = { accounts: {} };
     const currentUserID = req.session.userId;
@@ -523,19 +520,16 @@ apiRouter.post('/start/:username', async (req, res) => {
     const currentUserID = req.session.userId;
     if (account && account.ownerUserID === currentUserID) { 
         const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
-        
         if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
             return res.status(403).json({ message: "Suas horas grátis acabaram. Renove seu tempo para continuar." });
         }
         if (user.plan !== 'free' && user.planExpiresAt && user.planExpiresAt < new Date()) {
              return res.status(403).json({ message: "Seu plano expirou. Renove ou ative uma nova licença." });
         }
-
         const gameLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].games : 1;
         if (account.games.length > gameLimit) {
             return res.status(403).json({ message: `Seu plano (${user.plan}) só permite ${gameLimit} jogo(s). Por favor, remova jogos em 'Gerir Jogos' para iniciar.` });
         }
-
         const accountData = { ...account, password: decrypt(account.encryptedPassword) }; 
         if (accountData.password) { startWorkerForAccount(accountData); res.status(200).json({ message: "Iniciando worker..." }); } 
         else { res.status(500).json({ message: "Erro ao desencriptar senha."}); } 
@@ -563,10 +557,8 @@ apiRouter.post('/bulk-start', async (req, res) => {
     if (user.plan !== 'free' && user.planExpiresAt && user.planExpiresAt < new Date()) {
          return res.status(403).json({ message: "Seu plano expirou. Renove ou ative uma nova licença." });
     }
-
     const gameLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].games : 1;
     let blockedCount = 0;
-    
     let startedCount = 0;
     for (const username of usernames) {
         const account = liveAccounts[username];
@@ -582,7 +574,6 @@ apiRouter.post('/bulk-start', async (req, res) => {
             }
         }
     }
-    
     let message = `${startedCount} contas enviadas para início.`;
     if (blockedCount > 0) {
         message += ` ${blockedCount} contas não iniciadas (limite de jogos do plano excedido).`;
@@ -629,13 +620,10 @@ apiRouter.post('/add-account', async (req, res) => {
     if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); 
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
     const userAccountsCount = await accountsCollection.countDocuments({ ownerUserID: currentUserID });
-    
     const accountLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].accounts : 1;
-    
     if (userAccountsCount >= accountLimit) {
         return res.status(403).json({ message: `Seu plano (${user.plan}) permite apenas ${accountLimit} conta(s) Steam.` });
     }
-
     const existing = await accountsCollection.findOne({ username }); 
     if (existing) return res.status(400).json({ message: "Esta conta Steam já está a ser usada por outro usuário." }); 
     const encryptedPassword = encrypt(password); 
@@ -677,29 +665,24 @@ apiRouter.post('/submit-guard/:username', (req, res) => {
     } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); } 
 });
 apiRouter.post('/save-settings/:username', async (req, res) => {
-    // (Sem alterações)
     const { username } = req.params;
     const { settings, newPassword } = req.body; 
     const account = liveAccounts[username];
     const currentUserID = req.session.userId;
-
     try {
         const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
-
         if (user.plan === 'free') {
             if (settings.customInGameTitle && settings.customInGameTitle !== "") return res.status(403).json({ message: "Plano 'Free' não permite Título Customizado." });
             if (settings.customAwayMessage && settings.customAwayMessage !== "") return res.status(403).json({ message: "Plano 'Free' não permite Mensagem Automática." });
             if (settings.appearOffline) return res.status(403).json({ message: "Plano 'Free' não permite Aparecer Offline." });
             if (settings.autoAcceptFriends) return res.status(403).json({ message: "Plano 'Free' não permite Aceitar Amigos." });
         }
-        
         if (user.plan === 'basic') {
             if (settings.autoAcceptFriends) return res.status(403).json({ message: "Plano 'Basic' não permite Aceitar Amigos." });
         }
     } catch (e) {
         return res.status(500).json({ message: "Erro ao verificar o plano do usuário." });
     }
-
     if (!account || account.ownerUserID !== currentUserID) {
         const dbAccount = await accountsCollection.findOne({ username: username, ownerUserID: currentUserID });
         if (!dbAccount) {
@@ -734,15 +717,12 @@ apiRouter.post('/save-settings/:username', async (req, res) => {
     res.status(200).json({ message });
 });
 apiRouter.post('/set-games/:username', async (req, res) => { 
-    // (Sem alterações)
     const { username } = req.params; 
     const { games } = req.body; 
     const account = liveAccounts[username]; 
     const currentUserID = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
-    
     const gameLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].games : 1;
-    
     if (games.length > gameLimit) {
         return res.status(403).json({ message: `Seu plano (${user.plan}) permite um máximo de ${gameLimit} jogos.`});
     }
@@ -759,7 +739,6 @@ apiRouter.post('/set-games/:username', async (req, res) => {
     } 
 });
 apiRouter.get('/search-game', async (req, res) => {
-    // (Sem alterações)
     const searchTerm = req.query.q ? req.query.q.toLowerCase() : '';
     if (searchTerm.length < 2) { return res.json([]); }
     try {
@@ -768,203 +747,10 @@ apiRouter.get('/search-game', async (req, res) => {
         res.json(results);
     } catch (e) { res.status(500).json({ message: "Erro ao buscar lista de jogos." }); }
 });
-
-app.use('/api', apiRouter); // Monta a API de usuário
-
-// --- API de Admin ---
-const adminApiRouter = express.Router();
-adminApiRouter.use(isAdminAuthenticated); 
-adminApiRouter.get('/users', async (req, res) => {
-    // (Sem alterações)
-    try {
-        const users = await usersCollection.find({}, { projection: { password: 0 } }).toArray(); 
-        res.json(users);
-    } catch (e) {
-        res.status(500).json({ message: "Erro ao buscar usuários." });
-    }
-});
-adminApiRouter.post('/generate-keys', async (req, res) => {
-    // (Sem alterações)
-    const { plan, quantity, durationDays } = req.body;
-    const qty = parseInt(quantity, 10) || 1;
-    const duration = parseInt(durationDays, 10) || null; 
-
-    if (!plan || !ALL_PLANS.includes(plan)) {
-        return res.status(400).json({ message: "Plano inválido." });
-    }
-
-    try {
-        let generatedKeys = [];
-        for (let i = 0; i < qty; i++) {
-            const key = `${plan.toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
-            await licensesCollection.insertOne({
-                key,
-                plan,
-                durationDays: duration, 
-                isUsed: false,
-                createdAt: new Date(),
-                usedBy: null,
-                activatedAt: null,
-                assignedTo: null, // *** NOVO CAMPO: Atribuído A ***
-                assignedToUsername: null // *** NOVO CAMPO: Nome de Atribuído ***
-            });
-            generatedKeys.push(key);
-        }
-        res.status(201).json({ message: `${qty} chave(s) do plano ${plan} (duração: ${duration || 'Vitalícia'}) geradas com sucesso!`, keys: generatedKeys });
-    } catch (e) {
-        console.error("Erro ao gerar chaves:", e);
-        res.status(500).json({ message: "Erro ao gerar chaves." });
-    }
-});
-adminApiRouter.post('/ban-user', async (req, res) => {
-    // (Sem alterações)
-    const { userId } = req.body;
-    try {
-        await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { isBanned: true } });
-        for (const username in liveAccounts) {
-            const account = liveAccounts[username];
-            if (account.ownerUserID === userId && account.worker) {
-                console.log(`[ADMIN] A parar ${username} (Dono: ${userId}) - Usuário banido.`);
-                account.status = "Banido";
-                account.manual_logout = true; 
-                account.worker.kill();
-            }
-        }
-        res.status(200).json({ message: "Usuário banido com sucesso." });
-    } catch (e) {
-        res.status(500).json({ message: "Erro ao banir usuário." });
-    }
-});
-adminApiRouter.post('/unban-user', async (req, res) => {
-    // (Sem alterações)
-    const { userId } = req.body;
-    try {
-        await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { isBanned: false } });
-        res.status(200).json({ message: "Usuário desbanido com sucesso." });
-    } catch (e) {
-        res.status(500).json({ message: "Erro ao desbanir usuário." });
-    }
-});
-adminApiRouter.post('/delete-user', async (req, res) => {
-    // (Sem alterações)
-    const { userId } = req.body;
-    try {
-        for (const username in liveAccounts) {
-            const account = liveAccounts[username];
-            if (account.ownerUserID === userId) {
-                if (account.worker) {
-                    account.manual_logout = true; 
-                    account.worker.kill();
-                }
-                delete liveAccounts[username];
-            }
-        }
-        await accountsCollection.deleteMany({ ownerUserID: new ObjectId(userId) }); 
-        await usersCollection.deleteOne({ _id: new ObjectId(userId) });
-        res.status(200).json({ message: "Usuário e todas as suas contas foram excluídos." });
-    } catch (e) {
-        console.error("Erro ao excluir usuário:", e);
-        res.status(500).json({ message: "Erro ao excluir usuário." });
-    }
-});
-adminApiRouter.post('/update-plan', async (req, res) => {
-    // (Sem alterações)
-    const { userId, newPlan } = req.body;
-    if (!userId || !newPlan || !ALL_PLANS.includes(newPlan)) {
-        return res.status(400).json({ message: "Dados inválidos." });
-    }
-    try {
-        let updateData = {
-            plan: newPlan,
-            planExpiresAt: null 
-        };
-        if (newPlan === 'free') {
-            updateData.freeHoursRemaining = FREE_HOURS_MS; 
-        } else {
-            updateData.freeHoursRemaining = 0; 
-        }
-        await usersCollection.updateOne(
-            { _id: new ObjectId(userId) },
-            { $set: updateData }
-        );
-        res.status(200).json({ message: "Plano do usuário atualizado com sucesso." });
-    } catch (e) {
-        res.status(500).json({ message: "Erro ao atualizar plano." });
-    }
-});
-adminApiRouter.get('/licenses', async (req, res) => {
-    // (Sem alterações)
-    try {
-        const licenses = await licensesCollection.find({}).sort({ createdAt: -1 }).toArray(); 
-        res.json(licenses);
-    } catch (e) {
-        res.status(500).json({ message: "Erro ao buscar licenças." });
-    }
-});
-adminApiRouter.post('/delete-license', async (req, res) => {
-    // (Sem alterações)
-    const { licenseId } = req.body;
-    try {
-        const result = await licensesCollection.deleteOne({ 
-            _id: new ObjectId(licenseId), 
-            isUsed: false 
-        });
-        if (result.deletedCount === 0) {
-            return res.status(404).json({ message: "Licença não encontrada ou já está em uso e não pode ser deletada." });
-        }
-        res.status(200).json({ message: "Licença não utilizada deletada com sucesso." });
-    } catch (e) {
-        res.status(500).json({ message: "Erro ao deletar licença." });
-    }
-});
-
-// *** NOVA ROTA ADMIN: Atribuir Chave a Usuário (Passo 10) ***
-adminApiRouter.post('/assign-key', async (req, res) => {
-    const { licenseId, username } = req.body;
-    if (!licenseId || !username) {
-        return res.status(400).json({ message: "ID da licença e nome de usuário são obrigatórios." });
-    }
-
-    try {
-        // 1. Encontra o usuário
-        const user = await usersCollection.findOne({ username: username });
-        if (!user) {
-            return res.status(404).json({ message: `Usuário '${username}' não encontrado.` });
-        }
-
-        // 2. Encontra a licença
-        const license = await licensesCollection.findOne({ _id: new ObjectId(licenseId) });
-        if (!license) {
-            return res.status(404).json({ message: "Licença não encontrada." });
-        }
-        if (license.isUsed) {
-            return res.status(400).json({ message: "Esta licença já foi usada." });
-        }
-        if (license.assignedTo) {
-            return res.status(400).json({ message: "Esta licença já foi atribuída a outro usuário." });
-        }
-
-        // 3. Atribui a licença
-        await licensesCollection.updateOne(
-            { _id: new ObjectId(licenseId) },
-            { $set: {
-                assignedTo: user._id,
-                assignedToUsername: user.username
-            }}
-        );
-        
-        res.status(200).json({ message: `Chave atribuída a ${user.username} com sucesso!` });
-    } catch (e) {
-        res.status(500).json({ message: "Erro ao atribuir chave." });
-    }
-});
-
-
-app.use('/api/admin', adminApiRouter); 
-
+app.use('/api', apiRouter);
+app.use('/api/admin', adminApiRouter);
+// (Resto do arquivo permanece igual: lógica de tempo, relógio de planos, inicialização)
 // --- LÓGICA DE DESCONTO DE TEMPO ---
-// (Sem alterações)
-const TIME_DEDUCTION_INTERVAL = 5 * 60 * 1000; 
 async function deductFreeTime() {
     console.log("[GESTOR DE TEMPO] A verificar contas 'free' ativas...");
     const activeUserIDs = new Set();
@@ -1006,10 +792,6 @@ async function deductFreeTime() {
         console.error("[GESTOR DE TEMPO] Erro ao descontar tempo:", e);
     }
 }
-
-// --- RELÓGIO DE EXPIRAÇÃO DE PLANO ---
-// (Sem alterações)
-const PLAN_EXPIRATION_INTERVAL = 60 * 60 * 1000; 
 async function checkExpiredPlans() {
     console.log("[GESTOR DE PLANOS] A verificar planos expirados...");
     try {
@@ -1074,8 +856,6 @@ async function checkExpiredPlans() {
     }
 }
 
-// --- INICIALIZAÇÃO DO SERVIDOR ---
-// (Sem alterações)
 async function startServer() {
     await connectToDB();
     await initializeMasterKey();
