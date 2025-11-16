@@ -520,6 +520,7 @@
             fetchUserInfo(); 
             updateUI(); 
             setInterval(updateUI, 1000); 
+            setInterval(fetchUserInfo, 60000); // *** ATUALIZA O CONTADOR DE HORAS A CADA MINUTO ***
         });
     </script>
 </body>
