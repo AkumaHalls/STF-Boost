@@ -153,6 +153,22 @@ header .glitch-title { font-size: 24px; }
     color: #888;
     cursor: not-allowed;
 }
+/* *** NOVOS ESTILOS: Modal de Compra *** */
+.modal-content ol {
+    padding-left: 20px;
+    color: #c7d5e0;
+}
+.modal-content ol li {
+    margin-bottom: 10px;
+}
+.modal-content ol li ul {
+    padding-left: 20px;
+    margin-top: 5px;
+}
+.modal-content ol li ul li {
+    list-style-type: disc;
+    margin-bottom: 5px;
+}
 .search-results { max-height: 150px; overflow-y: auto; border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 4px; margin-bottom: 15px; }
 .search-result-item { padding: 8px; cursor: pointer; font-size: 14px; }
 .search-result-item:hover { background-color: var(--primary-color); color: var(--dark-bg); }
@@ -327,9 +343,8 @@ input:checked + .slider:before { transform: translateX(26px); }
     background-color: #ff6B6B;
     color: var(--dark-bg);
 }
-/* *** NOVO BOTÃO: Atribuir *** */
 .admin-table .assign-key-btn {
-    border-color: #90ee90; /* Verde claro */
+    border-color: #90ee90;
     color: #90ee90;
     padding: 5px 10px;
     font-size: 12px;
@@ -350,7 +365,7 @@ input:checked + .slider:before { transform: translateX(26px); }
     font-weight: bold;
 }
 .admin-table .status-pending-admin {
-    color: var(--pending-color); /* Amarelo */
+    color: var(--pending-color); 
     font-weight: bold;
 }
 .admin-table select {
