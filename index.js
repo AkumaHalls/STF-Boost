@@ -307,6 +307,21 @@ app.get('/health', (req, res) => { res.status(200).send('OK'); });
 
 // --- ROTAS DE API (Usuário) ---
 const apiRouter = express.Router();
+
+// *** NOVA ROTA PÚBLICA: /api/auth-status ***
+apiRouter.get('/auth-status', (req, res) => {
+    if (req.session.userId) {
+        res.json({
+            loggedIn: true,
+            username: req.session.username
+        });
+    } else {
+        res.json({
+            loggedIn: false
+        });
+    }
+});
+
 apiRouter.post('/register', async (req, res) => {
     // (Sem alterações)
     const { username, email, password } = req.body;
@@ -351,7 +366,9 @@ apiRouter.post('/login', async (req, res) => {
         res.status(500).json({ message: "Erro interno ao fazer login." });
     }
 });
+
 apiRouter.use(isAuthenticated); 
+
 apiRouter.get('/user-info', async (req, res) => {
     // (Sem alterações)
     try {
@@ -481,9 +498,8 @@ apiRouter.get('/status', (req, res) => {
     }
     res.json(publicState);
 });
-
 apiRouter.post('/start/:username', async (req, res) => { 
-    // *** ATUALIZADO: com verificação de limite de jogos ***
+    // (Sem alterações)
     const account = liveAccounts[req.params.username]; 
     const currentUserID = req.session.userId;
     if (account && account.ownerUserID === currentUserID) { 
@@ -496,7 +512,6 @@ apiRouter.post('/start/:username', async (req, res) => {
              return res.status(403).json({ message: "Seu plano expirou. Renove ou ative uma nova licença." });
         }
 
-        // *** NOVO: Verificação de Limite de Jogos ao Iniciar ***
         const gameLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].games : 1;
         if (account.games.length > gameLimit) {
             return res.status(403).json({ message: `Seu plano (${user.plan}) só permite ${gameLimit} jogo(s). Por favor, remova jogos em 'Gerir Jogos' para iniciar.` });
@@ -532,7 +547,6 @@ apiRouter.post('/bulk-start', async (req, res) => {
          return res.status(403).json({ message: "Seu plano expirou. Renove ou ative uma nova licença." });
     }
 
-    // *** NOVO: Verificação de Limite de Jogos (apenas informa, não bloqueia em massa) ***
     const gameLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].games : 1;
     let blockedCount = 0;
     
@@ -595,14 +609,13 @@ apiRouter.post('/bulk-remove', async (req, res) => {
     res.status(200).json({ message: `${usernames.length} contas removidas.` });
 });
 apiRouter.post('/add-account', async (req, res) => { 
-    // *** ATUALIZADO: com novos limites de CONTA ***
+    // (Sem alterações)
     const { username, password } = req.body; 
     const currentUserID = req.session.userId;
     if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); 
     const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
     const userAccountsCount = await accountsCollection.countDocuments({ ownerUserID: currentUserID });
     
-    // Define o limite de CONTAS baseado no plano
     const accountLimit = PLAN_LIMITS[user.plan] ? PLAN_LIMITS[user.plan].accounts : 1;
     
     if (userAccountsCount >= accountLimit) {
@@ -832,10 +845,11 @@ adminApiRouter.post('/delete-user', async (req, res) => {
                 delete liveAccounts[username];
             }
         }
-        await accountsCollection.deleteMany({ ownerUserID: userId });
+        await accountsCollection.deleteMany({ ownerUserID: new ObjectId(userId) }); // Corrigido para ObjectId
         await usersCollection.deleteOne({ _id: new ObjectId(userId) });
         res.status(200).json({ message: "Usuário e todas as suas contas foram excluídos." });
     } catch (e) {
+        console.error("Erro ao excluir usuário:", e);
         res.status(500).json({ message: "Erro ao excluir usuário." });
     }
 });
@@ -939,6 +953,7 @@ async function deductFreeTime() {
 // --- RELÓGIO DE EXPIRAÇÃO DE PLANO ---
 const PLAN_EXPIRATION_INTERVAL = 60 * 60 * 1000; 
 async function checkExpiredPlans() {
+    // *** ATUALIZADO: com lógica de "Downgrade" de contas ***
     console.log("[GESTOR DE PLANOS] A verificar planos expirados...");
     try {
         const expiredUsers = await usersCollection.find({
@@ -954,8 +969,6 @@ async function checkExpiredPlans() {
         for (const user of expiredUsers) {
             console.log(`[GESTOR DE PLANOS] O plano '${user.plan}' do usuário ${user.username} expirou. Revertendo para 'free'.`);
             
-            // *** INÍCIO DO "DOWNGRADE" INTELIGENTE ***
-            
             // 1. Reverte o plano do usuário
             await usersCollection.updateOne(
                 { _id: user._id },
@@ -966,7 +979,7 @@ async function checkExpiredPlans() {
                 }}
             );
 
-            // 2. Para todas as contas do usuário
+            // 2. Para todas as contas ativas desse usuário
             for (const username in liveAccounts) {
                 const account = liveAccounts[username];
                 if (account.ownerUserID === user._id.toString() && account.worker) {
@@ -979,8 +992,9 @@ async function checkExpiredPlans() {
 
             // 3. Busca todas as contas Steam deste usuário na DB
             const userSteamAccounts = await accountsCollection.find({ ownerUserID: user._id.toString() }).toArray();
+            
             if (userSteamAccounts.length > 0) {
-                // 3a. Mantém a primeira conta e reseta os jogos dela
+                // 3a. Mantém a primeira conta e reseta os jogos dela para 1 (limite do 'free')
                 const firstAccount = userSteamAccounts[0];
                 await accountsCollection.updateOne(
                     { _id: firstAccount._id },
@@ -991,10 +1005,17 @@ async function checkExpiredPlans() {
                 if (userSteamAccounts.length > 1) {
                     const accountsToDelete = userSteamAccounts.slice(1).map(acc => acc._id);
                     await accountsCollection.deleteMany({ _id: { $in: accountsToDelete } });
+                    
+                    // Remove da memória também, se estiverem lá
+                    userSteamAccounts.slice(1).forEach(acc => {
+                        if (liveAccounts[acc.username]) {
+                            delete liveAccounts[acc.username];
+                        }
+                    });
+
                     console.log(`[GESTOR DE PLANOS] Downgrade: Apagadas ${accountsToDelete.length} contas extra do usuário ${user.username}.`);
                 }
             }
-            // *** FIM DO "DOWNGRADE" INTELIGENTE ***
         }
 
     } catch(e) {
