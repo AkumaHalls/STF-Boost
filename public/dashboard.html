@@ -8,8 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=1.5"> 
-</head>
+    <link rel="stylesheet" href="/style.css?v=1.7"> </head>
 <body class="panel-page">
 
     <div class="dashboard-layout">
@@ -23,6 +22,7 @@
             <div class="sidebar-user">
                 <span id="sidebarUser">Carregando...</span>
                 <span id="sidebarPlan">Plano: ...</span>
+                <span id="sidebarExpiry"></span>
             </div>
 
             <div class="sidebar-nav">
@@ -167,7 +167,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Seletores da tabela e modais (como antes)
+            // Seletores
             const accountsTableBody = document.getElementById('accountsTableBody');
             const addAccountButton = document.getElementById('addAccountButton');
             const gamesModal = document.getElementById('gamesModal');
@@ -189,8 +189,8 @@
             const newPasswordInput = document.getElementById('newPasswordInput');
             const sidebarUser = document.getElementById('sidebarUser');
             const sidebarPlan = document.getElementById('sidebarPlan');
+            const sidebarExpiry = document.getElementById('sidebarExpiry'); // *** NOVO SELETOR ***
 
-            // --- Seletores do Novo Modal de Licença ---
             const licenseModal = document.getElementById('licenseModal');
             const activateLicenseButton = document.getElementById('activateLicenseButton');
             const closeLicenseModalButton = document.getElementById('closeLicenseModalButton');
@@ -212,7 +212,7 @@
             function showToast(message, type = 'info') { const container = document.getElementById('toastContainer'); const toast = document.createElement('div'); toast.className = `toast ${type}`; toast.textContent = message; container.appendChild(toast); setTimeout(() => toast.classList.add('show'), 10); setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 4000); }
             function formatUptime(ms) { if (!ms || ms <= 0) return '00:00:00'; let totalSeconds = Math.floor(ms / 1000); const days = Math.floor(totalSeconds / 86400); totalSeconds %= 86400; const hours = Math.floor(totalSeconds / 3600).toString().padStart(2, '0'); totalSeconds %= 3600; const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0'); const seconds = (totalSeconds % 60).toString().padStart(2, '0'); if (days > 0) { const dayString = days === 1 ? 'dia' : 'dias'; return `${days} ${dayString}, ${hours}:${minutes}:${seconds}`; } else { return `${hours}:${minutes}:${seconds}`; } }
 
-            // --- Função fetchUserInfo (COM LÓGICA CORRIGIDA) ---
+            // --- Função fetchUserInfo (COM LÓGICA ATUALIZADA) ---
             async function fetchUserInfo() {
                 try {
                     const response = await fetch('/api/user-info');
@@ -222,23 +222,39 @@
                     }
                     const userInfo = await response.json();
                     
-                    sidebarUser.textContent = `Bem-vindo, ${userInfo.username}!`;
                     const planName = userInfo.plan.charAt(0).toUpperCase() + userInfo.plan.slice(1);
                     
-                    // *** INÍCIO DA CORREÇÃO DE LÓGICA ***
+                    sidebarUser.textContent = `Bem-vindo, ${userInfo.username}!`;
+                    sidebarPlan.textContent = `Plano: ${planName}`;
+                    
+                    // *** INÍCIO DA LÓGICA DE EXPIRAÇÃO/HORAS ***
                     if (userInfo.plan === 'free') {
-                        sidebarPlan.textContent = `Plano: ${planName} (${userInfo.freeHoursRemaining} horas)`;
+                        sidebarExpiry.textContent = `Horas restantes: ${userInfo.freeHoursRemaining}`;
                     } else if (userInfo.plan === 'lifetime') {
-                        sidebarPlan.textContent = `Plano: ${planName} (Ilimitado)`;
+                        sidebarExpiry.textContent = `Plano Vitalício`;
+                    } else if (userInfo.planExpiresAt) {
+                        const expiryDate = new Date(userInfo.planExpiresAt);
+                        const now = new Date();
+                        const diffTime = expiryDate - now;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        const formattedDate = expiryDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }); 
+
+                        if (diffDays > 0) {
+                            sidebarExpiry.textContent = `Expira em: ${formattedDate} (${diffDays} dias)`;
+                        } else {
+                            sidebarExpiry.textContent = `Expirado em: ${formattedDate}`;
+                        }
                     } else {
-                        // Para Basic, Plus, Premium, Ultimate
-                        sidebarPlan.textContent = `Plano: ${planName}`;
+                        // Plano pago, mas sem data (ex: mudado pelo admin para ser vitalício)
+                        sidebarExpiry.textContent = `Plano Ativo (sem expiração)`;
                     }
-                    // *** FIM DA CORREÇÃO DE LÓGICA ***
+                    // *** FIM DA LÓGICA DE EXPIRAÇÃO/HORAS ***
 
                 } catch (e) {
                     console.error("Erro ao buscar info do usuário", e);
                     sidebarUser.textContent = 'Erro ao carregar perfil.';
+                    sidebarPlan.textContent = 'Plano: Erro';
+                    sidebarExpiry.textContent = '';
                 }
             }
 
@@ -526,7 +542,7 @@
             fetchUserInfo(); 
             updateUI(); 
             setInterval(updateUI, 1000); 
-            setInterval(fetchUserInfo, 60000); // *** ATUALIZA O CONTADOR DE HORAS A CADA MINUTO ***
+            setInterval(fetchUserInfo, 60000); // ATUALIZA O PERFIL A CADA MINUTO
         });
     </script>
 </body>
