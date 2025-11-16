@@ -5,7 +5,7 @@ const MongoStore = require('connect-mongo');
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const { fork } = require('child_process');
-const https = require('https'); // Módulo para fazer requisições HTTPSa
+const https = require('https'); // Módulo para fazer requisições HTTPS
 
 // --- CONFIGURAÇÃO ---
 const app = express();
@@ -17,6 +17,7 @@ const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 if (!MONGODB_URI || !SITE_PASSWORD) { console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI e SITE_PASSWORD precisam de ser definidas!"); process.exit(1); }
 const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
+let steamAppListCache = { data: [], timestamp: 0 }; // Cache para a lista de jogos
 
 // --- FUNÇÃO DE NOTIFICAÇÃO DISCORD ---
 function sendDiscordNotification(title, message, color, username) {
@@ -98,6 +99,62 @@ async function initializeMasterKey() {
         appSecretKey = crypto.createHash('sha256').update(settings.appSecret).digest('base64').substr(0, 32);
     }
 }
+
+// --- BUSCA DE JOGOS (COM STEAMSPY) ---
+async function getSteamAppList() {
+    // Retorna do cache se for válido (menos de 24h)
+    if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 0) {
+        return steamAppListCache.data;
+    }
+
+    console.log("[GESTOR] Cache da lista de apps (SteamSpy) expirado. A buscar nova lista...");
+    
+    // --- INÍCIO DA ALTERAÇÃO (STEAMSPY) ---
+    const url = 'https://steamspy.com/api.php?request=all';
+    const options = {
+        method: 'GET',
+        headers: {
+            // Manter o User-Agent é uma boa prática
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.37 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+    };
+    // --- FIM DA ALTERAÇÃO (STEAMSPY) ---
+
+    try {
+        const response = await fetch(url, options);
+
+        if (!response.ok) {
+            throw new Error(`Falha ao buscar lista de apps do SteamSpy. Status: ${response.status} ${response.statusText}`);
+        }
+
+        const jsonData = await response.json();
+        
+        // --- INÍCIO DA ALTERAÇÃO (Formato do JSON) ---
+        // O SteamSpy retorna um OBJETO onde cada chave é um appid.
+        // Precisamos converter isso num ARRAY de objetos, que é o que o resto do nosso código espera.
+        if (!jsonData) {
+            throw new Error("SteamSpy retornou dados vazios ou inválidos.");
+        }
+
+        const appList = Object.values(jsonData); // Converte { "730": {...} } em [ {...}, {...} ]
+
+        if (appList.length === 0) {
+             throw new Error("SteamSpy retornou JSON, mas estava vazio.");
+        }
+        // --- FIM DA ALTERAÇÃO (Formato do JSON) ---
+
+        // Se deu tudo certo, salva no cache e retorna
+        steamAppListCache = { data: appList, timestamp: Date.now() };
+        console.log("[GESTOR] Cache da lista de apps (via SteamSpy) atualizado.");
+        return steamAppListCache.data;
+
+    } catch (e) {
+        console.error("[GESTOR] Erro ao processar lista de apps do SteamSpy:", e);
+        // Retorna o cache antigo (se houver) em caso de falha total
+        return steamAppListCache.data;
+    }
+}
+
 
 function startWorkerForAccount(accountData) {
     const username = accountData.username;
@@ -193,6 +250,16 @@ function startWorkerForAccount(accountData) {
             accountExited.sessionStartTime = null;
         }
     });
+
+    // --- INÍCIO DA CORREÇÃO ---
+    // Adiciona um ouvinte para o evento 'error' no processo filho
+    worker.on('error', (err) => {
+        // Isso vai apanhar erros como 'ERR_IPC_CHANNEL_CLOSED' e impedir o crash
+        console.error(`[GESTOR] Erro no canal de comunicação do worker ${username}:`, err.message);
+        // Não precisamos fazer mais nada aqui, o evento 'exit' será
+        // disparado logo a seguir e o nosso código de reinício 'exit' tratará disso.
+    });
+    // --- FIM DA CORREÇÃO ---
 }
 
 async function loadAccountsIntoMemory() {
@@ -257,11 +324,178 @@ apiRouter.post('/stop/:username', (req, res) => {
     }
 });
 
+// --- NOVOS ENDPOINTS DE AÇÕES EM MASSA ---
+apiRouter.post('/bulk-start', (req, res) => {
+    const { usernames } = req.body;
+    if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
+
+    let startedCount = 0;
+    usernames.forEach(username => {
+        const account = liveAccounts[username];
+        if (account) {
+            const accountData = { ...account, password: decrypt(account.encryptedPassword) };
+            if (accountData.password) {
+                startWorkerForAccount(accountData);
+                startedCount++;
+            }
+        }
+    });
+    res.status(200).json({ message: `${startedCount} contas enviadas para início.` });
+});
+
+apiRouter.post('/bulk-stop', (req, res) => {
+    const { usernames } = req.body;
+    if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
+
+    let stoppedCount = 0;
+    usernames.forEach(username => {
+        const account = liveAccounts[username];
+        if (account && account.worker) {
+            if(account.startupTimeout) {
+                clearTimeout(account.startupTimeout);
+                account.startupTimeout = null;
+            }
+            account.manual_logout = true;
+            account.worker.kill();
+            account.status = "Parado";
+            account.sessionStartTime = null; 
+            stoppedCount++;
+        }
+    });
+    res.status(200).json({ message: `${stoppedCount} contas paradas.` });
+});
+
+apiRouter.post('/bulk-remove', async (req, res) => {
+    const { usernames } = req.body;
+    if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
+
+    usernames.forEach(username => {
+        const account = liveAccounts[username];
+        if (account) {
+            if (account.worker) {
+                account.manual_logout = true;
+                account.worker.kill();
+            }
+            delete liveAccounts[username];
+        }
+    });
+    await accountsCollection.deleteMany({ username: { $in: usernames } });
+    res.status(200).json({ message: `${usernames.length} contas removidas.` });
+});
+// --- FIM DOS ENDPOINTS DE AÇÕES EM MASSA ---
+
 apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); const existing = await accountsCollection.findOne({ username }); if (existing) return res.status(400).json({ message: "Conta já existe." }); const encryptedPassword = encrypt(password); if (!encryptedPassword) { return res.status(500).json({ message: "Falha ao encriptar senha ao adicionar conta."}); } const newAccountData = { username, password: encryptedPassword, games: [730], settings: {}, sentryFileHash: null }; await accountsCollection.insertOne(newAccountData); liveAccounts[username] = { ...newAccountData, encryptedPassword: newAccountData.password, status: 'Parado', worker: null }; res.status(200).json({ message: "Conta adicionada." }); });
 apiRouter.delete('/remove-account/:username', async (req, res) => { const account = liveAccounts[req.params.username]; if (account) { if (account.worker) { account.manual_logout = true; account.worker.kill(); } delete liveAccounts[req.params.username]; await accountsCollection.deleteOne({ username: req.params.username }); res.status(200).json({ message: "Conta removida." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
 apiRouter.post('/submit-guard/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account && account.worker) { account.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); res.status(200).json({ message: "Código enviado ao worker." }); } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); } });
-apiRouter.post('/save-settings/:username', async (req, res) => { const { username } = req.params; const { settings } = req.body; const account = liveAccounts[username]; if (account && settings) { await accountsCollection.updateOne({ username }, { $set: { settings } }); account.settings = settings; if (account.worker) { account.worker.send({ command: 'updateSettings', data: { settings, games: account.games } }); } res.status(200).json({ message: "Configurações salvas." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
-apiRouter.post('/set-games/:username', async (req, res) => { const { username } = req.params; const { games } = req.body; const account = liveAccounts[username]; if (account && games) { await accountsCollection.updateOne({ username }, { $set: { games } }); account.games = games; if (account.worker) { account.worker.send({ command: 'updateSettings', data: { settings: account.settings, games } }); } res.status(200).json({ message: "Jogos atualizados." }); } else { res.status(404).json({ message: "Conta não encontrada." }); } });
+
+apiRouter.post('/save-settings/:username', async (req, res) => {
+    const { username } = req.params;
+    const { settings, newPassword } = req.body; // newPassword virá daqui
+    const account = liveAccounts[username];
+
+    if (!account) return res.status(404).json({ message: "Conta não encontrada." });
+
+    let message = "Configurações salvas.";
+
+    // 1. Salva as configurações normais
+    if (settings) {
+        await accountsCollection.updateOne({ username }, { $set: { settings } });
+        account.settings = settings;
+        if (account.worker) {
+            // --- INÍCIO DA CORREÇÃO ---
+            // Adicionamos um 'try...catch' aqui para o caso do worker.send() falhar
+            // Isso impede que o 'catch' principal da rota seja acionado por um erro de IPC
+            try {
+                account.worker.send({ command: 'updateSettings', data: { settings, games: account.games } });
+            } catch (ipcError) {
+                console.error(`[GESTOR] Falha ao enviar 'updateSettings' para ${username} (worker pode estar offline):`, ipcError.message);
+                // Não precisa de 'await' aqui, apenas registramos o erro
+            }
+            // --- FIM DA CORREÇÃO ---
+        }
+    }
+
+    // 2. Atualiza a senha se foi fornecida
+    if (newPassword) {
+        const encryptedPassword = encrypt(newPassword);
+        if (!encryptedPassword) {
+            return res.status(500).json({ message: "Falha ao encriptar nova senha." });
+        }
+        await accountsCollection.updateOne({ username }, { $set: { password: encryptedPassword } });
+        account.encryptedPassword = encryptedPassword;
+        
+        message = "Configurações e senha atualizadas.";
+
+        // Para o worker para forçar o reinício com a nova senha
+        if (account.worker) {
+            account.manual_logout = true; // Impede o auto-relogin imediato da função 'exit'
+            account.worker.kill();
+            account.status = "Parado";
+            account.sessionStartTime = null; 
+            message += " A conta foi parada para aplicar a nova senha.";
+            
+            // Se o auto-relogin estiver ativo, ele vai tentar reiniciar com a nova senha na próxima vez
+            // A lógica de reinício já está no 'exit' handler, mas paramos manualmente aqui.
+            // Para garantir que tente reiniciar (se autoRelogin=true), re-configuramos manual_logout
+            setTimeout(() => {
+                if (liveAccounts[username]) {
+                    liveAccounts[username].manual_logout = false;
+                }
+            }, 1000);
+        }
+    }
+
+    res.status(200).json({ message });
+});
+
+apiRouter.post('/set-games/:username', async (req, res) => { 
+    const { username } = req.params; 
+    const { games } = req.body; 
+    const account = liveAccounts[username]; 
+    if (account && games) { 
+        await accountsCollection.updateOne({ username }, { $set: { games } }); 
+        account.games = games; 
+        if (account.worker) { 
+            // --- INÍCIO DA CORREÇÃO ---
+            try {
+                account.worker.send({ command: 'updateSettings', data: { settings: account.settings, games } }); 
+            } catch (ipcError) {
+                console.error(`[GESTOR] Falha ao enviar 'set-games' para ${username} (worker pode estar offline):`, ipcError.message);
+            }
+            // --- FIM DA CORREÇÃO ---
+        } 
+        res.status(200).json({ message: "Jogos atualizados." }); 
+    } else { 
+        res.status(404).json({ message: "Conta não encontrada." }); 
+    } 
+});
+
+// --- NOVO ENDPOINT DE BUSCA DE JOGOS ---
+apiRouter.get('/search-game', async (req, res) => {
+    const searchTerm = req.query.q ? req.query.q.toLowerCase() : '';
+    if (searchTerm.length < 2) {
+        return res.json([]);
+    }
+    
+    try {
+        const appList = await getSteamAppList();
+        
+        // --- INÍCIO DA ALTERAÇÃO (Formato do JSON) ---
+        // O appList agora é um array de objetos do SteamSpy
+        // Ex: { appid: 730, name: "Counter-Strike 2", ... }
+        // O código de filtro abaixo já espera este formato, então ele funciona PERFEITAMENTE
+        // --- FIM DA ALTERAÇÃO (Formato do JSON) ---
+
+        // Filtra e limita a 50 resultados para performance
+        const results = appList
+            .filter(app => app.name.toLowerCase().includes(searchTerm))
+            .slice(0, 50);
+        res.json(results);
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao buscar lista de jogos." });
+    }
+});
+
 app.use(apiRouter);
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
@@ -272,5 +506,4 @@ async function startServer() {
     app.listen(PORT, () => console.log(`[GESTOR] Servidor iniciado na porta ${PORT}`));
 }
 startServer();
-
 
