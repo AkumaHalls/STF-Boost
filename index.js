@@ -34,7 +34,6 @@ const PLAN_LIMITS = {
 };
 
 // --- (Funções sendDiscordNotification, encrypt, decrypt) ---
-// (Sem alterações)
 function sendDiscordNotification(title, message, color, username) {
     if (!DISCORD_WEBHOOK_URL) return;
     const safeTitle = title || '\u200b';
@@ -66,7 +65,6 @@ let licensesCollection;
 let liveAccounts = {};
 
 async function connectToDB() { 
-    // (Sem alterações)
     try { 
         await mongoClient.connect(); 
         console.log("Conectado ao MongoDB Atlas com sucesso!"); 
@@ -88,7 +86,6 @@ async function connectToDB() {
 }
 
 async function initializeMasterKey() {
-    // (Sem alterações)
     let settings = await siteSettingsCollection.findOne({ _id: 'config' });
     if (!settings || !settings.appSecret) {
         console.log("[GESTOR] Nenhuma chave mestra encontrada. A gerar uma nova...");
@@ -103,7 +100,6 @@ async function initializeMasterKey() {
 }
 
 // --- BUSCA DE JOGOS (COM STEAMSPY) ---
-// (Sem alterações)
 async function getSteamAppList() {
     if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 0) {
         return steamAppListCache.data;
@@ -128,7 +124,6 @@ async function getSteamAppList() {
 }
 
 // --- LÓGICA DO WORKER ---
-// (Sem alterações)
 function startWorkerForAccount(accountData) {
     const username = accountData.username;
     console.log(`[GESTOR] A iniciar worker para ${username} (Dono: ${accountData.ownerUserID})`);
@@ -223,7 +218,6 @@ function startWorkerForAccount(accountData) {
 }
 
 async function loadAccountsIntoMemory() {
-    // (Sem alterações)
     const defaultSettings = { customInGameTitle: '', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false, autoRelogin: true, sharedSecret: '' };
     const savedAccounts = await accountsCollection.find({ "settings.autoRelogin": true }).toArray(); 
     savedAccounts.forEach((acc, index) => {
@@ -243,7 +237,6 @@ async function loadAccountsIntoMemory() {
 }
 
 // --- EXPRESS APP E ROTAS ---
-// (Sem alterações)
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
 app.use(session({ 
@@ -254,15 +247,12 @@ app.use(session({
     cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
 })); 
 
-// *** ATUALIZAÇÃO DO MIDDLEWARE DE AUTENTICAÇÃO ***
-// Verifica na DB se o usuário está banido a cada requisição
 const isAuthenticated = async (req, res, next) => { 
     if (req.session.userId) { 
         try {
             const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
             if (user) {
                 if (user.isBanned) {
-                    // Se estiver banido, destrói a sessão e redireciona
                     req.session.destroy(() => {
                         res.redirect('/banned');
                     });
@@ -289,13 +279,11 @@ app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.
 app.get('/login', (req, res) => { if (req.session.userId) { return res.redirect('/dashboard'); } res.sendFile(path.join(__dirname, 'public', 'login.html')); });
 app.get('/register', (req, res) => { if (req.session.userId) { return res.redirect('/dashboard'); } res.sendFile(path.join(__dirname, 'public', 'register.html')); });
 app.get('/dashboard', isAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'public', 'dashboard.html')); });
-// *** NOVA PÁGINA DE BANIDO ***
 app.get('/banned', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'banned.html')); });
 
 app.get('/logout', (req, res) => { req.session.destroy(err => { if (err) { console.error("Erro ao fazer logout:", err); return res.status(500).send("Não foi possível fazer logout."); } res.clearCookie('connect.sid'); res.redirect('/'); }); });
 
 // --- ROTAS (Painel de Admin) ---
-// (Sem alterações)
 app.get('/admin', (req, res) => res.redirect('/admin/dashboard'));
 app.get('/admin/login', (req, res) => {
     if (req.session.isAdmin) { return res.redirect('/admin/dashboard'); }
@@ -321,7 +309,6 @@ app.get('/admin/logout', (req, res) => {
 });
 
 // --- ROTAS ESTÁTICAS ---
-// (Sem alterações)
 app.use(express.static(path.join(__dirname, 'public'))); 
 app.get('/health', (req, res) => { res.status(200).send('OK'); }); 
 
@@ -342,7 +329,6 @@ apiRouter.get('/auth-status', (req, res) => {
 });
 
 apiRouter.post('/register', async (req, res) => {
-    // (Sem alterações)
     const { username, email, password } = req.body;
     if (!username || !email || !password) { return res.status(400).json({ message: "Todos os campos são obrigatórios." }); }
     try {
@@ -370,7 +356,6 @@ apiRouter.post('/login', async (req, res) => {
         const user = await usersCollection.findOne({ username });
         if (!user) { return res.status(401).json({ message: "Credenciais inválidas." }); }
         
-        // *** VERIFICAÇÃO DE BANIMENTO NO LOGIN ***
         if (user.isBanned) {
             return res.status(403).json({ message: "Esta conta foi suspensa permanentemente." });
         }
@@ -389,7 +374,6 @@ apiRouter.post('/login', async (req, res) => {
 
 apiRouter.use(isAuthenticated); 
 
-// ... (Resto do arquivo index.js permanece igual ao anterior, incluindo todas as rotas da API, Admin, e relógios) ...
 apiRouter.get('/user-info', async (req, res) => {
     try {
         const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
@@ -748,125 +732,176 @@ apiRouter.get('/search-game', async (req, res) => {
     } catch (e) { res.status(500).json({ message: "Erro ao buscar lista de jogos." }); }
 });
 app.use('/api', apiRouter);
-app.use('/api/admin', adminApiRouter);
-// (Resto do arquivo permanece igual: lógica de tempo, relógio de planos, inicialização)
-// --- LÓGICA DE DESCONTO DE TEMPO ---
-async function deductFreeTime() {
-    console.log("[GESTOR DE TEMPO] A verificar contas 'free' ativas...");
-    const activeUserIDs = new Set();
-    for (const username in liveAccounts) {
-        const account = liveAccounts[username];
-        if (account.status === "Rodando") {
-            activeUserIDs.add(account.ownerUserID);
-        }
-    }
-    if (activeUserIDs.size === 0) {
-        console.log("[GESTOR DE TEMPO] Nenhuma conta 'free' ativa encontrada.");
-        return;
-    }
-    const usersToUpdate = Array.from(activeUserIDs).map(id => new ObjectId(id));
+
+// --- API de Admin ---
+const adminApiRouter = express.Router();
+adminApiRouter.use(isAdminAuthenticated); 
+adminApiRouter.get('/users', async (req, res) => {
     try {
-        const updateResult = await usersCollection.updateMany(
-            { _id: { $in: usersToUpdate }, plan: 'free', freeHoursRemaining: { $gt: 0 } },
-            { $inc: { freeHoursRemaining: -TIME_DEDUCTION_INTERVAL } }
-        );
-        if (updateResult.modifiedCount > 0) {
-            console.log(`[GESTOR DE TEMPO] Descontado tempo de ${updateResult.modifiedCount} usuários 'free'.`);
-        }
-        const usersOutOfTime = await usersCollection.find(
-            { _id: { $in: usersToUpdate }, plan: 'free', freeHoursRemaining: { $lte: 0 } }
-        ).toArray();
-        for (const user of usersOutOfTime) {
-            console.log(`[GESTOR DE TEMPO] Usuário ${user.username} (${user._id}) ficou sem tempo. A parar contas...`);
-            for (const username in liveAccounts) {
-                const account = liveAccounts[username];
-                if (account.ownerUserID === user._id.toString() && account.worker) {
-                    console.log(`[GESTOR DE TEMPO] A parar ${username} por falta de tempo.`);
-                    account.status = "Tempo Esgotado";
-                    account.manual_logout = true; 
-                    account.worker.kill();
-                }
-            }
-        }
+        const users = await usersCollection.find({}, { projection: { password: 0 } }).toArray(); 
+        res.json(users);
     } catch (e) {
-        console.error("[GESTOR DE TEMPO] Erro ao descontar tempo:", e);
+        res.status(500).json({ message: "Erro ao buscar usuários." });
     }
-}
-async function checkExpiredPlans() {
-    console.log("[GESTOR DE PLANOS] A verificar planos expirados...");
+});
+adminApiRouter.post('/generate-keys', async (req, res) => {
+    const { plan, quantity, durationDays } = req.body;
+    const qty = parseInt(quantity, 10) || 1;
+    const duration = parseInt(durationDays, 10) || null; 
+
+    if (!plan || !ALL_PLANS.includes(plan)) {
+        return res.status(400).json({ message: "Plano inválido." });
+    }
+
     try {
-        const expiredUsers = await usersCollection.find({
-            plan: { $ne: 'free' }, 
-            planExpiresAt: { $ne: null, $lt: new Date() } 
-        }).toArray();
-
-        if (expiredUsers.length === 0) {
-            console.log("[GESTOR DE PLANOS] Nenhum plano expirado encontrado.");
-            return;
+        let generatedKeys = [];
+        for (let i = 0; i < qty; i++) {
+            const key = `${plan.toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+            await licensesCollection.insertOne({
+                key,
+                plan,
+                durationDays: duration, 
+                isUsed: false,
+                createdAt: new Date(),
+                usedBy: null,
+                activatedAt: null,
+                assignedTo: null, 
+                assignedToUsername: null 
+            });
+            generatedKeys.push(key);
         }
-
-        for (const user of expiredUsers) {
-            console.log(`[GESTOR DE PLANOS] O plano '${user.plan}' do usuário ${user.username} expirou. Revertendo para 'free'.`);
-            
-            await usersCollection.updateOne(
-                { _id: user._id },
-                { $set: { 
-                    plan: 'free', 
-                    planExpiresAt: null,
-                    freeHoursRemaining: FREE_HOURS_MS 
-                }}
-            );
-
-            for (const username in liveAccounts) {
-                const account = liveAccounts[username];
-                if (account.ownerUserID === user._id.toString() && account.worker) {
-                    console.log(`[GESTOR DE PLANOS] A parar ${username} (Dono: ${user._id}) - Plano expirou.`);
-                    account.status = "Expirado";
+        res.status(201).json({ message: `${qty} chave(s) do plano ${plan} (duração: ${duration || 'Vitalícia'}) geradas com sucesso!`, keys: generatedKeys });
+    } catch (e) {
+        console.error("Erro ao gerar chaves:", e);
+        res.status(500).json({ message: "Erro ao gerar chaves." });
+    }
+});
+adminApiRouter.post('/ban-user', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { isBanned: true } });
+        for (const username in liveAccounts) {
+            const account = liveAccounts[username];
+            if (account.ownerUserID === userId && account.worker) {
+                console.log(`[ADMIN] A parar ${username} (Dono: ${userId}) - Usuário banido.`);
+                account.status = "Banido";
+                account.manual_logout = true; 
+                account.worker.kill();
+            }
+        }
+        res.status(200).json({ message: "Usuário banido com sucesso." });
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao banir usuário." });
+    }
+});
+adminApiRouter.post('/unban-user', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { isBanned: false } });
+        res.status(200).json({ message: "Usuário desbanido com sucesso." });
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao desbanir usuário." });
+    }
+});
+adminApiRouter.post('/delete-user', async (req, res) => {
+    const { userId } = req.body;
+    try {
+        for (const username in liveAccounts) {
+            const account = liveAccounts[username];
+            if (account.ownerUserID === userId) {
+                if (account.worker) {
                     account.manual_logout = true; 
                     account.worker.kill();
                 }
-            }
-
-            const userSteamAccounts = await accountsCollection.find({ ownerUserID: user._id.toString() }).toArray();
-            
-            if (userSteamAccounts.length > 0) {
-                const firstAccount = userSteamAccounts[0];
-                await accountsCollection.updateOne(
-                    { _id: firstAccount._id },
-                    { $set: { games: [730] } } 
-                );
-                
-                if (userSteamAccounts.length > 1) {
-                    const accountsToDelete = userSteamAccounts.slice(1).map(acc => acc._id);
-                    await accountsCollection.deleteMany({ _id: { $in: accountsToDelete } });
-                    
-                    userSteamAccounts.slice(1).forEach(acc => {
-                        if (liveAccounts[acc.username]) {
-                            delete liveAccounts[acc.username];
-                        }
-                    });
-
-                    console.log(`[GESTOR DE PLANOS] Downgrade: Apagadas ${accountsToDelete.length} contas extra do usuário ${user.username}.`);
-                }
+                delete liveAccounts[username];
             }
         }
-
-    } catch(e) {
-        console.error("[GESTOR DE PLANOS] Erro ao verificar planos expirados:", e);
+        await accountsCollection.deleteMany({ ownerUserID: new ObjectId(userId) }); 
+        await usersCollection.deleteOne({ _id: new ObjectId(userId) });
+        res.status(200).json({ message: "Usuário e todas as suas contas foram excluídos." });
+    } catch (e) {
+        console.error("Erro ao excluir usuário:", e);
+        res.status(500).json({ message: "Erro ao excluir usuário." });
     }
-}
+});
+adminApiRouter.post('/update-plan', async (req, res) => {
+    const { userId, newPlan } = req.body;
+    if (!userId || !newPlan || !ALL_PLANS.includes(newPlan)) {
+        return res.status(400).json({ message: "Dados inválidos." });
+    }
+    try {
+        let updateData = {
+            plan: newPlan,
+            planExpiresAt: null 
+        };
+        if (newPlan === 'free') {
+            updateData.freeHoursRemaining = FREE_HOURS_MS; 
+        } else {
+            updateData.freeHoursRemaining = 0; 
+        }
+        await usersCollection.updateOne(
+            { _id: new ObjectId(userId) },
+            { $set: updateData }
+        );
+        res.status(200).json({ message: "Plano do usuário atualizado com sucesso." });
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao atualizar plano." });
+    }
+});
+adminApiRouter.get('/licenses', async (req, res) => {
+    try {
+        const licenses = await licensesCollection.find({}).sort({ createdAt: -1 }).toArray(); 
+        res.json(licenses);
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao buscar licenças." });
+    }
+});
+adminApiRouter.post('/delete-license', async (req, res) => {
+    const { licenseId } = req.body;
+    try {
+        const result = await licensesCollection.deleteOne({ 
+            _id: new ObjectId(licenseId), 
+            isUsed: false 
+        });
+        if (result.deletedCount === 0) {
+            return res.status(404).json({ message: "Licença não encontrada ou já está em uso e não pode ser deletada." });
+        }
+        res.status(200).json({ message: "Licença não utilizada deletada com sucesso." });
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao deletar licença." });
+    }
+});
+adminApiRouter.post('/assign-key', async (req, res) => {
+    const { licenseId, username } = req.body;
+    if (!licenseId || !username) {
+        return res.status(400).json({ message: "ID da licença e nome de usuário são obrigatórios." });
+    }
+    try {
+        const user = await usersCollection.findOne({ username: username });
+        if (!user) {
+            return res.status(404).json({ message: `Usuário '${username}' não encontrado.` });
+        }
+        const license = await licensesCollection.findOne({ _id: new ObjectId(licenseId) });
+        if (!license) {
+            return res.status(404).json({ message: "Licença não encontrada." });
+        }
+        if (license.isUsed) {
+            return res.status(400).json({ message: "Esta licença já foi usada." });
+        }
+        if (license.assignedTo) {
+            return res.status(400).json({ message: "Esta licença já foi atribuída a outro usuário." });
+        }
+        await licensesCollection.updateOne(
+            { _id: new ObjectId(licenseId) },
+            { $set: {
+                assignedTo: user._id,
+                assignedToUsername: user.username
+            }}
+        );
+        res.status(200).json({ message: `Chave atribuída a ${user.username} com sucesso!` });
+    } catch (e) {
+        res.status(500).json({ message: "Erro ao atribuir chave." });
+    }
+});
 
-async function startServer() {
-    await connectToDB();
-    await initializeMasterKey();
-    await loadAccountsIntoMemory(); 
-    
-    setInterval(deductFreeTime, TIME_DEDUCTION_INTERVAL);
-    console.log(`[GESTOR DE TEMPO] Relógio de desconto de horas iniciado (a cada ${TIME_DEDUCTION_INTERVAL / 60000} minutos).`);
-
-    setInterval(checkExpiredPlans, PLAN_EXPIRATION_INTERVAL);
-    console.log(`[GESTOR DE PLANOS] Relógio de expiração de planos iniciado (a cada ${PLAN_EXPIRATION_INTERVAL / 60000} minutos).`);
-
-    app.listen(PORT, () => console.log(`[GESTOR] Servidor SaaS iniciado na porta ${PORT}`));
-}
-startServer();
+app.use('/api/admin', adminApiRouter);
