@@ -39,7 +39,7 @@
             <a href="#pricing" class="hover:text-blue-400">Preços</a>
             <a href="#faq" class="hover:text-blue-400">FAQ</a>
         </nav>
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4" id="header-auth-buttons">
             <a href="/login" class="text-sm px-4 py-2 rounded-md hover:bg-gray-700">Login</a>
             <a href="/register" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">Começar Agora</a>
         </div>
@@ -250,6 +250,28 @@
             <p class="text-sm pt-2">Este é um projeto fictício. A Steam e todos os logotipos são marcas registadas da Valve Corporation.</p>
         </div>
     </footer>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const authButtons = document.getElementById('header-auth-buttons');
+            if (!authButtons) return;
+
+            fetch('/api/auth-status')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.loggedIn) {
+                        authButtons.innerHTML = `
+                            <a href="/dashboard" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
+                                Painel de Controle
+                            </a>
+                        `;
+                    }
+                })
+                .catch(err => {
+                    console.error("Erro ao verificar status de auth:", err);
+                });
+        });
+    </script>
 
 </body>
 </html>
