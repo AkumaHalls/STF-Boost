@@ -24,13 +24,9 @@ if (!MONGODB_URI || !ADMIN_PASSWORD) {
 
 const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
-let steamAppListCache = { data: [], timestamp: 0 }; 
+let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timestamp: 0 }; // Fallback seguro
 
-// --- DEFINIÇÃO DOS ROUTERS (NO TOPO PARA EVITAR ERROS) ---
-const apiRouter = express.Router();
-const adminApiRouter = express.Router();
-
-// --- CONFIGURAÇÃO DE PLANOS ---
+// --- CONSTANTES DO PLANO DE NEGÓCIOS ---
 const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime'];
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; // 50 horas
 const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 horas
@@ -44,47 +40,49 @@ const PLAN_LIMITS = {
     'lifetime': { accounts: 10, games: 33 }
 };
 
-// --- MIDDLEWARES GERAIS ---
-app.use(express.json()); 
-app.use(express.urlencoded({ extended: true })); 
-app.use(session({ 
-    secret: 'uma-nova-chave-secreta-para-sessoes-saas', 
-    resave: false, 
-    saveUninitialized: false, 
-    store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), 
-    cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
-})); 
-app.use(express.static(path.join(__dirname, 'public'))); 
-
-// --- MIDDLEWARES DE AUTENTICAÇÃO ---
-const isAuthenticated = async (req, res, next) => { 
-    if (req.session.userId) { 
-        try {
-            const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
-            if (user) {
-                if (user.isBanned) {
-                    req.session.destroy(() => res.redirect('/banned'));
-                    return;
-                }
-                return next();
-            }
-        } catch (e) { console.error("Erro auth:", e); }
-    } 
-    res.redirect('/login?error=unauthorized'); 
-};
-
-const isAdminAuthenticated = (req, res, next) => {
-    if (req.session.isAdmin) return next();
-    res.redirect('/admin/login?error=unauthorized');
-};
-
-// --- GESTÃO DE DADOS ---
+// --- GESTÃO DE DADOS (GLOBAIS) ---
 const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection;
 let siteSettingsCollection;
 let usersCollection; 
 let licensesCollection; 
 let liveAccounts = {};
+
+// --- FUNÇÕES DE BANCO DE DADOS (IMPORTANTE: Definidas antes do uso) ---
+async function connectToDB() { 
+    try { 
+        await mongoClient.connect(); 
+        console.log("[DB] Conectado ao MongoDB Atlas com sucesso!"); 
+        const db = mongoClient.db("stf-saas-db"); 
+        
+        accountsCollection = db.collection("accounts");
+        siteSettingsCollection = db.collection("site_settings");
+        usersCollection = db.collection("users"); 
+        licensesCollection = db.collection("licenses"); 
+        
+        await usersCollection.createIndex({ username: 1 }, { unique: true });
+        await usersCollection.createIndex({ email: 1 }, { unique: true });
+        await licensesCollection.createIndex({ key: 1 }, { unique: true }); 
+
+    } catch (e) { 
+        console.error("[DB] Não foi possível conectar ao MongoDB", e); 
+        process.exit(1); 
+    } 
+}
+
+async function initializeMasterKey() {
+    let settings = await siteSettingsCollection.findOne({ _id: 'config' });
+    if (!settings || !settings.appSecret) {
+        console.log("[SECURITY] Nenhuma chave mestra encontrada. A gerar uma nova...");
+        const newSecret = crypto.randomBytes(32).toString('hex');
+        appSecretKey = crypto.createHash('sha256').update(newSecret).digest('base64').substr(0, 32);
+        await siteSettingsCollection.updateOne( { _id: 'config' }, { $set: { appSecret: newSecret } }, { upsert: true } );
+        console.log("[SECURITY] Nova chave mestra gerada e guardada na base de dados.");
+    } else {
+        console.log("[SECURITY] Chave mestra carregada da base de dados.");
+        appSecretKey = crypto.createHash('sha256').update(settings.appSecret).digest('base64').substr(0, 32);
+    }
+}
 
 // --- FUNÇÕES AUXILIARES ---
 const encrypt = (text) => { if (!appSecretKey) return null; const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
@@ -102,15 +100,43 @@ function sendDiscordNotification(title, message, color, username) {
 }
 
 async function getSteamAppList() {
-    if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 0) return steamAppListCache.data;
+    if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 1) {
+        return steamAppListCache.data;
+    }
+    console.log("[GESTOR] A buscar lista de jogos...");
+    
+    // Tenta SteamSpy primeiro
     try {
         const response = await fetch('https://steamspy.com/api.php?request=all', { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (response.ok) {
             const jsonData = await response.json();
-            steamAppListCache = { data: Object.values(jsonData), timestamp: Date.now() };
-            return steamAppListCache.data;
+            const appList = Object.values(jsonData);
+            if (appList.length > 0) {
+                steamAppListCache = { data: appList, timestamp: Date.now() };
+                console.log("[GESTOR] Lista de jogos atualizada via SteamSpy.");
+                return steamAppListCache.data;
+            }
         }
-    } catch (e) { console.error("Erro SteamSpy, usando cache antigo ou vazio."); }
+    } catch (e) {
+        console.error("[GESTOR] SteamSpy falhou, tentando API oficial...");
+    }
+
+    // Fallback para API Oficial da Steam
+    try {
+        const response = await fetch('http://api.steampowered.com/ISteamApps/GetAppList/v0002/', { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (response.ok) {
+             const jsonData = await response.json();
+             if (jsonData.applist && jsonData.applist.apps) {
+                 steamAppListCache = { data: jsonData.applist.apps, timestamp: Date.now() };
+                 console.log("[GESTOR] Lista de jogos atualizada via Steam API.");
+                 return steamAppListCache.data;
+             }
+        }
+    } catch (e) {
+        console.error("[GESTOR] API Oficial falhou também.");
+    }
+
+    console.warn("[GESTOR] Falha ao atualizar lista de jogos. Usando cache de emergência (CS2).");
     return steamAppListCache.data;
 }
 
@@ -164,7 +190,7 @@ function startWorkerForAccount(accountData) {
         if (!acc.manual_logout && acc.settings.autoRelogin) {
              usersCollection.findOne({ _id: new ObjectId(acc.ownerUserID) }).then(user => {
                 if (!user || user.isBanned || (user.plan === 'free' && user.freeHoursRemaining <= 0) || (user.planExpiresAt && user.planExpiresAt < new Date())) {
-                    acc.status = user?.isBanned ? "Banido" : "Tempo Esgotado";
+                    acc.status = user?.isBanned ? "Banido" : "Tempo Esgotado/Expirado";
                     acc.sessionStartTime = null;
                 } else {
                     acc.status = "Reiniciando...";
@@ -183,6 +209,58 @@ function startWorkerForAccount(accountData) {
     });
 }
 
+async function loadAccountsIntoMemory() {
+    const defaultSettings = { customInGameTitle: '', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false, autoRelogin: true, sharedSecret: '' };
+    const savedAccounts = await accountsCollection.find({ "settings.autoRelogin": true }).toArray(); 
+    savedAccounts.forEach((acc, index) => {
+        liveAccounts[acc.username] = { ...acc, encryptedPassword: acc.password, settings: { ...defaultSettings, ...(acc.settings || {}) }, status: 'Parado', worker: null, sessionStartTime: null, manual_logout: false };
+        const delay = index * 15000;
+        console.log(`[GESTOR] Worker para ${acc.username} (Dono: ${acc.ownerUserID}) agendado para iniciar em ${delay / 1000}s.`);
+        setTimeout(() => {
+            const accountData = { ...liveAccounts[acc.username], password: decrypt(acc.password) };
+            if (accountData.password) {
+                startWorkerForAccount(accountData);
+            } else {
+                console.error(`[GESTOR] Falha ao desencriptar senha para ${acc.username}, início automático abortado.`);
+            }
+        }, delay);
+    });
+    console.log(`[GESTOR] ${savedAccounts.length} contas (com auto-relogin) carregadas.`);
+}
+
+// --- MIDDLEWARES ---
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true })); 
+app.use(session({ 
+    secret: 'uma-nova-chave-secreta-para-sessoes-saas', 
+    resave: false, 
+    saveUninitialized: false, 
+    store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), 
+    cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
+})); 
+app.use(express.static(path.join(__dirname, 'public'))); 
+
+const isAuthenticated = async (req, res, next) => { 
+    if (req.session.userId) { 
+        try {
+            const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
+            if (user) {
+                if (user.isBanned) {
+                    req.session.destroy(() => res.redirect('/banned'));
+                    return;
+                }
+                return next();
+            }
+        } catch (e) { console.error("Erro auth:", e); }
+    } 
+    res.redirect('/login?error=unauthorized'); 
+};
+
+const isAdminAuthenticated = (req, res, next) => {
+    if (req.session.isAdmin) return next();
+    res.redirect('/admin/login?error=unauthorized');
+};
+
 // --- ROTAS DE PÁGINAS ---
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
@@ -190,10 +268,7 @@ app.get('/register', (req, res) => req.session.userId ? res.redirect('/dashboard
 app.get('/dashboard', isAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
 app.get('/banned', (req, res) => res.sendFile(path.join(__dirname, 'public', 'banned.html')));
 app.get('/health', (req, res) => res.status(200).send('OK'));
-
-app.get('/logout', (req, res) => {
-    req.session.destroy(() => res.redirect('/'));
-});
+app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 
 // --- ROTAS ADMIN PÁGINAS ---
 app.get('/admin', (req, res) => res.redirect('/admin/dashboard'));
@@ -209,13 +284,14 @@ app.post('/admin/login', (req, res) => {
 });
 app.get('/admin/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 
-
 // ==========================================
-// === ROTAS DA API (USUÁRIO) ===
+// === API ROUTERS ===
 // ==========================================
+const apiRouter = express.Router();
+const adminApiRouter = express.Router();
 
+// === API PÚBLICA/AUTH ===
 apiRouter.get('/auth-status', (req, res) => res.json({ loggedIn: !!req.session.userId }));
-
 apiRouter.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
     if (!username || !password) return res.status(400).json({ message: "Dados incompletos." });
@@ -223,23 +299,19 @@ apiRouter.post('/register', async (req, res) => {
         const hash = await bcrypt.hash(password, 10);
         await usersCollection.insertOne({ username, email, password: hash, plan: 'free', freeHoursRemaining: FREE_HOURS_MS, isBanned: false, planExpiresAt: null, createdAt: new Date() });
         res.status(201).json({ message: "Conta criada!" });
-    } catch (e) {
-        res.status(409).json({ message: "Usuário já existe." });
-    }
+    } catch (e) { res.status(409).json({ message: "Usuário já existe." }); }
 });
-
 apiRouter.post('/login', async (req, res) => {
     const { username, password } = req.body;
     const user = await usersCollection.findOne({ username });
     if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Credenciais inválidas." });
     if (user.isBanned) return res.status(403).json({ message: "Conta banida." });
-    
     req.session.userId = user._id.toString();
     req.session.username = user.username;
     res.json({ message: "Login OK" });
 });
 
-// ROTAS PROTEGIDAS (Usuário)
+// === API PROTEGIDA (USUÁRIO) ===
 apiRouter.use(isAuthenticated);
 
 apiRouter.get('/user-info', async (req, res) => {
@@ -249,7 +321,6 @@ apiRouter.get('/user-info', async (req, res) => {
     if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 3600000);
     res.json({ username: user.username, plan: user.plan, freeHoursRemaining: fh, planExpiresAt: user.planExpiresAt });
 });
-
 apiRouter.get('/status', (req, res) => {
     const myAccounts = {};
     for (const user in liveAccounts) {
@@ -260,45 +331,31 @@ apiRouter.get('/status', (req, res) => {
     }
     res.json({ accounts: myAccounts });
 });
-
 apiRouter.post('/add-account', async (req, res) => {
     const { username, password } = req.body;
     const uid = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     const count = await accountsCollection.countDocuments({ ownerUserID: uid });
-    
     const limit = PLAN_LIMITS[user.plan]?.accounts || 1;
     if (count >= limit) return res.status(403).json({ message: `Limite de contas do plano atingido (${limit}).` });
-
-    if (await accountsCollection.findOne({ username })) return res.status(400).json({ message: "Conta Steam já cadastrada no sistema." });
-    
+    if (await accountsCollection.findOne({ username })) return res.status(400).json({ message: "Conta Steam já cadastrada." });
     const encPass = encrypt(password);
     await accountsCollection.insertOne({ username, password: encPass, games: [730], settings: {}, ownerUserID: uid });
     liveAccounts[username] = { username, encryptedPassword: encPass, games: [730], settings: {}, status: 'Parado', ownerUserID: uid };
     res.json({ message: "Conta adicionada." });
 });
-
 apiRouter.post('/start/:username', async (req, res) => {
-    const username = req.params.username;
-    const acc = liveAccounts[username];
+    const acc = liveAccounts[req.params.username];
     if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({ message: "Conta não encontrada." });
-    
     const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
     if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas grátis." });
     if (user.planExpiresAt && user.planExpiresAt < new Date()) return res.status(403).json({ message: "Plano expirado." });
-    
     const gameLimit = PLAN_LIMITS[user.plan]?.games || 1;
     if (acc.games.length > gameLimit) return res.status(403).json({ message: `Limite de jogos (${gameLimit}) excedido.` });
-
     const pass = decrypt(acc.encryptedPassword);
-    if (pass) {
-        startWorkerForAccount({ ...acc, password: pass });
-        res.json({ message: "Iniciando..." });
-    } else {
-        res.status(500).json({ message: "Erro senha." });
-    }
+    if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "Iniciando..." }); } 
+    else { res.status(500).json({ message: "Erro senha." }); }
 });
-
 apiRouter.post('/stop/:username', (req, res) => {
     const acc = liveAccounts[req.params.username];
     if (acc && acc.ownerUserID === req.session.userId) {
@@ -306,11 +363,8 @@ apiRouter.post('/stop/:username', (req, res) => {
         if (acc.worker) acc.worker.kill();
         acc.status = "Parado";
         res.json({ message: "Parando..." });
-    } else {
-        res.status(404).json({ message: "Conta não encontrada." });
-    }
+    } else { res.status(404).json({ message: "Erro." }); }
 });
-
 apiRouter.delete('/remove-account/:username', async (req, res) => {
     const username = req.params.username;
     const acc = liveAccounts[username];
@@ -322,16 +376,12 @@ apiRouter.delete('/remove-account/:username', async (req, res) => {
     await accountsCollection.deleteOne({ username, ownerUserID: req.session.userId });
     res.json({ message: "Removido." });
 });
-
 apiRouter.post('/save-settings/:username', async (req, res) => {
     const { username } = req.params;
     const { settings, newPassword } = req.body;
     const uid = req.session.userId;
-    
-    // Paywall check
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     if (user.plan === 'free' && (settings.appearOffline || settings.customInGameTitle)) return res.status(403).json({ message: "Funcionalidade Premium." });
-
     if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) {
         if (settings) {
             await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { settings } });
@@ -339,68 +389,52 @@ apiRouter.post('/save-settings/:username', async (req, res) => {
             if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings, games: liveAccounts[username].games } });
         }
         res.json({ message: "Salvo." });
-    } else {
-        res.status(404).json({ message: "Erro." });
-    }
+    } else { res.status(404).json({ message: "Erro." }); }
 });
-
 apiRouter.post('/set-games/:username', async (req, res) => {
     const { username } = req.params;
     const { games } = req.body;
     const uid = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     const limit = PLAN_LIMITS[user.plan]?.games || 1;
-    
     if (games.length > limit) return res.status(403).json({ message: `Limite de jogos (${limit}) excedido.` });
-
     if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) {
         await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { games } });
         liveAccounts[username].games = games;
         if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings: liveAccounts[username].settings, games } });
         res.json({ message: "Jogos salvos." });
-    } else {
-        res.status(404).json({ message: "Erro." });
-    }
+    } else { res.status(404).json({ message: "Erro." }); }
 });
-
 apiRouter.get('/search-game', async (req, res) => {
     const q = (req.query.q || '').toLowerCase();
     if (q.length < 2) return res.json([]);
     const list = await getSteamAppList();
     res.json(list.filter(a => a.name.toLowerCase().includes(q)).slice(0, 50));
 });
-
 apiRouter.post('/activate-license', async (req, res) => {
     const { licenseKey } = req.body;
     const uid = req.session.userId;
     const key = await licensesCollection.findOne({ key: licenseKey });
     if (!key || key.isUsed) return res.status(400).json({ message: "Chave inválida ou usada." });
     if (key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({ message: "Chave não é para você." });
-
     let expiry = null;
     if (key.durationDays) { expiry = new Date(); expiry.setDate(expiry.getDate() + key.durationDays); }
-    
     await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: expiry, freeHoursRemaining: 0 } });
     await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } });
     res.json({ message: "Plano ativado!" });
 });
-
 apiRouter.get('/my-keys', async (req, res) => {
     const keys = await licensesCollection.find({ assignedTo: new ObjectId(req.session.userId), isUsed: false }).toArray();
     res.json(keys);
 });
-
 apiRouter.post('/renew-free-time', async (req, res) => {
     const uid = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     if (user.plan !== 'free' || user.freeHoursRemaining > 0) return res.status(400).json({ message: "Não elegível." });
-    
     if (user.lastFreeRenew && (Date.now() - user.lastFreeRenew < FREE_RENEW_COOLDOWN_MS)) return res.status(429).json({ message: "Aguarde 24h." });
-
     await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { freeHoursRemaining: FREE_HOURS_MS, lastFreeRenew: new Date() } });
     res.json({ message: "Renovado!" });
 });
-
 apiRouter.post('/change-password', async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
@@ -409,19 +443,55 @@ apiRouter.post('/change-password', async (req, res) => {
     await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: hash } });
     res.json({ message: "Senha alterada." });
 });
+// Bulk actions
+apiRouter.post('/bulk-start', async (req, res) => {
+    const { usernames } = req.body;
+    const uid = req.session.userId;
+    const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
+    if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." });
+    const limit = PLAN_LIMITS[user.plan]?.games || 1;
+    let c = 0;
+    usernames.forEach(u => {
+        const acc = liveAccounts[u];
+        if (acc && acc.ownerUserID === uid && acc.games.length <= limit) {
+            const p = decrypt(acc.encryptedPassword);
+            if (p) { startWorkerForAccount({ ...acc, password: p }); c++; }
+        }
+    });
+    res.json({ message: `${c} iniciadas.` });
+});
+apiRouter.post('/bulk-stop', (req, res) => {
+    const { usernames } = req.body;
+    usernames.forEach(u => {
+        const acc = liveAccounts[u];
+        if (acc && acc.ownerUserID === req.session.userId) {
+            acc.manual_logout = true;
+            if (acc.worker) acc.worker.kill();
+            acc.status = "Parado";
+        }
+    });
+    res.json({ message: "Paradas." });
+});
+apiRouter.post('/bulk-remove', async (req, res) => {
+    const { usernames } = req.body;
+    usernames.forEach(u => {
+        const acc = liveAccounts[u];
+        if (acc && acc.ownerUserID === req.session.userId) {
+            if (acc.worker) acc.worker.kill();
+            delete liveAccounts[u];
+        }
+    });
+    await accountsCollection.deleteMany({ username: { $in: usernames }, ownerUserID: req.session.userId });
+    res.json({ message: "Removidas." });
+});
 
-// ==========================================
-// === ROTAS DA API (ADMIN) ===
-// ==========================================
+// === API ADMIN ===
 adminApiRouter.use(isAdminAuthenticated);
-
 adminApiRouter.get('/users', async (req, res) => {
-    const users = await usersCollection.find({}, { projection: { password: 0 } }).toArray();
-    res.json(users);
+    res.json(await usersCollection.find({}, { projection: { password: 0 } }).toArray());
 });
 adminApiRouter.get('/licenses', async (req, res) => {
-    const keys = await licensesCollection.find({}).sort({ createdAt: -1 }).toArray();
-    res.json(keys);
+    res.json(await licensesCollection.find({}).sort({ createdAt: -1 }).toArray());
 });
 adminApiRouter.post('/generate-keys', async (req, res) => {
     const { plan, quantity, durationDays } = req.body;
@@ -436,7 +506,6 @@ adminApiRouter.post('/generate-keys', async (req, res) => {
 });
 adminApiRouter.post('/ban-user', async (req, res) => {
     await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } });
-    // Mata workers
     for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId && liveAccounts[u].worker) liveAccounts[u].worker.kill(); }
     res.json({ message: "Banido." });
 });
@@ -468,20 +537,17 @@ adminApiRouter.post('/update-plan', async (req, res) => {
     res.json({ message: "Atualizado." });
 });
 
-
-// --- APLICAÇÃO DOS ROUTERS ---
-app.use('/api/admin', adminApiRouter);
+// --- APLICAÇÃO DAS ROTAS (No Fim) ---
 app.use('/api', apiRouter);
+app.use('/api/admin', adminApiRouter);
 
-// --- CRON JOBS (TEMPO E EXPIRAÇÃO) ---
+// --- CRON JOBS ---
 async function deductFreeTime() {
-    // (Mesma lógica simplificada)
     const updates = new Set();
     for (const u in liveAccounts) { if (liveAccounts[u].status === 'Rodando') updates.add(liveAccounts[u].ownerUserID); }
     if (updates.size === 0) return;
     const ids = Array.from(updates).map(id => new ObjectId(id));
-    await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -300000 } }); // -5 min
-    // Check limits
+    await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -300000 } });
     const expired = await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 } }).toArray();
     expired.forEach(u => {
         for (const acc in liveAccounts) {
@@ -497,32 +563,23 @@ async function checkExpiredPlans() {
     const now = new Date();
     const expired = await usersCollection.find({ plan: { $ne: 'free' }, planExpiresAt: { $lt: now } }).toArray();
     for (const u of expired) {
-        console.log(`[SYSTEM] Plano expirado para ${u.username}`);
         await usersCollection.updateOne({ _id: u._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: FREE_HOURS_MS } });
-        // Kill workers
         for (const acc in liveAccounts) { if (liveAccounts[acc].ownerUserID === u._id.toString() && liveAccounts[acc].worker) liveAccounts[acc].worker.kill(); }
     }
 }
 
-// --- BOOTSTRAP ---
+// --- START ---
 async function startServer() {
     console.log("[SYSTEM] Conectando ao DB...");
     try {
         await connectToDB();
-        console.log("[SYSTEM] DB Conectado. Carregando chaves...");
         await initializeMasterKey();
-        console.log("[SYSTEM] Carregando contas...");
         await loadAccountsIntoMemory();
-        
-        // Inicia Cron Jobs
-        setInterval(deductFreeTime, 300000); // 5 min
-        setInterval(checkExpiredPlans, 3600000); // 1 hora
-
-        app.listen(PORT, () => {
-            console.log(`[SYSTEM] SERVIDOR ONLINE NA PORTA ${PORT}`);
-        });
+        setInterval(deductFreeTime, 300000);
+        setInterval(checkExpiredPlans, 3600000);
+        app.listen(PORT, () => console.log(`[SYSTEM] SERVIDOR ONLINE NA PORTA ${PORT}`));
     } catch (e) {
-        console.error("[SYSTEM] ERRO FATAL NO BOOT:", e);
+        console.error("[SYSTEM] ERRO FATAL:", e);
     }
 }
 
