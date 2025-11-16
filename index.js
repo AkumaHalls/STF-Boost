@@ -2,17 +2,16 @@ const express = require('express');
 const path = require('path');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb'); // Importar ObjectId
 const crypto = require('crypto');
 const { fork } = require('child_process');
 const https = require('https');
-const bcrypt = require('bcryptjs'); // Nova dependência para encriptar senhas de usuário
+const bcrypt = require('bcryptjs'); 
 
 // --- CONFIGURAÇÃO ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
-// O SITE_PASSWORD não é mais usado para login, mas podemos mantê-lo para um futuro painel admin
 const ADMIN_PASSWORD = process.env.SITE_PASSWORD; 
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; 
 
@@ -22,7 +21,6 @@ let appSecretKey;
 let steamAppListCache = { data: [], timestamp: 0 }; 
 
 // --- FUNÇÃO DE NOTIFICAÇÃO DISCORD ---
-// (Sem alterações, continua igual)
 function sendDiscordNotification(title, message, color, username) {
     if (!DISCORD_WEBHOOK_URL) return;
     const safeTitle = title || '\u200b';
@@ -44,7 +42,6 @@ function sendDiscordNotification(title, message, color, username) {
 }
 
 // --- FUNÇÕES DE CRIPTOGRAFIA ---
-// (Sem alterações, continua igual para as senhas da Steam)
 const encrypt = (text) => { if (!appSecretKey) { console.error("[ENCRIPTAR] ERRO CRÍTICO: appSecretKey não está definida!"); return null; } const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
 const decrypt = (text) => { try { if (!appSecretKey) { return ""; } if (!text) { return ""; } const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { console.error("[DESENCRIPTAR] Falha crítica na função de desencriptar:", error); return ""; }};
 
@@ -52,22 +49,19 @@ const decrypt = (text) => { try { if (!appSecretKey) { return ""; } if (!text) {
 const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection;
 let siteSettingsCollection;
-let usersCollection; // NOVA COLEÇÃO: Para guardar usuários do site
+let usersCollection; 
 let liveAccounts = {};
 
 async function connectToDB() { 
     try { 
         await mongoClient.connect(); 
         console.log("Conectado ao MongoDB Atlas com sucesso!"); 
-        const db = mongoClient.db("stf-saas-db"); // Nome da nova base de dados
+        const db = mongoClient.db("stf-saas-db"); 
         
-        // Coleção para as contas Steam (como antes)
         accountsCollection = db.collection("accounts");
-        // Coleção para configurações do site (como antes)
         siteSettingsCollection = db.collection("site_settings");
-        // NOVA COLEÇÃO
         usersCollection = db.collection("users"); 
-        // Criar um índice único para usernames e emails para evitar duplicados
+        
         await usersCollection.createIndex({ username: 1 }, { unique: true });
         await usersCollection.createIndex({ email: 1 }, { unique: true });
 
@@ -83,7 +77,6 @@ async function initializeMasterKey() {
         console.log("[GESTOR] Nenhuma chave mestra encontrada. A gerar uma nova...");
         const newSecret = crypto.randomBytes(32).toString('hex');
         appSecretKey = crypto.createHash('sha256').update(newSecret).digest('base64').substr(0, 32);
-        // Não vamos mais guardar a senha do site aqui, mas sim a chave secreta
         await siteSettingsCollection.updateOne( { _id: 'config' }, { $set: { appSecret: newSecret } }, { upsert: true } );
         console.log("[GESTOR] Nova chave mestra gerada e guardada na base de dados.");
     } else {
@@ -93,7 +86,6 @@ async function initializeMasterKey() {
 }
 
 // --- BUSCA DE JOGOS (COM STEAMSPY) ---
-// (Sem alterações, continua igual)
 async function getSteamAppList() {
     if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 0) {
         return steamAppListCache.data;
@@ -118,10 +110,9 @@ async function getSteamAppList() {
 }
 
 // --- LÓGICA DO WORKER ---
-// (Sem alterações por agora, mas no Passo 2, teremos que filtrar por ownerUserID)
 function startWorkerForAccount(accountData) {
     const username = accountData.username;
-    console.log(`[GESTOR] A iniciar worker para ${username}`);
+    console.log(`[GESTOR] A iniciar worker para ${username} (Dono: ${accountData.ownerUserID})`);
     if (liveAccounts[username] && liveAccounts[username].worker) { liveAccounts[username].worker.kill(); }
     if (liveAccounts[username] && liveAccounts[username].startupTimeout) { clearTimeout(liveAccounts[username].startupTimeout); }
     const worker = fork(path.join(__dirname, 'worker.js'));
@@ -129,6 +120,7 @@ function startWorkerForAccount(accountData) {
     liveAccounts[username].status = "Iniciando...";
     liveAccounts[username].manual_logout = false;
     liveAccounts[username].timed_out = false; 
+    liveAccounts[username].ownerUserID = accountData.ownerUserID; // GARANTE QUE O DONO ESTÁ NA MEMÓRIA
     const startupTimeout = setTimeout(() => {
         if (liveAccounts[username] && liveAccounts[username].status === "Iniciando...") {
             console.error(`[GESTOR] Worker para ${username} demorou muito para iniciar (Timeout). Acionando reinicialização automática.`);
@@ -157,7 +149,7 @@ function startWorkerForAccount(accountData) {
             }
             if (type === 'sentryUpdate') {
                 liveAccounts[username].sentryFileHash = payload.sentryFileHash;
-                accountsCollection.updateOne({ username }, { $set: { sentryFileHash: payload.sentryFileHash } });
+                accountsCollection.updateOne({ username, ownerUserID: liveAccounts[username].ownerUserID }, { $set: { sentryFileHash: payload.sentryFileHash } });
             }
         }
     });
@@ -167,7 +159,8 @@ function startWorkerForAccount(accountData) {
         if (!accountExited) return;
         const wasTimeout = accountExited.timed_out;
         accountExited.timed_out = false; 
-        console.log(`[GESTOR] Worker para ${username} saiu com código ${code}.`);
+        console.log(`[GESTOR] Worker para ${username} (Dono: ${accountExited.ownerUserID}) saiu com código ${code}.`);
+        
         if (accountExited.manual_logout === false && accountExited.settings.autoRelogin === true) {
             const restartDelay = wasTimeout ? 5000 : 30000;
             const reason = wasTimeout ? "devido a um timeout" : "após uma desconexão";
@@ -190,23 +183,14 @@ function startWorkerForAccount(accountData) {
     });
 }
 
-// (Sem alterações, continua igual)
 async function loadAccountsIntoMemory() {
-    // IMPORTANTE: No Passo 2, esta função terá de ser modificada para
-    // carregar apenas contas de usuários que estão ativamente logados,
-    // ou talvez apenas contas com `autoRelogin=true`.
-    // Por agora, deixamos como está, mas ela vai carregar TODAS as contas de
-    // TODOS os usuários, o que pode ser um problema de escala (e segurança).
-    // No momento, vamos focar no login.
-
     const defaultSettings = { customInGameTitle: '', customAwayMessage: '', appearOffline: false, autoAcceptFriends: false, autoRelogin: true, sharedSecret: '' };
-    const savedAccounts = await accountsCollection.find({ "settings.autoRelogin": true }).toArray(); // Apenas carrega contas com auto-relogin
+    const savedAccounts = await accountsCollection.find({ "settings.autoRelogin": true }).toArray(); 
     savedAccounts.forEach((acc, index) => {
-        liveAccounts[acc.username] = { username: acc.username, encryptedPassword: acc.password, games: acc.games || [730], settings: { ...defaultSettings, ...(acc.settings || {}) }, sentryFileHash: acc.sentryFileHash || null, status: 'Parado', worker: null, sessionStartTime: null, manual_logout: false };
+        liveAccounts[acc.username] = { ...acc, encryptedPassword: acc.password, settings: { ...defaultSettings, ...(acc.settings || {}) }, status: 'Parado', worker: null, sessionStartTime: null, manual_logout: false };
         
-        // Vamos manter o delay para não sobrecarregar a Steam
         const delay = index * 15000;
-        console.log(`[GESTOR] Worker para ${acc.username} (de ${acc.ownerUserID}) agendado para iniciar em ${delay / 1000}s.`);
+        console.log(`[GESTOR] Worker para ${acc.username} (Dono: ${acc.ownerUserID}) agendado para iniciar em ${delay / 1000}s.`);
         setTimeout(() => {
             const accountData = { ...liveAccounts[acc.username], password: decrypt(acc.password) };
             if (accountData.password) {
@@ -223,14 +207,14 @@ async function loadAccountsIntoMemory() {
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
 app.use(session({ 
-    secret: 'uma-nova-chave-secreta-para-sessoes-saas', // Mude isto para algo aleatório
+    secret: 'uma-nova-chave-secreta-para-sessoes-saas', 
     resave: false, 
     saveUninitialized: false, 
     store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), 
     cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
 })); 
 
-// --- NOVO MIDDLEWARE DE AUTENTICAÇÃO ---
+// --- MIDDLEWARE DE AUTENTICAÇÃO ---
 const isAuthenticated = (req, res, next) => { 
     if (req.session.userId) { 
         return next(); 
@@ -238,36 +222,42 @@ const isAuthenticated = (req, res, next) => {
     res.redirect('/login?error=unauthorized'); 
 };
 
-// --- NOVAS ROTAS DE PÁGINAS ---
-// Rota principal (Landing Page) - não precisa de login
+// --- ROTAS DE PÁGINAS ---
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Página de Login - não precisa de login
 app.get('/login', (req, res) => {
-    if (req.session.userId) { return res.redirect('/dashboard'); } // Se já logado, vai para o painel
+    if (req.session.userId) { return res.redirect('/dashboard'); } 
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-// Página de Registo - não precisa de login
 app.get('/register', (req, res) => {
-    if (req.session.userId) { return res.redirect('/dashboard'); } // Se já logado, vai para o painel
+    if (req.session.userId) { return res.redirect('/dashboard'); } 
     res.sendFile(path.join(__dirname, 'public', 'register.html'));
 });
 
-// Página do Dashboard (o seu painel antigo) - PRECISA de login
 app.get('/dashboard', isAuthenticated, (req, res) => {
-    // O nome deste arquivo foi o que você RENOMEOU
     res.sendFile(path.join(__dirname, 'public', 'dashboard.html')); 
 });
 
+// *** CORREÇÃO: Rota de Logout movida para fora da API ***
+app.get('/logout', (req, res) => {
+    req.session.destroy(err => {
+        if (err) {
+            console.error("Erro ao fazer logout:", err);
+            return res.status(500).send("Não foi possível fazer logout.");
+        }
+        res.clearCookie('connect.sid'); // Limpa o cookie da sessão
+        res.redirect('/'); // Redireciona para a Landing Page
+    });
+});
+
 // --- ROTAS ESTÁTICAS ---
-// Serve arquivos como style.css, logo.png, etc.
 app.use(express.static(path.join(__dirname, 'public'))); 
 app.get('/health', (req, res) => { res.status(200).send('OK'); }); 
 
-// --- NOVAS ROTAS DE API (Autenticação) ---
+// --- ROTAS DE API (Autenticação) ---
 const apiRouter = express.Router();
 
 apiRouter.post('/register', async (req, res) => {
@@ -281,13 +271,13 @@ apiRouter.post('/register', async (req, res) => {
             username,
             email,
             password: hashedPassword,
-            plan: 'free', // Começa como 'free'
-            freeHoursRemaining: 50 * 60 * 60 * 1000, // 50 horas em milissegundos
+            plan: 'free', 
+            freeHoursRemaining: 100 * 60 * 60 * 1000, // 100 horas grátis
             createdAt: new Date()
         });
         res.status(201).json({ message: "Usuário registado com sucesso!" });
     } catch (error) {
-        if (error.code === 11000) { // Erro de duplicado
+        if (error.code === 11000) { 
             res.status(409).json({ message: "Username ou email já existe." });
         } else {
             console.error("Erro no registo:", error);
@@ -310,8 +300,7 @@ apiRouter.post('/login', async (req, res) => {
         if (!isMatch) {
             return res.status(401).json({ message: "Credenciais inválidas." });
         }
-        // Login bem-sucedido!
-        req.session.userId = user._id.toString(); // Guarda o ID na sessão
+        req.session.userId = user._id.toString(); 
         req.session.username = user.username;
         res.status(200).json({ message: "Login bem-sucedido!" });
     } catch (error) {
@@ -320,43 +309,60 @@ apiRouter.post('/login', async (req, res) => {
     }
 });
 
-apiRouter.get('/logout', (req, res) => {
-    req.session.destroy(err => {
-        if (err) {
-            return res.status(500).json({ message: "Não foi possível fazer logout." });
-        }
-        res.redirect('/'); // Redireciona para a Landing Page
-    });
-});
-
-// --- API ANTIGA (Agora protegida e precisa de FILTROS) ---
-// Este middleware aplica 'isAuthenticated' a todas as rotas de API abaixo
+// --- API PROTEGIDA (Isolamento de Dados) ---
 apiRouter.use(isAuthenticated); 
 
+// *** NOVA ROTA: Obter informações do usuário logado ***
+apiRouter.get('/user-info', async (req, res) => {
+    try {
+        const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
+        if (!user) {
+            return res.status(404).json({ message: "Usuário não encontrado." });
+        }
+        
+        let freeHours = 0;
+        if (user.plan === 'free' && user.freeHoursRemaining) {
+            freeHours = Math.floor(user.freeHoursRemaining / (60 * 60 * 1000)); // Converte ms para horas
+        }
+
+        res.status(200).json({
+            username: user.username,
+            plan: user.plan,
+            freeHoursRemaining: freeHours 
+        });
+    } catch (error) {
+        console.error("Erro ao buscar info do usuário:", error);
+        res.status(500).json({ message: "Erro ao buscar informações do usuário." });
+    }
+});
+
+// --- API ANTIGA (Agora com FILTROS de Isolamento) ---
+
 apiRouter.get('/status', (req, res) => {
-    // **** PASSO 2 (Futuro): Filtrar `liveAccounts` por `ownerUserID` ****
-    // Por enquanto, isto vai mostrar contas de TODOS os usuários. Não é seguro!
-    // Mas vamos focar em fazer o login funcionar primeiro.
     const publicState = { accounts: {} };
+    const currentUserID = req.session.userId;
+
     for (const username in liveAccounts) {
         const acc = liveAccounts[username];
-        // **** PASSO 2 (Futuro): Adicionar if (acc.ownerUserID === req.session.userId) ****
-        const publicData = {
-            username: acc.username,
-            status: acc.status,
-            games: acc.games,
-            settings: acc.settings,
-            uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0
-        };
-        publicState.accounts[username] = publicData;
+        // *** FILTRO DE ISOLAMENTO ***
+        if (acc.ownerUserID === currentUserID) {
+            const publicData = {
+                username: acc.username,
+                status: acc.status,
+                games: acc.games,
+                settings: acc.settings,
+                uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0
+            };
+            publicState.accounts[username] = publicData;
+        }
     }
     res.json(publicState);
 });
 
 apiRouter.post('/start/:username', (req, res) => { 
-    // **** PASSO 2 (Futuro): Verificar se o usuário é dono desta conta ****
     const account = liveAccounts[req.params.username]; 
-    if (account) { 
+    // *** FILTRO DE ISOLAMENTO ***
+    if (account && account.ownerUserID === req.session.userId) { 
         const accountData = { ...account, password: decrypt(account.encryptedPassword) }; 
         if (accountData.password) { startWorkerForAccount(accountData); res.status(200).json({ message: "Iniciando worker..." }); } 
         else { res.status(500).json({ message: "Erro ao desencriptar senha."}); } 
@@ -364,9 +370,9 @@ apiRouter.post('/start/:username', (req, res) => {
 });
 
 apiRouter.post('/stop/:username', (req, res) => {
-    // **** PASSO 2 (Futuro): Verificar se o usuário é dono desta conta ****
     const account = liveAccounts[req.params.username];
-    if (account && account.worker) {
+    // *** FILTRO DE ISOLAMENTO ***
+    if (account && account.ownerUserID === req.session.userId) {
         if(account.startupTimeout) { clearTimeout(account.startupTimeout); account.startupTimeout = null; }
         account.manual_logout = true;
         account.worker.kill();
@@ -376,17 +382,80 @@ apiRouter.post('/stop/:username', (req, res) => {
     } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); }
 });
 
-// (As rotas de Ações em Massa /bulk-xxx foram removidas por enquanto para simplificar o Passo 1)
-// (Vamos re-adicioná-las no Passo 2)
+// --- RE-ADICIONANDO AÇÕES EM MASSA (com filtros) ---
+apiRouter.post('/bulk-start', (req, res) => {
+    const { usernames } = req.body;
+    if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
+    let startedCount = 0;
+    usernames.forEach(username => {
+        const account = liveAccounts[username];
+        // *** FILTRO DE ISOLAMENTO ***
+        if (account && account.ownerUserID === req.session.userId) {
+            const accountData = { ...account, password: decrypt(account.encryptedPassword) };
+            if (accountData.password) {
+                startWorkerForAccount(accountData);
+                startedCount++;
+            }
+        }
+    });
+    res.status(200).json({ message: `${startedCount} contas enviadas para início.` });
+});
+
+apiRouter.post('/bulk-stop', (req, res) => {
+    const { usernames } = req.body;
+    if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
+    let stoppedCount = 0;
+    usernames.forEach(username => {
+        const account = liveAccounts[username];
+        // *** FILTRO DE ISOLAMENTO ***
+        if (account && account.worker && account.ownerUserID === req.session.userId) {
+            if(account.startupTimeout) { clearTimeout(account.startupTimeout); account.startupTimeout = null; }
+            account.manual_logout = true;
+            account.worker.kill();
+            account.status = "Parado";
+            account.sessionStartTime = null; 
+            stoppedCount++;
+        }
+    });
+    res.status(200).json({ message: `${stoppedCount} contas paradas.` });
+});
+
+apiRouter.post('/bulk-remove', async (req, res) => {
+    const { usernames } = req.body;
+    if (!usernames || !Array.isArray(usernames)) return res.status(400).json({ message: "Requisição inválida." });
+    const currentUserID = req.session.userId;
+    usernames.forEach(username => {
+        const account = liveAccounts[username];
+        // *** FILTRO DE ISOLAMENTO ***
+        if (account && account.ownerUserID === currentUserID) {
+            if (account.worker) {
+                account.manual_logout = true;
+                account.worker.kill();
+            }
+            delete liveAccounts[username];
+        }
+    });
+    // *** FILTRO DE ISOLAMENTO (na Base de Dados) ***
+    await accountsCollection.deleteMany({ username: { $in: usernames }, ownerUserID: currentUserID });
+    res.status(200).json({ message: `${usernames.length} contas removidas.` });
+});
+// --- FIM DAS AÇÕES EM MASSA ---
 
 apiRouter.post('/add-account', async (req, res) => { 
     const { username, password } = req.body; 
+    const currentUserID = req.session.userId;
     if (!username || !password) return res.status(400).json({ message: "Usuário e senha são obrigatórios."}); 
+
+    // *** LÓGICA DE PLANO ***
+    const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
+    const userAccountsCount = await accountsCollection.countDocuments({ ownerUserID: currentUserID });
     
-    // **** PASSO 2 (Futuro): Verificar limite do plano (ex: 1 conta para free) ****
+    if (user.plan === 'free' && userAccountsCount >= 1) {
+        return res.status(403).json({ message: "Seu plano gratuito permite apenas 1 conta Steam. Faça upgrade para adicionar mais." });
+    }
 
     const existing = await accountsCollection.findOne({ username }); 
-    if (existing) return res.status(400).json({ message: "Esta conta Steam já está a ser usada." }); 
+    if (existing) return res.status(400).json({ message: "Esta conta Steam já está a ser usada por outro usuário." }); 
 
     const encryptedPassword = encrypt(password); 
     if (!encryptedPassword) { return res.status(500).json({ message: "Falha ao encriptar senha ao adicionar conta."}); } 
@@ -397,7 +466,7 @@ apiRouter.post('/add-account', async (req, res) => {
         games: [730], 
         settings: {}, 
         sentryFileHash: null,
-        ownerUserID: req.session.userId // <- LIGA A CONTA AO USUÁRIO
+        ownerUserID: currentUserID // *** FILTRO DE ISOLAMENTO (na criação) ***
     }; 
     
     await accountsCollection.insertOne(newAccountData); 
@@ -406,51 +475,70 @@ apiRouter.post('/add-account', async (req, res) => {
 });
 
 apiRouter.delete('/remove-account/:username', async (req, res) => { 
-    // **** PASSO 2 (Futuro): Verificar se o usuário é dono desta conta ****
     const account = liveAccounts[req.params.username]; 
-    if (account) { 
+    const currentUserID = req.session.userId;
+    // *** FILTRO DE ISOLAMENTO ***
+    if (account && account.ownerUserID === currentUserID) { 
         if (account.worker) { account.manual_logout = true; account.worker.kill(); } 
         delete liveAccounts[req.params.username]; 
-        await accountsCollection.deleteOne({ username: req.params.username, ownerUserID: req.session.userId }); // Segurança
+        await accountsCollection.deleteOne({ username: req.params.username, ownerUserID: currentUserID }); 
         res.status(200).json({ message: "Conta removida." }); 
-    } else { res.status(404).json({ message: "Conta não encontrada." }); } 
+    } else { 
+        // Se a conta não está em 'liveAccounts', ainda tenta apagar da DB (com filtro)
+        const result = await accountsCollection.deleteOne({ username: req.params.username, ownerUserID: currentUserID });
+        if (result.deletedCount > 0) {
+            res.status(200).json({ message: "Conta removida." });
+        } else {
+            res.status(404).json({ message: "Conta não encontrada." });
+        }
+    } 
 });
 
 apiRouter.post('/submit-guard/:username', (req, res) => { 
-    // **** PASSO 2 (Futuro): Verificar se o usuário é dono desta conta ****
     const account = liveAccounts[req.params.username]; 
-    if (account && account.worker) { 
+    // *** FILTRO DE ISOLAMENTO ***
+    if (account && account.ownerUserID === req.session.userId && account.worker) { 
         account.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); 
         res.status(200).json({ message: "Código enviado ao worker." }); 
     } else { res.status(404).json({ message: "Conta ou worker não encontrado." }); } 
 });
 
 apiRouter.post('/save-settings/:username', async (req, res) => {
-    // **** PASSO 2 (Futuro): Verificar se o usuário é dono desta conta ****
     const { username } = req.params;
     const { settings, newPassword } = req.body; 
     const account = liveAccounts[username];
-    if (!account) return res.status(404).json({ message: "Conta não encontrada." });
+    const currentUserID = req.session.userId;
+
+    // *** FILTRO DE ISOLAMENTO ***
+    if (!account || account.ownerUserID !== currentUserID) {
+        // Verifica na DB, pode não estar em liveAccounts
+        const dbAccount = await accountsCollection.findOne({ username: username, ownerUserID: currentUserID });
+        if (!dbAccount) {
+            return res.status(404).json({ message: "Conta não encontrada." });
+        }
+        if (!account) liveAccounts[username] = dbAccount;
+    }
+
     let message = "Configurações salvas.";
     if (settings) {
-        await accountsCollection.updateOne({ username, ownerUserID: req.session.userId }, { $set: { settings } }); // Segurança
-        account.settings = settings;
-        if (account.worker) {
-            try { account.worker.send({ command: 'updateSettings', data: { settings, games: account.games } }); } 
+        await accountsCollection.updateOne({ username, ownerUserID: currentUserID }, { $set: { settings } }); 
+        liveAccounts[username].settings = settings;
+        if (liveAccounts[username].worker) {
+            try { liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings, games: liveAccounts[username].games } }); } 
             catch (ipcError) { console.error(`[GESTOR] Falha ao enviar 'updateSettings' para ${username}:`, ipcError.message); }
         }
     }
     if (newPassword) {
         const encryptedPassword = encrypt(newPassword);
         if (!encryptedPassword) { return res.status(500).json({ message: "Falha ao encriptar nova senha." }); }
-        await accountsCollection.updateOne({ username, ownerUserID: req.session.userId }, { $set: { password: encryptedPassword } }); // Segurança
-        account.encryptedPassword = encryptedPassword;
+        await accountsCollection.updateOne({ username, ownerUserID: currentUserID }, { $set: { password: encryptedPassword } }); 
+        liveAccounts[username].encryptedPassword = encryptedPassword;
         message = "Configurações e senha atualizadas.";
-        if (account.worker) {
-            account.manual_logout = true; 
-            account.worker.kill();
-            account.status = "Parado";
-            account.sessionStartTime = null; 
+        if (liveAccounts[username].worker) {
+            liveAccounts[username].manual_logout = true; 
+            liveAccounts[username].worker.kill();
+            liveAccounts[username].status = "Parado";
+            liveAccounts[username].sessionStartTime = null; 
             message += " A conta foi parada para aplicar a nova senha.";
             setTimeout(() => { if (liveAccounts[username]) { liveAccounts[username].manual_logout = false; } }, 1000);
         }
@@ -459,13 +547,24 @@ apiRouter.post('/save-settings/:username', async (req, res) => {
 });
 
 apiRouter.post('/set-games/:username', async (req, res) => { 
-    // **** PASSO 2 (Futuro): Verificar se o usuário é dono desta conta ****
     const { username } = req.params; 
     const { games } = req.body; 
     const account = liveAccounts[username]; 
-    if (account && games) { 
-        // **** PASSO 2 (Futuro): Verificar limite de jogos do plano ****
-        await accountsCollection.updateOne({ username, ownerUserID: req.session.userId }, { $set: { games } }); // Segurança
+    const currentUserID = req.session.userId;
+
+    // *** LÓGICA DE PLANO ***
+    const user = await usersCollection.findOne({ _id: new ObjectId(currentUserID) });
+    let gameLimit = 2; // Limite 'free'
+    if (user.plan === 'premium') gameLimit = 24; 
+    if (user.plan === 'lifetime') gameLimit = 33; 
+    
+    if (games.length > gameLimit) {
+        return res.status(403).json({ message: `Seu plano (${user.plan}) permite um máximo de ${gameLimit} jogos.`});
+    }
+
+    // *** FILTRO DE ISOLAMENTO ***
+    if (account && account.ownerUserID === currentUserID) { 
+        await accountsCollection.updateOne({ username, ownerUserID: currentUserID }, { $set: { games } }); 
         account.games = games; 
         if (account.worker) { 
             try { account.worker.send({ command: 'updateSettings', data: { settings: account.settings, games } }); } 
@@ -478,7 +577,7 @@ apiRouter.post('/set-games/:username', async (req, res) => {
 });
 
 apiRouter.get('/search-game', async (req, res) => {
-    // (Sem alterações, esta rota é segura)
+    // (Sem alterações)
     const searchTerm = req.query.q ? req.query.q.toLowerCase() : '';
     if (searchTerm.length < 2) { return res.json([]); }
     try {
@@ -488,14 +587,13 @@ apiRouter.get('/search-game', async (req, res) => {
     } catch (e) { res.status(500).json({ message: "Erro ao buscar lista de jogos." }); }
 });
 
-// Monta o router de API no prefixo /api
 app.use('/api', apiRouter);
 
 // --- INICIALIZAÇÃO DO SERVIDOR ---
 async function startServer() {
     await connectToDB();
     await initializeMasterKey();
-    await loadAccountsIntoMemory(); // Carrega contas com auto-relogin
+    await loadAccountsIntoMemory(); 
     app.listen(PORT, () => console.log(`[GESTOR] Servidor SaaS iniciado na porta ${PORT}`));
 }
 startServer();
