@@ -12,6 +12,7 @@
     "express-session": "^1.18.0",
     "mongodb": "^6.7.0",
     "steam-user": "^5.0.0",
-    "steam-totp": "^2.1.2"
+    "steam-totp": "^2.1.2",
+    "bcryptjs": "^2.4.3"
   }
 }
