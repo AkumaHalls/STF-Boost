@@ -12,7 +12,7 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
-const ADMIN_PASSWORD = process.env.SITE_PASSWORD; // A SENHA MESTRA DO ADMIN
+const ADMIN_PASSWORD = process.env.SITE_PASSWORD; 
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; 
 
 if (!MONGODB_URI || !ADMIN_PASSWORD) { console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI e SITE_PASSWORD precisam de ser definidas!"); process.exit(1); }
@@ -224,6 +224,7 @@ async function loadAccountsIntoMemory() {
 }
 
 // --- EXPRESS APP E ROTAS ---
+// (Sem alterações)
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
 app.use(session({ 
@@ -233,15 +234,12 @@ app.use(session({
     store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), 
     cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 }
 })); 
-
-// --- MIDDLEWARES DE AUTENTICAÇÃO ---
 const isAuthenticated = (req, res, next) => { 
     if (req.session.userId) { 
         return next(); 
     } 
     res.redirect('/login?error=unauthorized'); 
 };
-// *** NOVO MIDDLEWARE: Autenticação de Admin ***
 const isAdminAuthenticated = (req, res, next) => {
     if (req.session.isAdmin) {
         return next();
@@ -250,20 +248,20 @@ const isAdminAuthenticated = (req, res, next) => {
 };
 
 // --- ROTAS DE PÁGINAS (Públicas e de Usuário) ---
+// (Sem alterações)
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'index.html')); });
 app.get('/login', (req, res) => { if (req.session.userId) { return res.redirect('/dashboard'); } res.sendFile(path.join(__dirname, 'public', 'login.html')); });
 app.get('/register', (req, res) => { if (req.session.userId) { return res.redirect('/dashboard'); } res.sendFile(path.join(__dirname, 'public', 'register.html')); });
 app.get('/dashboard', isAuthenticated, (req, res) => { res.sendFile(path.join(__dirname, 'public', 'dashboard.html')); });
 app.get('/logout', (req, res) => { req.session.destroy(err => { if (err) { console.error("Erro ao fazer logout:", err); return res.status(500).send("Não foi possível fazer logout."); } res.clearCookie('connect.sid'); res.redirect('/'); }); });
 
-// --- *** NOVAS ROTAS (Painel de Admin) *** ---
+// --- ROTAS (Painel de Admin) ---
+// (Sem alterações)
 app.get('/admin', (req, res) => res.redirect('/admin/dashboard'));
-
 app.get('/admin/login', (req, res) => {
     if (req.session.isAdmin) { return res.redirect('/admin/dashboard'); }
     res.sendFile(path.join(__dirname, 'public', 'admin', 'login.html'));
 });
-
 app.post('/admin/login', (req, res) => {
     const { password } = req.body;
     if (password === ADMIN_PASSWORD) {
@@ -273,11 +271,9 @@ app.post('/admin/login', (req, res) => {
         res.redirect('/admin/login?error=invalid');
     }
 });
-
 app.get('/admin/dashboard', isAdminAuthenticated, (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html'));
 });
-
 app.get('/admin/logout', (req, res) => {
     req.session.destroy(err => {
         if (err) { return res.status(500).send("Não foi possível fazer logout."); }
@@ -286,11 +282,14 @@ app.get('/admin/logout', (req, res) => {
 });
 
 // --- ROTAS ESTÁTICAS ---
+// (Sem alterações)
 app.use(express.static(path.join(__dirname, 'public'))); 
 app.get('/health', (req, res) => { res.status(200).send('OK'); }); 
 
 // --- ROTAS DE API (Usuário) ---
 const apiRouter = express.Router();
+
+// *** ROTA /register (COM 50 HORAS) ***
 apiRouter.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
     if (!username || !email || !password) { return res.status(400).json({ message: "Todos os campos são obrigatórios." }); }
@@ -299,8 +298,8 @@ apiRouter.post('/register', async (req, res) => {
         await usersCollection.insertOne({
             username, email, password: hashedPassword,
             plan: 'free', 
-            freeHoursRemaining: 50 * 60 * 60 * 1000, // 50 HORAS
-            isBanned: false, // *** NOVO CAMPO: Banido ***
+            freeHoursRemaining: 50 * 60 * 60 * 1000, // *** CORRIGIDO PARA 50 HORAS ***
+            isBanned: false, 
             createdAt: new Date()
         });
         res.status(201).json({ message: "Usuário registado com sucesso!" });
@@ -310,13 +309,13 @@ apiRouter.post('/register', async (req, res) => {
     }
 });
 apiRouter.post('/login', async (req, res) => {
+    // (Sem alterações)
     const { username, password } = req.body;
     if (!username || !password) { return res.status(400).json({ message: "Username e senha são obrigatórios." }); }
     try {
         const user = await usersCollection.findOne({ username });
         if (!user) { return res.status(401).json({ message: "Credenciais inválidas." }); }
         
-        // *** VERIFICAÇÃO DE BANIDO ***
         if (user.isBanned) {
             return res.status(403).json({ message: "Esta conta foi banida." });
         }
@@ -332,7 +331,9 @@ apiRouter.post('/login', async (req, res) => {
         res.status(500).json({ message: "Erro interno ao fazer login." });
     }
 });
+
 apiRouter.use(isAuthenticated); 
+
 apiRouter.get('/user-info', async (req, res) => {
     // (Sem alterações)
     try {
@@ -584,6 +585,7 @@ apiRouter.get('/search-game', async (req, res) => {
         res.json(results);
     } catch (e) { res.status(500).json({ message: "Erro ao buscar lista de jogos." }); }
 });
+
 app.use('/api', apiRouter); // Monta a API de usuário
 
 // --- *** NOVAS ROTAS DE API (Admin) *** ---
