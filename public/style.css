@@ -146,6 +146,12 @@ input:checked + .slider:before { transform: translateX(26px); }
 .sidebar-user { display: flex; flex-direction: column; padding: 10px; background-color: rgba(0, 255, 255, 0.05); border: 1px solid rgba(0, 255, 255, 0.2); border-radius: 4px; font-size: 14px; }
 #sidebarUser { color: var(--primary-color); font-weight: bold; }
 #sidebarPlan { color: var(--pending-color); font-size: 12px; margin-top: 4px; }
+/* *** NOVO ESTILO PARA A DATA DE EXPIRAÇÃO *** */
+#sidebarExpiry {
+    color: #c7d5e0; /* Cor de texto normal */
+    font-size: 12px;
+    margin-top: 4px;
+}
 .sidebar-nav { display: flex; flex-direction: column; }
 .sidebar-nav .nav-title { font-size: 12px; color: #888; text-transform: uppercase; margin-bottom: 10px; }
 .sidebar-nav a { color: #c7d5e0; text-decoration: none; padding: 12px 10px; display: flex; align-items: center; gap: 10px; border-radius: 4px; transition: all 0.2s ease-in-out; border: 1px solid transparent; }
@@ -157,7 +163,7 @@ input:checked + .slider:before { transform: translateX(26px); }
 .main-content .control-panel { height: auto; min-height: 100%; }
 
 /* ============================================= */
-/* --- NOVOS ESTILOS (Painel Admin) --- */
+/* --- ESTILOS (Painel Admin) --- */
 /* ============================================= */
 .admin-container {
     display: flex;
