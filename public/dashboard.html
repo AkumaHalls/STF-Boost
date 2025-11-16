@@ -8,7 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=1.7"> </head>
+    <link rel="stylesheet" href="/style.css?v=1.7"> 
+</head>
 <body class="panel-page">
 
     <div class="dashboard-layout">
@@ -51,6 +52,10 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
                     Ativar Licença
                 </a>
+                <a href="#" id="changePasswordButton">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    Mudar Senha
+                </a>
                 <a href="/logout" class="logout-btn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
                     Logout
@@ -75,10 +80,16 @@
                             Remover
                         </button>
                     </div>
-                    <button id="addAccountButton">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                        Adicionar Conta
-                    </button>
+                    <div>
+                        <button id="renewFreeButton" class="reconnect-btn" style="display: none;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                            Renovar Tempo Grátis
+                        </button>
+                        <button id="addAccountButton">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                            Adicionar Conta
+                        </button>
+                    </div>
                 </header>
                 
                 <div class="accounts-table">
@@ -163,6 +174,18 @@
         </div>
     </div>
 
+    <div id="passwordModal" class="modal">
+        <div class="modal-content">
+            <h2>Mudar Senha da Conta</h2>
+            <p>Insira sua senha atual e a nova senha do site (não da Steam).</p>
+            <input type="password" id="currentPasswordInput" placeholder="Senha Atual">
+            <input type="password" id="newPasswordInputModal" placeholder="Nova Senha">
+            <input type="password" id="confirmPasswordInput" placeholder="Confirmar Nova Senha">
+            <button id="savePasswordButton">Mudar Senha</button>
+            <button id="closePasswordModalButton" class="remove-btn">Cancelar</button>
+        </div>
+    </div>
+
     <div id="toastContainer"></div>
 
     <script>
@@ -189,13 +212,19 @@
             const newPasswordInput = document.getElementById('newPasswordInput');
             const sidebarUser = document.getElementById('sidebarUser');
             const sidebarPlan = document.getElementById('sidebarPlan');
-            const sidebarExpiry = document.getElementById('sidebarExpiry'); // *** NOVO SELETOR ***
-
+            const sidebarExpiry = document.getElementById('sidebarExpiry'); 
             const licenseModal = document.getElementById('licenseModal');
             const activateLicenseButton = document.getElementById('activateLicenseButton');
             const closeLicenseModalButton = document.getElementById('closeLicenseModalButton');
             const saveLicenseButton = document.getElementById('saveLicenseButton');
             const licenseKeyInput = document.getElementById('licenseKeyInput');
+            
+            // --- Novos Seletores (Passo 6 & 7) ---
+            const changePasswordButton = document.getElementById('changePasswordButton');
+            const passwordModal = document.getElementById('passwordModal');
+            const closePasswordModalButton = document.getElementById('closePasswordModalButton');
+            const savePasswordButton = document.getElementById('savePasswordButton');
+            const renewFreeButton = document.getElementById('renewFreeButton');
 
             // --- Ícones (sem alterações) ---
             const icons = {
@@ -223,13 +252,19 @@
                     const userInfo = await response.json();
                     
                     const planName = userInfo.plan.charAt(0).toUpperCase() + userInfo.plan.slice(1);
-                    
                     sidebarUser.textContent = `Bem-vindo, ${userInfo.username}!`;
                     sidebarPlan.textContent = `Plano: ${planName}`;
                     
-                    // *** INÍCIO DA LÓGICA DE EXPIRAÇÃO/HORAS ***
+                    // Lógica de Exibição de Horas / Expiração
+                    renewFreeButton.style.display = 'none'; // Esconde por padrão
+                    sidebarExpiry.textContent = ''; // Limpa por padrão
+
                     if (userInfo.plan === 'free') {
                         sidebarExpiry.textContent = `Horas restantes: ${userInfo.freeHoursRemaining}`;
+                        if (userInfo.freeHoursRemaining <= 0) {
+                            // *** MOSTRA BOTÃO DE RENOVAR ***
+                            renewFreeButton.style.display = 'inline-flex';
+                        }
                     } else if (userInfo.plan === 'lifetime') {
                         sidebarExpiry.textContent = `Plano Vitalício`;
                     } else if (userInfo.planExpiresAt) {
@@ -245,10 +280,8 @@
                             sidebarExpiry.textContent = `Expirado em: ${formattedDate}`;
                         }
                     } else {
-                        // Plano pago, mas sem data (ex: mudado pelo admin para ser vitalício)
                         sidebarExpiry.textContent = `Plano Ativo (sem expiração)`;
                     }
-                    // *** FIM DA LÓGICA DE EXPIRAÇÃO/HORAS ***
 
                 } catch (e) {
                     console.error("Erro ao buscar info do usuário", e);
@@ -482,7 +515,7 @@
                 const usernames = getSelectedUsernames();
                 if (usernames.length === 0) return;
                 fetch('/api/bulk-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames }) })
-                    .then(res => res.json()).then(data => { showToast(data.message); setTimeout(updateUI, 1000); });
+                    .then(res => res.json()).then(data => { showToast(data.message, response.ok ? 'info' : 'error'); setTimeout(updateUI, 1000); });
             });
             bulkStopButton.addEventListener('click', () => {
                 const usernames = getSelectedUsernames();
@@ -532,6 +565,66 @@
                     if (response.ok) {
                         hideLicenseModal();
                         fetchUserInfo(); 
+                    }
+                } catch (e) {
+                    showToast("Erro ao conectar ao servidor.", 'error');
+                }
+            });
+
+            // --- *** NOVA LÓGICA: Modal Mudar Senha *** ---
+            const hidePasswordModal = () => {
+                passwordModal.style.display = 'none';
+                document.getElementById('currentPasswordInput').value = '';
+                document.getElementById('newPasswordInputModal').value = '';
+                document.getElementById('confirmPasswordInput').value = '';
+            }
+            changePasswordButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                passwordModal.style.display = 'block';
+            });
+            closePasswordModalButton.addEventListener('click', hidePasswordModal);
+            window.addEventListener('click', (event) => { 
+                if (event.target == passwordModal) hidePasswordModal();
+            });
+            savePasswordButton.addEventListener('click', async () => {
+                const currentPassword = document.getElementById('currentPasswordInput').value;
+                const newPassword = document.getElementById('newPasswordInputModal').value;
+                const confirmPassword = document.getElementById('confirmPasswordInput').value;
+
+                try {
+                    const response = await fetch('/api/change-password', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
+                    });
+                    const result = await response.json();
+                    
+                    showToast(result.message, response.ok ? 'info' : 'error');
+                    
+                    if (response.ok) {
+                        hidePasswordModal();
+                    }
+                } catch (e) {
+                    showToast("Erro ao conectar ao servidor.", 'error');
+                }
+            });
+
+            // --- *** NOVA LÓGICA: Renovar Tempo Grátis *** ---
+            renewFreeButton.addEventListener('click', async () => {
+                if (!confirm("Tem certeza que deseja renovar suas 50 horas grátis? Você só pode fazer isso uma vez por dia.")) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/renew-free-time', {
+                        method: 'POST'
+                    });
+                    const result = await response.json();
+                    
+                    showToast(result.message, response.ok ? 'info' : 'error');
+                    
+                    if (response.ok) {
+                        fetchUserInfo(); // Atualiza a sidebar para mostrar as novas horas
                     }
                 } catch (e) {
                     showToast("Erro ao conectar ao servidor.", 'error');
