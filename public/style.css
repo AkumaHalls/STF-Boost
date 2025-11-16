@@ -183,8 +183,12 @@ input:checked + .slider:before { transform: translateX(26px); }
 }
 .admin-form {
     display: flex;
+    flex-wrap: wrap; /* Permite quebrar a linha em telas pequenas */
     gap: 10px;
     align-items: center;
+}
+.admin-form label {
+    margin-left: 5px;
 }
 .admin-form select, .admin-form input {
     font-family: 'Share Tech Mono', monospace;
@@ -196,10 +200,13 @@ input:checked + .slider:before { transform: translateX(26px); }
     font-size: 14px;
 }
 .admin-form select {
-    width: 200px;
+    width: 150px;
 }
 .admin-form input {
     width: 100px;
+}
+.admin-form input[placeholder*="Ex: 30"] {
+    width: 160px;
 }
 #generatedKeys {
     margin-top: 15px;
@@ -231,6 +238,7 @@ input:checked + .slider:before { transform: translateX(26px); }
     text-align: left;
     border-bottom: 1px solid rgba(0, 255, 255, 0.2);
     vertical-align: middle;
+    white-space: nowrap; /* Impede que o conteúdo quebre linha */
 }
 .admin-table th {
     color: var(--primary-color);
@@ -255,7 +263,26 @@ input:checked + .slider:before { transform: translateX(26px); }
     background-color: var(--pending-color);
     color: var(--dark-bg);
 }
+.admin-table .delete-btn {
+    border-color: #ff6B6B;
+    color: #ff6B6B;
+    padding: 5px 10px;
+    font-size: 12px;
+}
+.admin-table .delete-btn:hover {
+    background-color: #ff6B6B;
+    color: var(--dark-bg);
+}
 .admin-table .status-banned {
     color: var(--secondary-color);
     font-weight: bold;
+}
+.admin-table select {
+    font-family: 'Share Tech Mono', monospace;
+    background-color: var(--dark-bg);
+    border: 1px solid var(--primary-color);
+    color: #c7d5e0;
+    padding: 5px;
+    border-radius: 4px;
+    font-size: 14px;
 }
