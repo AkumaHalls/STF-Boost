@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=1.9">
+    <link rel="stylesheet" href="/style.css?v=1.91">
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -20,7 +20,6 @@
         .gradient-bg {
             background: linear-gradient(90deg, #0a0a14, #1E3A8A);
         }
-        /* O estilo do feature-card foi movido para o style.css */
     </style>
 </head>
 <body class="bg-gray-900 text-white">
@@ -58,35 +57,11 @@
         </section>
     </main>
 
-    <section id="features" class="container mx-auto px-4 py-24">
-        <h2 class="text-4xl font-bold text-center mb-12 tech-font">Porquê escolher o <span class="text-blue-400">STF Boost</span>?</h2>
-        <div class="grid md:grid-cols-3 gap-8">
-            <div class="feature-card p-6 rounded-lg text-center">
-                <h3 class="text-2xl font-semibold mb-3">50 Horas Grátis</h3>
-                <p class="text-gray-300">
-                    Crie sua conta e receba 50 horas de boost totalmente grátis, renováveis quando expirarem.
-                </p>
-            </div>
-            <div class="feature-card p-6 rounded-lg text-center">
-                <h3 class="text-2xl font-semibold mb-3">Seguro e Indetectável</h3>
-                <p class="text-gray-300">
-                    Nossa tecnologia simula que você está a jogar, garantindo zero risco de VAC ou banimento.
-                </p>
-            </div>
-            <div class="feature-card p-6 rounded-lg text-center">
-                <h3 class="text-2xl font-semibold mb-3">Painel Completo</h3>
-                <p class="text-gray-300">
-                    Controle total sobre suas contas. Adicione jogos, defina status customizados e muito mais, 24/7.
-                </p>
-            </div>
-        </div>
-    </section>
-
     <section id="pricing" class="bg-gray-800 py-24">
         <div class="container mx-auto px-4">
             <h2 class="text-4xl font-bold text-center mb-12 tech-font">Planos Simples e Justos</h2>
             
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 max-w-[1400px] mx-auto">
                 
                 <div class="feature-card">
                     <h3 class="text-2xl font-bold text-center text-blue-400">Gratuito</h3>
@@ -96,14 +71,6 @@
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>1</strong> Conta Steam</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>1</strong> Limite de Jogo</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Aparecer Offline/Online</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Esconder Atividade Recente</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Auto-Aceitar Amigos</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Histórico de Chat</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Mensagem Ausente (Ad)</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Título no Jogo (Ad)</li>
                     </ul>
                     <a href="/register" class="mt-auto w-full text-center bg-gray-600 px-6 py-3 rounded-md font-semibold hover:bg-gray-500 transition-colors">
                         Começar de Graça
@@ -112,20 +79,13 @@
 
                 <div class="feature-card">
                     <h3 class="text-2xl font-bold text-center text-blue-400">Basic</h3>
-                    <div class="text-5xl font-bold text-center my-4">R$ 4,90 <span class="text-lg font-normal">/mês</span></div>
+                    <div class="text-5xl font-bold text-center my-4">R$ 7,90 <span class="text-lg font-normal">/mês</span></div>
                     <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>30 Dias</strong> de Acesso</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>2</strong> Contas Steam</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>6</strong> Limite de Jogos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Auto-Aceitar Amigos</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Histórico de Chat</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Recursos Premium Básicos</li>
                     </ul>
                     <button data-plan="Basic" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
                         Comprar
@@ -134,43 +94,28 @@
 
                 <div class="feature-card">
                     <h3 class="text-2xl font-bold text-center text-blue-400">Plus</h3>
-                    <div class="text-5xl font-bold text-center my-4">R$ 9,90 <span class="text-lg font-normal">/mês</span></div>
+                    <div class="text-5xl font-bold text-center my-4">R$ 15,90 <span class="text-lg font-normal">/mês</span></div>
                     <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>30 Dias</strong> de Acesso</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>4</strong> Contas Steam</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>12</strong> Limite de Jogos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Histórico de Chat</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Todos Recursos Premium</li>
                     </ul>
                     <button data-plan="Plus" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
                         Comprar
                     </button>
                 </div>
 
-                <div class="feature-card premium-highlight relative">
-                    <span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10">MAIS POPULAR</span>
-                    <h3 class="text-2xl font-bold text-center mb-4 text-blue-400 relative z-20">Premium</h3> 
-                    <div class="text-5xl font-bold text-center my-4">R$ 14,90 <span class="text-lg font-normal">/mês</span></div>
+                <div class="feature-card">
+                    <h3 class="text-2xl font-bold text-center text-blue-400">Premium</h3>
+                    <div class="text-5xl font-bold text-center my-4">R$ 27,90 <span class="text-lg font-normal">/mês</span></div>
                     <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>30 Dias</strong> de Acesso</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>6</strong> Contas Steam</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>24</strong> Limite de Jogos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Histórico de Chat</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Todos Recursos Premium</li>
                     </ul>
                     <button data-plan="Premium" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
                         Comprar
@@ -179,46 +124,61 @@
 
                 <div class="feature-card">
                     <h3 class="text-2xl font-bold text-center text-blue-400">Ultimate</h3>
-                    <div class="text-5xl font-bold text-center my-4">R$ 29,90 <span class="text-lg font-normal">/mês</span></div>
+                    <div class="text-5xl font-bold text-center my-4">R$ 54,90 <span class="text-lg font-normal">/mês</span></div>
                     <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>30 Dias</strong> de Acesso</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>10</strong> Contas Steam</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>33</strong> Limite de Jogos (Máx. Steam)</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Histórico de Chat</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>33</strong> Limite de Jogos (Máx)</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Prioridade no Suporte</li>
                     </ul>
                     <button data-plan="Ultimate" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
                         Comprar
                     </button>
                 </div>
 
-                <div class="feature-card">
-                    <h3 class="text-2xl font-bold text-center text-blue-400">Vitalício</h3>
-                    <div class="text-5xl font-bold text-center my-4">R$ 149,90</div>
+                <div class="feature-card lifetime-highlight relative">
+                    <span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">TEMPO LIMITADO</span>
+                    <h3 class="text-2xl font-bold text-center mb-4 text-purple-400 relative z-20">Vitalício</h3>
+                    <div class="text-5xl font-bold text-center my-4">R$ 249,90</div>
                     <p class="text-center text-gray-400 mb-6 -mt-4">Pagamento Único</p>
                     <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Acesso Vitalício</strong></li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>10</strong> Contas Steam</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>33</strong> Limite de Jogos (Máx. Steam)</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Histórico de Chat</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>33</strong> Limite de Jogos (Máx)</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Todos Recursos Premium</li>
                     </ul>
-                    <button data-plan="Vitalício" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
-                        Comprar
+                    <button data-plan="Vitalício" class="purchase-button mt-auto w-full text-center bg-purple-600 px-6 py-3 rounded-md font-semibold hover:bg-purple-700 transition-colors">
+                        Comprar Acesso
+                    </button>
+                </div>
+
+                <div class="feature-card border-2 border-dashed border-gray-600 relative">
+                    <h3 class="text-2xl font-bold text-center mb-2 text-white">Personalizado</h3>
+                    <p class="text-center text-xs text-gray-400 mb-4">Monte o seu plano ideal</p>
+                    
+                    <div class="text-4xl font-bold text-center my-4 text-cyan-400">
+                        R$ <span id="customPriceDisplay">15.00</span>
+                    </div>
+
+                    <div class="space-y-4 mb-6 flex-grow">
+                        <div>
+                            <div class="custom-label"><span>Dias</span><span id="daysVal" class="custom-val">30</span></div>
+                            <input type="range" id="daysRange" min="7" max="365" value="30" class="custom-plan-slider">
+                        </div>
+                        <div>
+                            <div class="custom-label"><span>Contas</span><span id="accountsVal" class="custom-val">1</span></div>
+                            <input type="range" id="accountsRange" min="1" max="33" value="1" class="custom-plan-slider">
+                        </div>
+                        <div>
+                            <div class="custom-label"><span>Jogos</span><span id="gamesVal" class="custom-val">10</span></div>
+                            <input type="range" id="gamesRange" min="1" max="33" value="10" class="custom-plan-slider">
+                        </div>
+                    </div>
+
+                    <button id="customBuyButton" class="mt-auto w-full text-center bg-cyan-600 px-6 py-3 rounded-md font-semibold hover:bg-cyan-700 transition-colors">
+                        Comprar Personalizado
                     </button>
                 </div>
 
@@ -233,87 +193,120 @@
                 <h3 class="text-lg font-semibold">Posso levar banimento (VAC)?</h3>
                 <p class="text-gray-300 pt-2">Não. Nosso serviço não interage com nenhum arquivo de jogo. Ele apenas simula para a Steam que o jogo está "aberto". É 100% seguro e usado por milhares de pessoas.</p>
             </div>
-            <div class="feature-card rounded-lg p-4">
-                <h3 class="text-lg font-semibold">Posso jogar enquanto o boost está ativo?</h3>
-                <p class="text-gray-300 pt-2">Sim, mas com uma limitação da Steam: você não pode estar "Em Jogo" em dois locais ao mesmo tempo. Ao abrir um jogo no seu PC, a Steam irá pausar o boost automaticamente. Quando você fechar o jogo, o boost retomará.</p>
-            </div>
         </div>
     </section>
 
     <footer class="bg-gray-950 py-12">
         <div class="container mx-auto px-4 text-center text-gray-400">
             <p>&copy; 2025 STF Boost. Todos os direitos reservados.</p>
-            <p class="text-sm pt-2">Este é um projeto fictício. A Steam e todos os logotipos são marcas registadas da Valve Corporation.</p>
         </div>
     </footer>
     
     <div id="purchaseModal" class="modal">
         <div class="modal-content">
-            <h2 class="text-2xl tech-font text-blue-400" id="purchaseTitle">Comprar Plano XXX</h2>
-            <p class="text-lg">Para completar a sua compra (método manual):</p>
-            <ol class="list-decimal list-inside space-y-2 my-4">
+            <h2 class="text-2xl tech-font text-blue-400" id="purchaseTitle">Comprar Plano</h2>
+            <p class="text-lg mb-4" id="purchaseDesc">Siga os passos abaixo:</p>
+            <div id="customPlanDetails" class="mb-4 p-3 bg-gray-800 rounded border border-gray-600 hidden">
+                </div>
+            <ol class="list-decimal list-inside space-y-2 my-4 text-gray-300">
                 <li>Registe-se no site (caso ainda não o tenha feito).</li>
-                <li>Entre em contato com o administrador (Eu!) com o seu **Nome de Usuário** e o **Plano** que deseja.</li>
+                <li>Entre em contato com o admin enviando o valor do plano.</li>
                 <li>
-                    **Contato:**
-                    <ul class="list-disc list-inside ml-4">
-                        <li>Discord: `seu.discord.aqui`</li>
-                        <li>Email: `seu.email@exemplo.com`</li>
-                    </ul>
+                    **Chave Pix Aleatória:**<br>
+                    <code class="bg-black p-1 rounded text-cyan-400 select-all">29e55f42-fea9-467a-b85d-8080f5cc7a0e</code>
                 </li>
-                <li>O pagamento será combinado (ex: Pix).</li>
-                <li>Após a confirmação, o seu plano será ativado na sua conta.</li>
+                <li>Envie o comprovante no Discord ou Email.</li>
             </ol>
-            <button id="closePurchaseModalButton" class="remove-btn">Entendi</button>
+            <button id="closePurchaseModalButton" class="remove-btn mt-4 w-full">Entendi</button>
         </div>
     </div>
 
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // Auth Status Check
             const authButtons = document.getElementById('header-auth-buttons');
-            
-            // Lógica para o Header
             if (authButtons) {
                 fetch('/api/auth-status')
                     .then(res => res.json())
                     .then(data => {
                         if (data.loggedIn) {
-                            authButtons.innerHTML = `
-                                <a href="/dashboard" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
-                                    Painel de Controle
-                                </a>
-                            `;
+                            authButtons.innerHTML = `<a href="/dashboard" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">Painel de Controle</a>`;
                         }
-                    })
-                    .catch(err => {
-                        console.error("Erro ao verificar status de auth:", err);
-                    });
+                    }).catch(console.error);
             }
 
-            // --- Lógica do Novo Modal de Compra ---
+            // --- LÓGICA DO PLANO PERSONALIZADO ---
+            const daysRange = document.getElementById('daysRange');
+            const accountsRange = document.getElementById('accountsRange');
+            const gamesRange = document.getElementById('gamesRange');
+            const daysVal = document.getElementById('daysVal');
+            const accountsVal = document.getElementById('accountsVal');
+            const gamesVal = document.getElementById('gamesVal');
+            const customPriceDisplay = document.getElementById('customPriceDisplay');
+            const customBuyButton = document.getElementById('customBuyButton');
+
+            // Configuração de Preços Base (Ajuste conforme necessário)
+            const BASE_FEE = 5.00;
+            const COST_PER_DAY = 0.10;
+            const COST_PER_ACCOUNT = 2.00;
+            const COST_PER_GAME = 0.10;
+
+            function calculateCustomPrice() {
+                const d = parseInt(daysRange.value);
+                const a = parseInt(accountsRange.value);
+                const g = parseInt(gamesRange.value);
+
+                daysVal.textContent = d;
+                accountsVal.textContent = a;
+                gamesVal.textContent = g;
+
+                // Fórmula de Preço Simples (Pode ser ajustada)
+                let total = BASE_FEE + (d * COST_PER_DAY) + (a * COST_PER_ACCOUNT) + (g * COST_PER_GAME);
+                customPriceDisplay.textContent = total.toFixed(2);
+            }
+
+            daysRange.addEventListener('input', calculateCustomPrice);
+            accountsRange.addEventListener('input', calculateCustomPrice);
+            gamesRange.addEventListener('input', calculateCustomPrice);
+            
+            // Inicializa o cálculo
+            calculateCustomPrice();
+
+
+            // --- LÓGICA DO MODAL DE COMPRA ---
             const purchaseModal = document.getElementById('purchaseModal');
             const closePurchaseModalButton = document.getElementById('closePurchaseModalButton');
             const purchaseTitle = document.getElementById('purchaseTitle');
+            const customPlanDetails = document.getElementById('customPlanDetails');
 
+            // Botões Normais
             document.querySelectorAll('.purchase-button').forEach(button => {
                 button.addEventListener('click', () => {
                     const planName = button.getAttribute('data-plan');
                     purchaseTitle.textContent = `Comprar Plano ${planName}`;
+                    customPlanDetails.style.display = 'none';
                     purchaseModal.style.display = 'block';
                 });
             });
 
-            const hidePurchaseModal = () => {
-                purchaseModal.style.display = 'none';
-            }
-
-            closePurchaseModalButton.addEventListener('click', hidePurchaseModal);
-            window.addEventListener('click', (event) => {
-                if (event.target == purchaseModal) {
-                    hidePurchaseModal();
-                }
+            // Botão Personalizado
+            customBuyButton.addEventListener('click', () => {
+                purchaseTitle.textContent = `Comprar Plano Personalizado`;
+                customPlanDetails.style.display = 'block';
+                customPlanDetails.innerHTML = `
+                    <strong>Detalhes:</strong><br>
+                    Dias: ${daysRange.value}<br>
+                    Contas: ${accountsRange.value}<br>
+                    Jogos: ${gamesRange.value}<br>
+                    <strong>Total: R$ ${customPriceDisplay.textContent}</strong>
+                `;
+                purchaseModal.style.display = 'block';
             });
+
+            const hidePurchaseModal = () => { purchaseModal.style.display = 'none'; }
+            closePurchaseModalButton.addEventListener('click', hidePurchaseModal);
+            window.addEventListener('click', (event) => { if (event.target == purchaseModal) hidePurchaseModal(); });
         });
     </script>
 
