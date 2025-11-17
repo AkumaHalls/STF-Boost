@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - STF Boost</title>
+    <link rel="icon" type="image/png" href="/logo.png?v=1.1">
+    <link rel="stylesheet" href="/style.css?v=1.8"> </head>
+<body class="panel-page">
+
+    <div class="dashboard-layout">
+        
+        <nav class="sidebar">
+            <div class="sidebar-logo">
+                <img src="/logo.png" alt="Logo">
+                <h1 class="glitch-title" data-text="ADMIN">ADMIN</h1>
+            </div>
+            
+            <div class="sidebar-user">
+                <span id="sidebarUser">Painel de Admin</span>
+                <span id="sidebarPlan" style="margin-top: 4px;">Controlo Total</span>
+            </div>
+
+            <div class="sidebar-nav">
+                <span class="nav-title">Gestão</span>
+                <a href="/admin/dashboard" class="active">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                    Usuários e Licenças
+                </a>
+            </div>
+
+            <div class="sidebar-nav">
+                <span class="nav-title">Site</span>
+                <a href="/">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Ver Landing Page
+                </a>
+                <a href="/admin/logout" class="logout-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                    Logout
+                </a>
+            </div>
+        </nav>
+
+        <main class="main-content">
+            <div class="admin-container">
+                
+                <div class="admin-card">
+                    <h2>Gerador de Licenças</h2>
+                    <div class="admin-form">
+                        <label for="planSelect">Plano:</label>
+                        <select id="planSelect">
+                            <option value="basic">Basic</option>
+                            <option value="plus">Plus</option>
+                            <option value="premium">Premium</option>
+                            <option value="ultimate">Ultimate</option>
+                            <option value="lifetime">Lifetime</option>
+                        </select>
+                        <label for="quantityInput">Quantidade:</label>
+                        <input type="number" id="quantityInput" value="1" min="1" max="50">
+                        <label for="durationInput">Duração (dias):</label>
+                        <input type="number" id="durationInput" placeholder="Ex: 30 (0 = Vitalício)">
+                        <button id="generateKeysButton">Gerar</button>
+                    </div>
+                    <div id="generatedKeys">
+                        <pre id="keysOutput"></pre>
+                    </div>
+                </div>
+
+                <div class="admin-card">
+                    <h2>Licenças Geradas</h2>
+                    <div class="admin-table-wrapper">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Chave</th>
+                                    <th>Plano</th>
+                                    <th>Duração</th>
+                                    <th>Status</th>
+                                    <th>Usada/Atribuída por</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="licensesTableBody">
+                                <tr><td colspan="6" style="text-align: center;">A carregar...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="admin-card">
+                    <h2>Usuários Registrados</h2>
+                    <div class="admin-table-wrapper">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Usuário</th>
+                                    <th>Email</th>
+                                    <th>Plano</th>
+                                    <th>Expira Em</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <tr><td colspan="6" style="text-align: center;">A carregar...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div> 
+
+    <div id="toastContainer"></div>
+
+    <script>
+        // Funções de Toast
+        function showToast(message, type = 'info') { 
+            const container = document.getElementById('toastContainer'); 
+            const toast = document.createElement('div'); 
+            toast.className = `toast ${type}`; 
+            toast.textContent = message; 
+            container.appendChild(toast); 
+            setTimeout(() => toast.classList.add('show'), 10); 
+            setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 4000); 
+        }
+
+        const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime'];
+        const userMap = new Map(); // Armazena ID -> Username
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const usersTableBody = document.getElementById('usersTableBody');
+            const licensesTableBody = document.getElementById('licensesTableBody'); 
+            const generateKeysButton = document.getElementById('generateKeysButton');
+            const planSelect = document.getElementById('planSelect');
+            const quantityInput = document.getElementById('quantityInput');
+            const durationInput = document.getElementById('durationInput'); 
+            const generatedKeys = document.getElementById('generatedKeys');
+            const keysOutput = document.getElementById('keysOutput');
+
+            // --- Carrega a lista de usuários ---
+            async function fetchUsers() {
+                try {
+                    const response = await fetch('/api/admin/users');
+                    if (!response.ok) {
+                        if (response.status === 401) window.location.href = '/admin/login?error=unauthorized';
+                        return;
+                    }
+                    const users = await response.json();
+                    renderUsers(users);
+                    userMap.clear();
+                    users.forEach(user => {
+                        userMap.set(user._id, user.username);
+                    });
+                } catch (e) {
+                    showToast("Erro ao carregar usuários.", 'error');
+                }
+            }
+
+            // --- Formata a Data ---
+            function formatDate(dateString) {
+                if (!dateString) return 'N/A';
+                try {
+                    return new Date(dateString).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                } catch (e) {
+                    return 'Data Inválida';
+                }
+            }
+
+            // --- Renderiza a tabela de usuários ---
+            function renderUsers(users) {
+                usersTableBody.innerHTML = '';
+                if (users.length === 0) {
+                    usersTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Nenhum usuário registrado.</td></tr>';
+                    return;
+                }
+                users.forEach(user => {
+                    const row = document.createElement('tr');
+                    const isBanned = user.isBanned || false;
+                    
+                    let planOptions = '';
+                    ALL_PLANS.forEach(plan => {
+                        planOptions += `<option value="${plan}" ${user.plan === plan ? 'selected' : ''}>${plan}</option>`;
+                    });
+
+                    row.innerHTML = `
+                        <td>${user.username}</td>
+                        <td>${user.email}</td>
+                        <td>
+                            <select class="plan-select" data-userid="${user._id}">
+                                ${planOptions}
+                            </select>
+                        </td>
+                        <td>${user.planExpiresAt ? formatDate(user.planExpiresAt) : (user.plan === 'free' ? 'N/A' : 'Vitalício')}</td>
+                        <td class="${isBanned ? 'status-banned' : ''}">${isBanned ? 'Banido' : 'Ativo'}</td>
+                        <td class="actions-cell">
+                            <button class="${isBanned ? 'unban-btn' : 'ban-btn'}" data-userid="${user._id}">
+                                ${isBanned ? 'Desbanir' : 'Banir'}
+                            </button>
+                            <button class="delete-btn" data-userid="${user._id}">Excluir</button>
+                        </td>
+                    `;
+                    usersTableBody.appendChild(row);
+                });
+            }
+
+            // --- Carrega a lista de licenças ---
+            async function fetchLicenses() {
+                try {
+                    const response = await fetch('/api/admin/licenses');
+                    if (!response.ok) {
+                        if (response.status === 401) window.location.href = '/admin/login?error=unauthorized';
+                        return;
+                    }
+                    const licenses = await response.json();
+                    renderLicenses(licenses);
+                } catch (e) {
+                    showToast("Erro ao carregar licenças.", 'error');
+                }
+            }
+            
+            // --- Renderiza a tabela de licenças ---
+            function renderLicenses(licenses) {
+                licensesTableBody.innerHTML = '';
+                if (licenses.length === 0) {
+                    licensesTableBody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Nenhuma licença gerada.</td></tr>';
+                    return;
+                }
+                licenses.forEach(key => {
+                    const row = document.createElement('tr');
+                    const isUsed = key.isUsed || false;
+                    
+                    let statusText = '';
+                    let statusClass = '';
+                    let usedByText = 'N/A';
+                    let actions = '';
+
+                    if (isUsed) {
+                        statusText = 'Usada';
+                        statusClass = 'status-used';
+                        usedByText = key.usedBy ? (userMap.get(key.usedBy) || 'Usuário Deletado') : 'Desconhecido';
+                        // Nenhuma ação para chaves usadas
+                    } else if (key.assignedToUsername) {
+                        statusText = 'Atribuída';
+                        statusClass = 'status-pending-admin'; // Estilo "pendente"
+                        usedByText = `Atribuída a: ${key.assignedToUsername}`;
+                        // (Poderíamos adicionar um botão "Desatribuir" aqui no futuro)
+                    } else {
+                        statusText = 'Não Usada';
+                        statusClass = 'status-unused';
+                        actions = `
+                            <button class="assign-key-btn" data-licenseid="${key._id}">Atribuir</button>
+                            <button class="delete-key-btn" data-licenseid="${key._id}">Deletar</button>
+                        `;
+                    }
+                    
+                    row.innerHTML = `
+                        <td>${key.key}</td>
+                        <td>${key.plan}</td>
+                        <td>${key.durationDays ? `${key.durationDays} dias` : 'Vitalícia'}</td>
+                        <td class="${statusClass}">${statusText}</td>
+                        <td>${usedByText}</td>
+                        <td class="actions-cell">
+                            ${actions}
+                        </td>
+                    `;
+                    licensesTableBody.appendChild(row);
+                });
+            }
+
+            // --- Event Listener para Gerar Chaves ---
+            generateKeysButton.addEventListener('click', async () => {
+                const plan = planSelect.value;
+                const quantity = quantityInput.value;
+                const durationDays = durationInput.value || 0; 
+                
+                try {
+                    const response = await fetch('/api/admin/generate-keys', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ plan, quantity, durationDays })
+                    });
+                    const result = await response.json();
+                    showToast(result.message, response.ok ? 'info' : 'error');
+
+                    if (response.ok && result.keys) {
+                        keysOutput.textContent = result.keys.join('\n');
+                        generatedKeys.style.display = 'block';
+                        fetchLicenses(); 
+                    } else {
+                        generatedKeys.style.display = 'none';
+                    }
+                } catch (e) {
+                    showToast("Erro ao gerar chaves.", 'error');
+                }
+            });
+
+            // --- Event Listener para botões de Ação (Usuários) ---
+            usersTableBody.addEventListener('click', async (e) => {
+                const target = e.target;
+                const userId = target.dataset.userid;
+                if (!userId) return;
+
+                let url, actionText, body;
+
+                if (target.classList.contains('ban-btn') || target.classList.contains('unban-btn')) {
+                    const isBanning = target.classList.contains('ban-btn');
+                    url = isBanning ? '/api/admin/ban-user' : '/api/admin/unban-user';
+                    actionText = isBanning ? 'banir' : 'desbanir';
+                    body = JSON.stringify({ userId });
+                } else if (target.classList.contains('delete-btn')) {
+                    url = '/api/admin/delete-user';
+                    actionText = 'EXCLUIR PERMANENTEMENTE';
+                    body = JSON.stringify({ userId });
+                } else {
+                    return; 
+                }
+
+                if (!confirm(`Tem certeza que deseja ${actionText} este usuário?`)) return;
+
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: body
+                    });
+                    const result = await response.json();
+                    showToast(result.message, response.ok ? 'info' : 'error');
+                    
+                    if (response.ok) {
+                        fetchUsers(); 
+                    }
+                } catch (e) {
+                    showToast(`Erro ao ${actionText} usuário.`, 'error');
+                }
+            });
+
+            // --- Event Listener para Mudar Plano ---
+            usersTableBody.addEventListener('change', async (e) => {
+                const target = e.target;
+                if (!target.classList.contains('plan-select')) return;
+
+                const userId = target.dataset.userid;
+                const newPlan = target.value;
+
+                if (!confirm(`Tem certeza que deseja mudar o plano deste usuário para "${newPlan}"? (Isso será vitalício)`)) {
+                    fetchUsers(); 
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/api/admin/update-plan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId, newPlan })
+                    });
+                    const result = await response.json();
+                    showToast(result.message, response.ok ? 'info' : 'error');
+                    
+                    if (response.ok) {
+                        fetchUsers(); 
+                    }
+                } catch (e) {
+                    showToast('Erro ao atualizar plano.', 'error');
+                }
+            });
+
+            // --- *** NOVO: Event Listener para Deletar/Atribuir Licença *** ---
+            licensesTableBody.addEventListener('click', async (e) => {
+                const target = e.target;
+                const licenseId = target.dataset.licenseid;
+                if (!licenseId) return;
+
+                let url, actionText, body;
+
+                // Ação de Deletar
+                if (target.classList.contains('delete-key-btn')) {
+                    if (!confirm(`Tem certeza que deseja DELETAR esta chave não usada? Esta ação é permanente.`)) return;
+                    
+                    url = '/api/admin/delete-license';
+                    actionText = 'deletar';
+                    body = JSON.stringify({ licenseId });
+                
+                // Ação de Atribuir
+                } else if (target.classList.contains('assign-key-btn')) {
+                    const username = prompt("Para qual NOME DE USUÁRIO você deseja atribuir esta chave?");
+                    if (!username) return; // Usuário cancelou
+                    
+                    url = '/api/admin/assign-key';
+                    actionText = 'atribuir';
+                    body = JSON.stringify({ licenseId, username });
+                
+                } else {
+                    return; // Clicou em outro lugar
+                }
+
+                // Executa a ação
+                try {
+                     const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: body
+                    });
+                    const result = await response.json();
+                    showToast(result.message, response.ok ? 'info' : 'error');
+                    
+                    if (response.ok) {
+                        fetchLicenses(); // Recarrega a tabela de licenças
+                    }
+                } catch (e) {
+                    showToast(`Erro ao ${actionText} licença.`, 'error');
+                }
+            });
+
+            // --- Inicialização ---
+            async function initializeAdminPanel() {
+                await fetchUsers(); 
+                await fetchLicenses(); 
+            }
+            
+            initializeAdminPanel();
+        });
+    </script>
+</body>
+</html>

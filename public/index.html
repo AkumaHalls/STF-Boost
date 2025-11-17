@@ -3,442 +3,319 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>STF Steam Boost</title>
+    <title>STF Boost - Aumente suas Horas Steam</title>
     <link rel="icon" type="image/png" href="/logo.png?v=1.1">
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=1.2">
+    <link rel="stylesheet" href="/style.css?v=1.9">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .tech-font {
+            font-family: 'Share Tech Mono', monospace;
+        }
+        .gradient-bg {
+            background: linear-gradient(90deg, #0a0a14, #1E3A8A);
+        }
+        /* O estilo do feature-card foi movido para o style.css */
+    </style>
 </head>
-<body class="panel-page">
-    <div class="control-panel">
-        <header>
-            <div class="logo-container">
-                <img src="/logo.png?v=1.1" alt="Logo STF Steam Boost" id="headerLogo">
-                <h1 class="glitch-title" data-text="STF Steam Boost">STF Steam Boost</h1>
-            </div>
-            <div class="header-controls">
-                <div class="bulk-actions">
-                    <button id="bulkStartButton" class="start-btn" disabled title="Iniciar Selecionados">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                        Iniciar
-                    </button>
-                    <button id="bulkStopButton" class="stop-btn" disabled title="Parar Selecionados">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
-                        Parar
-                    </button>
-                    <button id="bulkRemoveButton" class="remove-btn" disabled title="Remover Selecionados">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                        Remover
-                    </button>
-                </div>
-                <button id="addAccountButton">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    Adicionar Conta
-                </button>
-                <a href="/logout"><button class="remove-btn">Logout</button></a>
-            </div>
-        </header>
-        <div id="dashboardSummary" class="dashboard-summary">
-            <span>Carregando...</span>
-        </div>
-        <div class="accounts-table">
-            <table>
-                <thead>
-                    <tr>
-                        <th><input type="checkbox" id="selectAllCheckbox" title="Selecionar Todos"></th>
-                        <th>Usuário</th>
-                        <th>Status</th>
-                        <th>Tempo Ativo</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody id="accountsTableBody"></tbody>
-            </table>
-        </div>
-    </div>
+<body class="bg-gray-900 text-white">
 
-    <div id="gamesModal" class="modal">
-        <div class="modal-content">
-            <h2>Gerir Jogos</h2>
+    <header class="container mx-auto p-4 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <img src="/logo.png" alt="Logo" class="w-10 h-10">
+            <span class="text-2xl tech-font">STF Boost</span>
+        </div>
+        <nav class="hidden md:flex items-center gap-6">
+            <a href="#features" class="hover:text-blue-400">Funcionalidades</a>
+            <a href="#pricing" class="hover:text-blue-400">Preços</a>
+            <a href="#faq" class="hover:text-blue-400">FAQ</a>
+        </nav>
+        <div class="flex items-center gap-4" id="header-auth-buttons">
+            <a href="/login" class="text-sm px-4 py-2 rounded-md hover:bg-gray-700">Login</a>
+            <a href="/register" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">Começar Agora</a>
+        </div>
+    </header>
+
+    <main class="gradient-bg">
+        <section class="container mx-auto px-4 py-20 text-center flex flex-col items-center">
+            <h1 class="text-5xl md:text-7xl font-bold mb-6 tech-font">AUMENTE SUAS HORAS STEAM</h1>
+            <p class="text-xl text-gray-300 mb-8 max-w-2xl">
+                O serviço de boost de horas mais estável e seguro. Ganhe 50 horas grátis ao se registar e domine o seu perfil.
+            </p>
+            <div class="flex gap-4">
+                <a href="/register" class="bg-blue-600 px-8 py-3 rounded-md text-lg font-semibold hover:bg-blue-700 transition-colors">
+                    Começar de Graça
+                </a>
+                <a href="#pricing" class="bg-gray-700 px-8 py-3 rounded-md text-lg font-semibold hover:bg-gray-600 transition-colors">
+                    Ver Planos
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <section id="features" class="container mx-auto px-4 py-24">
+        <h2 class="text-4xl font-bold text-center mb-12 tech-font">Porquê escolher o <span class="text-blue-400">STF Boost</span>?</h2>
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="feature-card p-6 rounded-lg text-center">
+                <h3 class="text-2xl font-semibold mb-3">50 Horas Grátis</h3>
+                <p class="text-gray-300">
+                    Crie sua conta e receba 50 horas de boost totalmente grátis, renováveis quando expirarem.
+                </p>
+            </div>
+            <div class="feature-card p-6 rounded-lg text-center">
+                <h3 class="text-2xl font-semibold mb-3">Seguro e Indetectável</h3>
+                <p class="text-gray-300">
+                    Nossa tecnologia simula que você está a jogar, garantindo zero risco de VAC ou banimento.
+                </p>
+            </div>
+            <div class="feature-card p-6 rounded-lg text-center">
+                <h3 class="text-2xl font-semibold mb-3">Painel Completo</h3>
+                <p class="text-gray-300">
+                    Controle total sobre suas contas. Adicione jogos, defina status customizados e muito mais, 24/7.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section id="pricing" class="bg-gray-800 py-24">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-12 tech-font">Planos Simples e Justos</h2>
             
-            <input type="text" id="gameSearchInput" placeholder="Procurar jogo pelo nome...">
-            <div id="gameSearchResults" class="search-results"></div>
-
-            <p>AppIDs a serem farmados (separados por vírgula):</p>
-            <textarea id="appIdsInput" rows="2" placeholder="Ex: 730, 2923300, 107410"></textarea>
-            <button id="saveGamesButton">Salvar</button>
-            <button id="closeGamesModalButton" class="remove-btn">Cancelar</button>
-        </div>
-    </div>
-
-    <div id="settingsModal" class="modal">
-        <div class="modal-content">
-            <h2>Configurações da Conta</h2>
-            <div id="settingsForm">
-                <div class="settings-form-row">
-                    <label for="customTitleInput">Título Customizado no Jogo:</label>
-                    <input type="text" id="customTitleInput" placeholder="Ex: A Farmar Horas">
-                </div>
-                <div class="settings-form-row">
-                    <label for="customAwayMessageInput">Mensagem Automática:</label>
-                    <input type="text" id="customAwayMessageInput" placeholder="Deixe em branco para desativar">
-                </div>
-                <div class="settings-form-row">
-                    <label>Aparecer Offline:</label>
-                    <label class="switch"><input type="checkbox" id="appearOfflineToggle"><span class="slider"></span></label>
-                </div>
-                <div class="settings-form-row">
-                    <label>Aceitar Amigos Automaticamente:</label>
-                    <label class="switch"><input type="checkbox" id="autoAcceptFriendsToggle"><span class="slider"></span></label>
-                </div>
-                <div class="settings-form-row">
-                    <label>Reconectar Automaticamente:</label>
-                    <label class="switch"><input type="checkbox" id="autoReloginToggle"><span class="slider"></span></label>
-                </div>
-                 <div class="settings-form-row">
-                    <label for="sharedSecretInput">Shared Secret (TOTP):</label>
-                    <input type="password" id="sharedSecretInput" placeholder="Cole aqui para automação total">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
+                
+                <div class="feature-card">
+                    <h3 class="text-2xl font-bold text-center text-blue-400">Gratuito</h3>
+                    <div class="text-5xl font-bold text-center my-4">R$ 0</div>
+                    <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>50 Horas</strong> / renovável</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>1</strong> Conta Steam</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>1</strong> Limite de Jogo</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Aparecer Offline/Online</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Esconder Atividade Recente</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Auto-Aceitar Amigos</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Histórico de Chat</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Mensagem Ausente (Ad)</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Título no Jogo (Ad)</li>
+                    </ul>
+                    <a href="/register" class="mt-auto w-full text-center bg-gray-600 px-6 py-3 rounded-md font-semibold hover:bg-gray-500 transition-colors">
+                        Começar de Graça
+                    </a>
                 </div>
 
-                <div class="settings-form-row separator">
-                   <label>Atualizar Credenciais</label>
+                <div class="feature-card">
+                    <h3 class="text-2xl font-bold text-center text-blue-400">Basic</h3>
+                    <div class="text-5xl font-bold text-center my-4">R$ 4,90 <span class="text-lg font-normal">/mês</span></div>
+                    <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>2</strong> Contas Steam</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>6</strong> Limite de Jogos</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Auto-Aceitar Amigos</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Histórico de Chat</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                    </ul>
+                    <button data-plan="Basic" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
+                        Comprar
+                    </button>
                 </div>
-                <div class="settings-form-row">
-                    <label for="newPasswordInput">Nova Senha Steam:</label>
-                    <input type="password" id="newPasswordInput" placeholder="Deixe em branco para não alterar">
+
+                <div class="feature-card">
+                    <h3 class="text-2xl font-bold text-center text-blue-400">Plus</h3>
+                    <div class="text-5xl font-bold text-center my-4">R$ 9,90 <span class="text-lg font-normal">/mês</span></div>
+                    <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>4</strong> Contas Steam</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>12</strong> Limite de Jogos</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Histórico de Chat</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                    </ul>
+                    <button data-plan="Plus" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
+                        Comprar
+                    </button>
                 </div>
+
+                <div class="feature-card premium-highlight relative">
+                    <span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10">MAIS POPULAR</span>
+                    <h3 class="text-2xl font-bold text-center mb-4 text-blue-400 relative z-20">Premium</h3> 
+                    <div class="text-5xl font-bold text-center my-4">R$ 14,90 <span class="text-lg font-normal">/mês</span></div>
+                    <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>6</strong> Contas Steam</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>24</strong> Limite de Jogos</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Histórico de Chat</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                    </ul>
+                    <button data-plan="Premium" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
+                        Comprar
+                    </button>
+                </div>
+
+                <div class="feature-card">
+                    <h3 class="text-2xl font-bold text-center text-blue-400">Ultimate</h3>
+                    <div class="text-5xl font-bold text-center my-4">R$ 29,90 <span class="text-lg font-normal">/mês</span></div>
+                    <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>10</strong> Contas Steam</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>33</strong> Limite de Jogos (Máx. Steam)</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Histórico de Chat</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                    </ul>
+                    <button data-plan="Ultimate" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
+                        Comprar
+                    </button>
+                </div>
+
+                <div class="feature-card">
+                    <h3 class="text-2xl font-bold text-center text-blue-400">Vitalício</h3>
+                    <div class="text-5xl font-bold text-center my-4">R$ 149,90</div>
+                    <p class="text-center text-gray-400 mb-6 -mt-4">Pagamento Único</p>
+                    <ul class="space-y-3 mb-8 text-sm flex-grow"> 
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>10</strong> Contas Steam</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>33</strong> Limite de Jogos (Máx. Steam)</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Histórico de Chat</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                    </ul>
+                    <button data-plan="Vitalício" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
+                        Comprar
+                    </button>
+                </div>
+
             </div>
-            <button id="saveSettingsButton">Salvar</button>
-            <button id="closeSettingsModalButton" class="remove-btn">Cancelar</button>
+        </div>
+    </section>
+
+    <section id="faq" class="container mx-auto px-4 py-24 max-w-3xl">
+        <h2 class="text-4xl font-bold text-center mb-12 tech-font">Perguntas Frequentes (FAQ)</h2>
+        <div class="space-y-4">
+            <div class="feature-card rounded-lg p-4">
+                <h3 class="text-lg font-semibold">Posso levar banimento (VAC)?</h3>
+                <p class="text-gray-300 pt-2">Não. Nosso serviço não interage com nenhum arquivo de jogo. Ele apenas simula para a Steam que o jogo está "aberto". É 100% seguro e usado por milhares de pessoas.</p>
+            </div>
+            <div class="feature-card rounded-lg p-4">
+                <h3 class="text-lg font-semibold">Posso jogar enquanto o boost está ativo?</h3>
+                <p class="text-gray-300 pt-2">Sim, mas com uma limitação da Steam: você não pode estar "Em Jogo" em dois locais ao mesmo tempo. Ao abrir um jogo no seu PC, a Steam irá pausar o boost automaticamente. Quando você fechar o jogo, o boost retomará.</p>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-gray-950 py-12">
+        <div class="container mx-auto px-4 text-center text-gray-400">
+            <p>&copy; 2025 STF Boost. Todos os direitos reservados.</p>
+            <p class="text-sm pt-2">Este é um projeto fictício. A Steam e todos os logotipos são marcas registadas da Valve Corporation.</p>
+        </div>
+    </footer>
+    
+    <div id="purchaseModal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-2xl tech-font text-blue-400" id="purchaseTitle">Comprar Plano XXX</h2>
+            <p class="text-lg">Para completar a sua compra (método manual):</p>
+            <ol class="list-decimal list-inside space-y-2 my-4">
+                <li>Registe-se no site (caso ainda não o tenha feito).</li>
+                <li>Entre em contato com o administrador (Eu!) com o seu **Nome de Usuário** e o **Plano** que deseja.</li>
+                <li>
+                    **Contato:**
+                    <ul class="list-disc list-inside ml-4">
+                        <li>Discord: `seu.discord.aqui`</li>
+                        <li>Email: `seu.email@exemplo.com`</li>
+                    </ul>
+                </li>
+                <li>O pagamento será combinado (ex: Pix).</li>
+                <li>Após a confirmação, o seu plano será ativado na sua conta.</li>
+            </ol>
+            <button id="closePurchaseModalButton" class="remove-btn">Entendi</button>
         </div>
     </div>
 
-    <div id="toastContainer"></div>
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            const accountsTableBody = document.getElementById('accountsTableBody');
-            const addAccountButton = document.getElementById('addAccountButton');
-            const gamesModal = document.getElementById('gamesModal');
-            const closeGamesModalButton = document.getElementById('closeGamesModalButton');
-            const saveGamesButton = document.getElementById('saveGamesButton');
-            const appIdsInput = document.getElementById('appIdsInput');
-            const settingsModal = document.getElementById('settingsModal');
-            const closeSettingsModalButton = document.getElementById('closeSettingsModalButton');
-            const saveSettingsButton = document.getElementById('saveSettingsButton');
-            let currentlyEditingGamesFor = null;
-            let currentlyEditingSettingsFor = null;
-
-            // --- Novos seletores ---
-            const dashboardSummary = document.getElementById('dashboardSummary');
-            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-            const bulkStartButton = document.getElementById('bulkStartButton');
-            const bulkStopButton = document.getElementById('bulkStopButton');
-            const bulkRemoveButton = document.getElementById('bulkRemoveButton');
-            const gameSearchInput = document.getElementById('gameSearchInput');
-            const gameSearchResults = document.getElementById('gameSearchResults');
-            const newPasswordInput = document.getElementById('newPasswordInput');
-            // --- Fim dos novos seletores ---
-
-            const icons = {
-                play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
-                stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`,
-                guard: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`,
-                games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`,
-                remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
-                settings: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
-                refresh: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`
-            };
+            const authButtons = document.getElementById('header-auth-buttons');
             
-            function showToast(message, type = 'info') { const container = document.getElementById('toastContainer'); const toast = document.createElement('div'); toast.className = `toast ${type}`; toast.textContent = message; container.appendChild(toast); setTimeout(() => toast.classList.add('show'), 10); setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 4000); }
-            
-            function formatUptime(ms) {
-                // AQUI ESTÁ A CORREÇÃO
-                if (!ms || ms <= 0) return '00:00:00';
-
-                let totalSeconds = Math.floor(ms / 1000);
-                const days = Math.floor(totalSeconds / 86400);
-                totalSeconds %= 86400;
-                const hours = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
-                totalSeconds %= 3600;
-                const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
-                const seconds = (totalSeconds % 60).toString().padStart(2, '0');
-                if (days > 0) {
-                    const dayString = days === 1 ? 'dia' : 'dias';
-                    return `${days} ${dayString}, ${hours}:${minutes}:${seconds}`;
-                } else {
-                    return `${hours}:${minutes}:${seconds}`;
-                }
-            }
-
-            async function updateUI() {
-                // --- INÍCIO DA CORREÇÃO ---
-                // 1. Armazena o estado atual dos checkboxes antes de limpar a tabela
-                const selectAllState = selectAllCheckbox.checked;
-                const checkedUsernames = new Set();
-                document.querySelectorAll('.account-checkbox:checked').forEach(cb => {
-                    checkedUsernames.add(cb.dataset.username);
-                });
-                // --- FIM DA CORREÇÃO ---
-
-                try {
-                    const response = await fetch('/status');
-                    if (!response.ok) { window.location.href = '/login?error=unauthorized'; return; }
-                    const data = await response.json();
-                    const accounts = data.accounts;
-                    accountsTableBody.innerHTML = '';
-                    
-                    // --- Lógica do Dashboard Rápido ---
-                    let total = 0;
-                    let online = 0;
-                    let attention = 0;
-                    // --- Fim da lógica do Dashboard Rápido ---
-
-                    if (Object.keys(accounts).length === 0) { accountsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Nenhuma conta adicionada.</td></tr>`; } // Colspan 5 agora
-                    
-                    for (const username in accounts) {
-                        const acc = accounts[username];
-                        const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td><input type="checkbox" class="account-checkbox" data-username="${acc.username}"></td>
-                            <td>${acc.username}</td>
-                            <td class="status-cell">${acc.status}</td>
-                            <td>${formatUptime(acc.uptime)}</td>
-                            <td class="actions-cell"></td>
-                        `;
-
-                        // --- INÍCIO DA CORREÇÃO ---
-                        // 2. Re-aplica o estado ao novo checkbox criado
-                        if (checkedUsernames.has(acc.username)) {
-                            const newCheckbox = row.querySelector('.account-checkbox');
-                            if (newCheckbox) {
-                                newCheckbox.checked = true;
-                            }
+            // Lógica para o Header
+            if (authButtons) {
+                fetch('/api/auth-status')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.loggedIn) {
+                            authButtons.innerHTML = `
+                                <a href="/dashboard" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">
+                                    Painel de Controle
+                                </a>
+                            `;
                         }
-                        // --- FIM DA CORREÇÃO ---
-
-                        const statusCell = row.querySelector('.status-cell');
-                        statusCell.className = 'status-cell';
-                        if (acc.status === 'Rodando') { 
-                            statusCell.classList.add('status-running'); 
-                            online++; // Dashboard
-                        } 
-                        else if (acc.status === 'Parado') { statusCell.classList.add('status-stopped'); } 
-                        else { 
-                            statusCell.classList.add('status-pending'); 
-                            attention++; // Dashboard
-                        }
-                        total++; // Dashboard
-                        
-                        const actionsCell = row.querySelector('.actions-cell');
-                        
-                        const primaryBtn = document.createElement('button');
-                        const status = acc.status;
-
-                        if (status === 'Rodando') {
-                            primaryBtn.innerHTML = icons.stop + "Parar";
-                            primaryBtn.className = 'stop-btn';
-                            primaryBtn.onclick = () => fetch(`/stop/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
-                        } else if (status === 'Pendente: Steam Guard' || status.startsWith('Reconectando')) {
-                            primaryBtn.innerHTML = icons.refresh + "Tentar Novamente";
-                            primaryBtn.className = 'reconnect-btn';
-                            primaryBtn.onclick = () => fetch(`/start/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
-                        } else {
-                            primaryBtn.innerHTML = icons.play + "Iniciar";
-                            primaryBtn.className = 'start-btn';
-                            primaryBtn.onclick = () => fetch(`/start/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
-                        }
-                        
-                        const guardBtn = document.createElement('button');
-                        guardBtn.innerHTML = icons.guard + "Guard";
-                        if (acc.status === "Pendente: Steam Guard") guardBtn.classList.add('pulse-attention');
-                        guardBtn.onclick = () => { const code = prompt(`Insira o código do Steam Guard para ${acc.username}:`); if (code) fetch(`/submit-guard/${acc.username}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }).finally(() => setTimeout(updateUI, 1000)); };
-
-                        const manageBtn = document.createElement('button');
-                        manageBtn.innerHTML = icons.games + "Jogos";
-                        manageBtn.onclick = () => { currentlyEditingGamesFor = acc.username; appIdsInput.value = acc.games.join(', '); gamesModal.style.display = 'block'; };
-                        
-                        const settingsBtn = document.createElement('button');
-                        settingsBtn.innerHTML = icons.settings + "Config.";
-                        settingsBtn.className = "settings-btn";
-                        settingsBtn.onclick = () => {
-                            currentlyEditingSettingsFor = acc.username;
-                            const currentSettings = acc.settings;
-                            document.getElementById('customTitleInput').value = currentSettings.customInGameTitle || '';
-                            document.getElementById('customAwayMessageInput').value = currentSettings.customAwayMessage || '';
-                            document.getElementById('appearOfflineToggle').checked = currentSettings.appearOffline;
-                            document.getElementById('autoAcceptFriendsToggle').checked = currentSettings.autoAcceptFriends;
-                            document.getElementById('autoReloginToggle').checked = currentSettings.autoRelogin;
-                            document.getElementById('sharedSecretInput').value = currentSettings.sharedSecret || '';
-                            settingsModal.style.display = 'block';
-                        };
-
-                        const removeBtn = document.createElement('button');
-                        removeBtn.innerHTML = icons.remove + "Remover";
-                        removeBtn.className = "remove-btn";
-                        removeBtn.onclick = () => { if (confirm(`Tem a certeza que deseja remover a conta ${acc.username}?`)) { fetch(`/remove-account/${acc.username}`, { method: 'DELETE' }).finally(() => setTimeout(updateUI, 500)); } };
-                        
-                        actionsCell.append(primaryBtn, guardBtn, manageBtn, settingsBtn, removeBtn);
-                        accountsTableBody.appendChild(row);
-                    }
-
-                    // --- Atualiza o Dashboard Rápido ---
-                    dashboardSummary.innerHTML = `
-                        <span class="status-running">● ${online} Online</span>
-                        <span class="status-stopped">● ${total - online - attention} Parado</span>
-                        <span class="status-pending">● ${attention} Atenção</span>
-                        <span class_total>Total: ${total}</span>
-                    `;
-                    // --- Fim da atualização do Dashboard Rápido ---
-
-                    // --- INÍCIO DA CORREÇÃO ---
-                    // 3. Restaura o estado do checkbox "Selecionar Todos"
-                    selectAllCheckbox.checked = selectAllState;
-                    // 4. Atualiza os botões de ação em massa com base no estado restaurado
-                    updateBulkButtons(); 
-                    // --- FIM DA CORREÇÃO ---
-
-                } catch(e) { accountsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Erro ao carregar dados.</td></tr>`; } // Colspan 5
+                    })
+                    .catch(err => {
+                        console.error("Erro ao verificar status de auth:", err);
+                    });
             }
 
-            addAccountButton.addEventListener('click', async () => { const username = prompt("Nome de usuário:"); if (!username) return; const password = prompt(`Senha para ${username}:`); if (!password) return; const response = await fetch('/add-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) }); const result = await response.json(); showToast(result.message, response.ok ? 'info' : 'error'); updateUI(); });
-            
-            // --- Modal de Jogos (com busca) ---
-            let hideGamesModal = () => { 
-                gamesModal.style.display = 'none'; 
-                appIdsInput.value = ''; 
-                currentlyEditingGamesFor = null; 
-                gameSearchInput.value = '';
-                gameSearchResults.innerHTML = '';
-            }
-            closeGamesModalButton.addEventListener('click', hideGamesModal);
-            window.addEventListener('click', (event) => { if (event.target == gamesModal) hideGamesModal(); });
-            saveGamesButton.addEventListener('click', () => { if (!currentlyEditingGamesFor) return; const gamesArray = appIdsInput.value.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0); fetch(`/set-games/${currentlyEditingGamesFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ games: gamesArray }) }).then(res => res.json()).then(data => { showToast(data.message); hideGamesModal(); }); });
-            
-            let searchTimeout;
-            gameSearchInput.addEventListener('input', () => {
-                clearTimeout(searchTimeout);
-                const query = gameSearchInput.value;
-                if (query.length < 3) {
-                    gameSearchResults.innerHTML = '';
-                    return;
-                }
-                searchTimeout = setTimeout(async () => {
-                    try {
-                        const response = await fetch(`/search-game?q=${encodeURIComponent(query)}`);
-                        const games = await response.json();
-                        gameSearchResults.innerHTML = '';
-                        games.forEach(game => {
-                            const gameDiv = document.createElement('div');
-                            gameDiv.className = 'search-result-item';
-                            gameDiv.textContent = `${game.name} (${game.appid})`;
-                            gameDiv.onclick = () => {
-                                const currentIds = appIdsInput.value.split(',').map(s => s.trim()).filter(s => s);
-                                if (!currentIds.includes(String(game.appid))) {
-                                    currentIds.push(game.appid);
-                                    appIdsInput.value = currentIds.join(', ');
-                                }
-                                gameSearchInput.value = '';
-                                gameSearchResults.innerHTML = '';
-                            };
-                            gameSearchResults.appendChild(gameDiv);
-                        });
-                    } catch(e) { console.error("Erro ao buscar jogos", e); }
-                }, 300);
-            });
-            // --- Fim do Modal de Jogos ---
+            // --- Lógica do Novo Modal de Compra ---
+            const purchaseModal = document.getElementById('purchaseModal');
+            const closePurchaseModalButton = document.getElementById('closePurchaseModalButton');
+            const purchaseTitle = document.getElementById('purchaseTitle');
 
-            // --- Modal de Configurações (com senha) ---
-            let hideSettingsModal = () => { 
-                settingsModal.style.display = 'none'; 
-                currentlyEditingSettingsFor = null; 
-                newPasswordInput.value = ''; // Limpa o campo de senha
-            }
-            closeSettingsModalButton.addEventListener('click', hideSettingsModal);
-            window.addEventListener('click', (event) => { if (event.target == settingsModal) hideSettingsModal(); });
-            saveSettingsButton.addEventListener('click', () => {
-                if (!currentlyEditingSettingsFor) return;
-                const newSettings = {
-                    customInGameTitle: document.getElementById('customTitleInput').value,
-                    customAwayMessage: document.getElementById('customAwayMessageInput').value,
-                    appearOffline: document.getElementById('appearOfflineToggle').checked,
-                    autoAcceptFriends: document.getElementById('autoAcceptFriendsToggle').checked,
-                    autoRelogin: document.getElementById('autoReloginToggle').checked,
-                    sharedSecret: document.getElementById('sharedSecretInput').value.trim()
-                };
-                const newPassword = newPasswordInput.value.trim();
-                
-                const payload = { settings: newSettings };
-                if (newPassword) {
-                    payload.newPassword = newPassword;
-                }
-
-                fetch(`/save-settings/${currentlyEditingSettingsFor}`, { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify(payload) 
-                }).then(res => res.json()).then(data => { 
-                    showToast(data.message); 
-                    hideSettingsModal(); 
+            document.querySelectorAll('.purchase-button').forEach(button => {
+                button.addEventListener('click', () => {
+                    const planName = button.getAttribute('data-plan');
+                    purchaseTitle.textContent = `Comprar Plano ${planName}`;
+                    purchaseModal.style.display = 'block';
                 });
             });
-            // --- Fim do Modal de Configurações ---
 
-            // --- Lógica de Ações em Massa ---
-            function updateBulkButtons() {
-                const selected = document.querySelectorAll('.account-checkbox:checked').length;
-                bulkStartButton.disabled = selected === 0;
-                bulkStopButton.disabled = selected === 0;
-                bulkRemoveButton.disabled = selected === 0;
-            }
-            
-            selectAllCheckbox.addEventListener('change', () => {
-                document.querySelectorAll('.account-checkbox').forEach(cb => cb.checked = selectAllCheckbox.checked);
-                updateBulkButtons();
-            });
-
-            accountsTableBody.addEventListener('change', (e) => {
-                if (e.target.classList.contains('account-checkbox')) {
-                    // Sincroniza o "Selecionar Todos" se todos estiverem marcados ou desmarcados
-                    const totalCheckboxes = document.querySelectorAll('.account-checkbox').length;
-                    const checkedCheckboxes = document.querySelectorAll('.account-checkbox:checked').length;
-                    selectAllCheckbox.checked = totalCheckboxes === checkedCheckboxes;
-                    updateBulkButtons();
-                }
-            });
-
-            function getSelectedUsernames() {
-                return Array.from(document.querySelectorAll('.account-checkbox:checked')).map(cb => cb.dataset.username);
+            const hidePurchaseModal = () => {
+                purchaseModal.style.display = 'none';
             }
 
-            bulkStartButton.addEventListener('click', () => {
-                const usernames = getSelectedUsernames();
-                if (usernames.length === 0) return;
-                fetch('/bulk-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames }) })
-                    .then(res => res.json()).then(data => { showToast(data.message); setTimeout(updateUI, 1000); });
-            });
-
-            bulkStopButton.addEventListener('click', () => {
-                const usernames = getSelectedUsernames();
-                if (usernames.length === 0) return;
-                fetch('/bulk-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames }) })
-                    .then(res => res.json()).then(data => { showToast(data.message); setTimeout(updateUI, 1000); });
-            });
-
-            bulkRemoveButton.addEventListener('click', () => {
-                const usernames = getSelectedUsernames();
-                if (usernames.length === 0) return;
-                if (confirm(`Tem certeza que deseja remover ${usernames.length} contas selecionadas?`)) {
-                    fetch('/bulk-remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames }) })
-                        .then(res => res.json()).then(data => { showToast(data.message); updateUI(); });
+            closePurchaseModalButton.addEventListener('click', hidePurchaseModal);
+            window.addEventListener('click', (event) => {
+                if (event.target == purchaseModal) {
+                    hidePurchaseModal();
                 }
             });
-            // --- Fim da Lógica de Ações em Massa ---
-
-            updateUI();
-            setInterval(updateUI, 1000);
         });
     </script>
+
 </body>
 </html>
