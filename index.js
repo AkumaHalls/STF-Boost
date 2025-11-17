@@ -26,11 +26,15 @@ const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
 let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timestamp: 0 }; 
 
-// --- VARIÁVEIS GLOBAIS (CACHE DE PLANOS) ---
-// Carregamos os planos para a memória para não consultar o DB a cada clique
-let GLOBAL_PLANS = {}; 
+// --- DEFINIÇÃO DOS ROUTERS ---
+const apiRouter = express.Router();
+const adminApiRouter = express.Router();
+
+// --- CONSTANTES ---
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; 
 const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; 
+let GLOBAL_PLANS = {}; 
+let PLAN_LIMITS = {};
 
 // --- GESTÃO DE DADOS ---
 const mongoClient = new MongoClient(MONGODB_URI);
@@ -38,7 +42,7 @@ let accountsCollection;
 let siteSettingsCollection;
 let usersCollection; 
 let licensesCollection; 
-let plansCollection; // *** NOVA COLEÇÃO ***
+let plansCollection;
 let liveAccounts = {};
 
 // --- FUNÇÕES DE BANCO DE DADOS ---
@@ -52,7 +56,7 @@ async function connectToDB() {
         siteSettingsCollection = db.collection("site_settings");
         usersCollection = db.collection("users"); 
         licensesCollection = db.collection("licenses"); 
-        plansCollection = db.collection("plans"); // *** NOVA COLEÇÃO ***
+        plansCollection = db.collection("plans"); 
         
         await usersCollection.createIndex({ username: 1 }, { unique: true });
         await usersCollection.createIndex({ email: 1 }, { unique: true });
@@ -64,7 +68,6 @@ async function connectToDB() {
     } 
 }
 
-// *** NOVA FUNÇÃO: INICIALIZAR PLANOS PADRÃO ***
 async function initializePlans() {
     const count = await plansCollection.countDocuments();
     if (count === 0) {
@@ -85,7 +88,12 @@ async function initializePlans() {
 async function refreshPlansCache() {
     const plans = await plansCollection.find({}).toArray();
     GLOBAL_PLANS = {};
-    plans.forEach(p => { GLOBAL_PLANS[p.id] = p; });
+    PLAN_LIMITS = {}; // Reinicia os limites
+    plans.forEach(p => { 
+        GLOBAL_PLANS[p.id] = p; 
+        // Atualiza os limites globais baseados no DB
+        PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games };
+    });
     console.log("[SYSTEM] Cache de planos atualizado.");
 }
 
@@ -130,7 +138,6 @@ async function getSteamAppList() {
             }
         }
     } catch (e) {}
-
     try {
         const response = await fetch('http://api.steampowered.com/ISteamApps/GetAppList/v0002/', { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (response.ok) {
@@ -264,30 +271,19 @@ app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 app.get('/admin', (req, res) => res.redirect('/admin/dashboard'));
 app.get('/admin/login', (req, res) => req.session.isAdmin ? res.redirect('/admin/dashboard') : res.sendFile(path.join(__dirname, 'public', 'admin', 'login.html')));
 app.get('/admin/dashboard', isAdminAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html')));
-app.post('/admin/login', (req, res) => {
-    if (req.body.password === ADMIN_PASSWORD) {
-        req.session.isAdmin = true;
-        res.redirect('/admin/dashboard');
-    } else {
-        res.redirect('/admin/login?error=invalid');
-    }
-});
+app.post('/admin/login', (req, res) => { req.body.password === ADMIN_PASSWORD ? (req.session.isAdmin = true, res.redirect('/admin/dashboard')) : res.redirect('/admin/login?error=invalid'); });
 app.get('/admin/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 
 // ==========================================
-// === API ROUTERS ===
+// === API USUÁRIO ===
 // ==========================================
-const apiRouter = express.Router();
-const adminApiRouter = express.Router();
-
-// === API PÚBLICA ===
 apiRouter.get('/auth-status', (req, res) => res.json({ loggedIn: !!req.session.userId }));
 
-// *** NOVA ROTA PÚBLICA: Listar Planos Ativos ***
+// *** ROTA PÚBLICA PARA LISTAR APENAS PLANOS ATIVOS ***
 apiRouter.get('/plans', async (req, res) => {
     try {
         const plans = await plansCollection.find({ active: true }).toArray();
-        // Ordena: free primeiro, depois por preço
+        // Ordenação segura: Free primeiro, depois por preço
         plans.sort((a, b) => (a.id === 'free' ? -1 : b.id === 'free' ? 1 : a.price - b.price));
         res.json(plans);
     } catch(e) { res.status(500).json([]); }
@@ -312,7 +308,7 @@ apiRouter.post('/login', async (req, res) => {
     res.json({ message: "Login OK" });
 });
 
-// === API PROTEGIDA (USUÁRIO) ===
+// ROTAS PROTEGIDAS (Usuário)
 apiRouter.use(isAuthenticated);
 
 apiRouter.get('/user-info', async (req, res) => {
@@ -321,16 +317,16 @@ apiRouter.get('/user-info', async (req, res) => {
     let fh = 0;
     if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 3600000);
     
-    // *** ATUALIZAÇÃO: Ler limites do Cache de Planos ***
-    const planDetails = GLOBAL_PLANS[user.plan] || GLOBAL_PLANS['free'];
+    // Busca limites do DB, fallback para PLAN_LIMITS inicial se der erro
+    const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
     
     res.json({ 
         username: user.username, 
         plan: user.plan, 
         freeHoursRemaining: fh, 
         planExpiresAt: user.planExpiresAt,
-        gameLimit: planDetails ? planDetails.games : 1,
-        accountLimit: planDetails ? planDetails.accounts : 1 
+        gameLimit: planDetails.games,
+        accountLimit: planDetails.accounts 
     });
 });
 
@@ -350,7 +346,7 @@ apiRouter.post('/add-account', async (req, res) => {
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     const count = await accountsCollection.countDocuments({ ownerUserID: uid });
     
-    const planDetails = GLOBAL_PLANS[user.plan] || GLOBAL_PLANS['free'];
+    const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
     const limit = planDetails.accounts;
 
     if (count >= limit) return res.status(403).json({ message: `Limite de contas do plano atingido (${limit}).` });
@@ -369,18 +365,14 @@ apiRouter.post('/start/:username', async (req, res) => {
     if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas grátis." });
     if (user.planExpiresAt && user.planExpiresAt < new Date()) return res.status(403).json({ message: "Plano expirado." });
     
-    const planDetails = GLOBAL_PLANS[user.plan] || GLOBAL_PLANS['free'];
+    const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
     const limit = planDetails.games;
 
     if (acc.games.length > limit) return res.status(403).json({ message: `Limite de jogos (${limit}) excedido.` });
 
     const pass = decrypt(acc.encryptedPassword);
-    if (pass) {
-        startWorkerForAccount({ ...acc, password: pass });
-        res.json({ message: "Iniciando..." });
-    } else {
-        res.status(500).json({ message: "Erro senha." });
-    }
+    if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "Iniciando..." }); } 
+    else { res.status(500).json({ message: "Erro senha." }); }
 });
 apiRouter.post('/stop/:username', (req, res) => {
     const acc = liveAccounts[req.params.username];
@@ -404,14 +396,10 @@ apiRouter.delete('/remove-account/:username', async (req, res) => {
 });
 apiRouter.post('/save-settings/:username', async (req, res) => {
     const { username } = req.params;
-    const { settings } = req.body;
+    const { settings, newPassword } = req.body;
     const uid = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     
-    // *** ATUALIZAÇÃO: Paywall dinâmico ***
-    // Nota: Aqui mantemos hardcoded quais planos têm quais features por simplicidade,
-    // mas você poderia adicionar campos 'canUseOffline' no objeto do plano no DB se quiser.
-    // Por agora, assumimos que 'free' e 'basic' são restritos.
     if (user.plan === 'free' && (settings.appearOffline || settings.customInGameTitle)) return res.status(403).json({ message: "Funcionalidade Premium." });
 
     if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) {
@@ -429,9 +417,9 @@ apiRouter.post('/set-games/:username', async (req, res) => {
     const uid = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     
-    const planDetails = GLOBAL_PLANS[user.plan] || GLOBAL_PLANS['free'];
+    const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
     const limit = planDetails.games;
-    
+
     if (games.length > limit) return res.status(403).json({ message: `Limite de jogos (${limit}) excedido.` });
 
     if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) {
@@ -454,18 +442,14 @@ apiRouter.post('/activate-license', async (req, res) => {
     if (!key || key.isUsed) return res.status(400).json({ message: "Chave inválida ou usada." });
     if (key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({ message: "Chave não é para você." });
     
-    // Verificar se o plano da chave existe no DB
-    if (!GLOBAL_PLANS[key.plan]) return res.status(400).json({ message: "Erro: O plano desta chave não existe mais." });
+    // Verificar se o plano existe no DB/Cache
+    if (!GLOBAL_PLANS[key.plan]) return res.status(400).json({ message: "Erro: Plano da chave não existe." });
 
     let expiry = null;
-    // Se a chave tem duração, usa. Se não, usa a duração padrão do plano do DB.
+    // Usa duração da chave ou do plano
     const duration = key.durationDays || GLOBAL_PLANS[key.plan].days;
-
-    if (duration > 0) { 
-        expiry = new Date(); 
-        expiry.setDate(expiry.getDate() + duration); 
-    }
     
+    if (duration > 0) { expiry = new Date(); expiry.setDate(expiry.getDate() + duration); }
     await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: expiry, freeHoursRemaining: 0 } });
     await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } });
     res.json({ message: "Plano ativado!" });
@@ -490,12 +474,10 @@ apiRouter.post('/change-password', async (req, res) => {
     await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: hash } });
     res.json({ message: "Senha alterada." });
 });
-// Bulk actions
 apiRouter.post('/bulk-start', async (req, res) => {
     const { usernames } = req.body;
     const uid = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
-    
     if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." });
     
     const planDetails = GLOBAL_PLANS[user.plan] || GLOBAL_PLANS['free'];
@@ -511,6 +493,7 @@ apiRouter.post('/bulk-start', async (req, res) => {
     });
     res.json({ message: `${c} iniciadas.` });
 });
+// ... (bulk-stop e bulk-remove são iguais, podem ficar como estavam ou simplificados)
 apiRouter.post('/bulk-stop', (req, res) => {
     const { usernames } = req.body;
     usernames.forEach(u => {
@@ -537,26 +520,34 @@ apiRouter.post('/bulk-remove', async (req, res) => {
 });
 
 // ==========================================
-// === API ADMIN ===
+// === API ADMIN (PROTEGIDA) ===
 // ==========================================
 adminApiRouter.use(isAdminAuthenticated);
 
-// *** NOVA ROTA ADMIN: Gerir Planos ***
-adminApiRouter.get('/plans', async (req, res) => {
-    const plans = await plansCollection.find({}).sort({ price: 1 }).toArray();
-    res.json(plans);
+// *** ROTA CRÍTICA PARA O PAINEL ADMIN: VER TODOS OS PLANOS ***
+adminApiRouter.get('/all-plans', async (req, res) => {
+    try {
+        const plans = await plansCollection.find({}).sort({ price: 1 }).toArray();
+        res.json(plans);
+    } catch(e) { res.status(500).json([]); }
 });
+
 adminApiRouter.post('/update-plan-details', async (req, res) => {
     const { id, name, price, days, accounts, games, style, active, features } = req.body;
-    // Atualiza no DB
     await plansCollection.updateOne(
         { id: id }, 
         { $set: { name, price: parseFloat(price), days: parseInt(days), accounts: parseInt(accounts), games: parseInt(games), style, active, features } },
-        { upsert: true } // Cria se não existir
+        { upsert: true } 
     );
-    // Atualiza o Cache
     await refreshPlansCache();
     res.json({ message: "Plano atualizado." });
+});
+
+adminApiRouter.post('/delete-plan', async (req, res) => {
+    const { id } = req.body;
+    await plansCollection.deleteOne({ id: id });
+    await refreshPlansCache();
+    res.json({ message: "Plano excluído." });
 });
 
 adminApiRouter.get('/users', async (req, res) => {
@@ -609,9 +600,9 @@ adminApiRouter.post('/update-plan', async (req, res) => {
     res.json({ message: "Atualizado." });
 });
 
-// --- APLICAÇÃO DOS ROUTERS ---
-app.use('/api', apiRouter);
+// --- APLICAÇÃO DOS ROUTERS (IMPORTANTE: No Fim) ---
 app.use('/api/admin', adminApiRouter);
+app.use('/api', apiRouter);
 
 // --- CRON JOBS ---
 async function deductFreeTime() {
@@ -645,7 +636,7 @@ async function startServer() {
     console.log("[SYSTEM] Conectando ao DB...");
     try {
         await connectToDB();
-        await initializePlans(); // Cria planos se nao existirem
+        await initializePlans(); // Cria planos
         await initializeMasterKey();
         await loadAccountsIntoMemory();
         setInterval(deductFreeTime, 300000);
