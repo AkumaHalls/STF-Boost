@@ -89,15 +89,14 @@
             <div id="gameSearchResults" class="search-results"></div>
             <p>AppIDs a serem farmados (separados por vírgula):</p>
             <textarea id="appIdsInput" rows="2" placeholder="Ex: 730, 2923300"></textarea>
-            
             <p id="gameLimitInfo" style="color: var(--primary-color); font-weight: bold; margin-top: 5px; font-size: 14px;"></p>
-            
             <button id="saveGamesButton">Salvar</button>
             <button id="closeGamesModalButton" class="remove-btn">Cancelar</button>
         </div>
     </div>
 
-    <div id="settingsModal" class="modal"> <div class="modal-content">
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
             <h2>Configurações da Conta</h2>
             <div id="settingsForm">
                 <div class="settings-form-row"><label>Título Customizado:</label><input type="text" id="customTitleInput"></div>
@@ -114,7 +113,8 @@
         </div>
     </div>
     
-    <div id="licenseModal" class="modal"> <div class="modal-content">
+    <div id="licenseModal" class="modal">
+        <div class="modal-content">
             <h2>Ativar Licença</h2>
             <input type="text" id="licenseKeyInput" placeholder="Chave...">
             <button id="saveLicenseButton">Ativar</button>
@@ -122,7 +122,8 @@
         </div>
     </div>
     
-    <div id="passwordModal" class="modal"> <div class="modal-content">
+    <div id="passwordModal" class="modal">
+        <div class="modal-content">
             <h2>Mudar Senha</h2>
             <input type="password" id="currentPasswordInput" placeholder="Atual">
             <input type="password" id="newPasswordInputModal" placeholder="Nova">
@@ -132,7 +133,8 @@
         </div>
     </div>
 
-    <div id="myKeysModal" class="modal"> <div class="modal-content">
+    <div id="myKeysModal" class="modal">
+        <div class="modal-content">
             <h2>Minhas Chaves</h2>
             <div id="myKeysList" class="my-keys-list">A carregar...</div>
             <button id="closeMyKeysModalButton" class="remove-btn">Fechar</button>
@@ -152,7 +154,7 @@
             const closeGamesModalButton = document.getElementById('closeGamesModalButton');
             const saveGamesButton = document.getElementById('saveGamesButton');
             const appIdsInput = document.getElementById('appIdsInput');
-            const gameLimitInfo = document.getElementById('gameLimitInfo'); // *** NOVO ***
+            const gameLimitInfo = document.getElementById('gameLimitInfo');
             const gameSearchInput = document.getElementById('gameSearchInput');
             const gameSearchResults = document.getElementById('gameSearchResults');
 
@@ -160,9 +162,9 @@
             let currentlyEditingGamesFor = null;
             let currentlyEditingSettingsFor = null;
             let currentUserPlan = 'free';
-            let currentUserGameLimit = 1; // *** NOVO: Limite de jogos do usuário ***
+            let currentUserGameLimit = 1; 
 
-            // Ícones (Reduzido para poupar espaço)
+            // Ícones
             const icons = { play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`, stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`, guard: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`, games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`, remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`, settings: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`, refresh: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>` };
 
             function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
@@ -179,21 +181,36 @@
                     document.getElementById('sidebarPlan').textContent = `Plano: ${data.plan.charAt(0).toUpperCase() + data.plan.slice(1)}`;
                     
                     currentUserPlan = data.plan;
-                    currentUserGameLimit = data.gameLimit; // *** SALVA O LIMITE ***
+                    currentUserGameLimit = data.gameLimit; 
 
                     const exp = document.getElementById('sidebarExpiry');
                     const btn = document.getElementById('renewFreeButton');
                     btn.style.display = 'none';
+                    exp.textContent = '';
 
+                    // *** LÓGICA DE DATA DE EXPIRAÇÃO RESTAURADA ***
                     if (data.plan === 'free') {
                         exp.textContent = `Horas: ${data.freeHoursRemaining}`;
                         if (data.freeHoursRemaining <= 0) btn.style.display = 'inline-flex';
                     } else if (data.planExpiresAt) {
-                        const days = Math.ceil((new Date(data.planExpiresAt) - new Date()) / (86400000));
-                        exp.textContent = days > 0 ? `Expira: ${days} dias` : 'Expirado';
+                        // Calcula dias restantes
+                        const expiryDate = new Date(data.planExpiresAt);
+                        const now = new Date();
+                        const diffTime = expiryDate - now;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        
+                        // Formata a data (DD/MM/AAAA)
+                        const formattedDate = expiryDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                        
+                        if (diffDays > 0) {
+                            exp.textContent = `Expira em: ${formattedDate} (${diffDays} dias)`;
+                        } else {
+                            exp.textContent = `Expirado em: ${formattedDate}`;
+                        }
                     } else {
                         exp.textContent = 'Vitalício';
                     }
+
                 } catch (e) {}
             }
 
@@ -225,14 +242,33 @@
                             currentlyEditingGamesFor = acc.username; 
                             appIdsInput.value = acc.games.join(', '); 
                             gamesModal.style.display = 'block';
-                            updateGameLimitText(); // *** Atualiza texto ao abrir ***
+                            updateGameLimitText(); // Atualiza texto ao abrir
                         };
                         
                         const btnSettings = document.createElement('button'); btnSettings.innerHTML=icons.settings+"Config"; btnSettings.className="settings-btn";
-                        btnSettings.onclick = () => { /* Lógica de settings abre modal... simplificado aqui */ 
+                        btnSettings.onclick = () => { 
                             currentlyEditingSettingsFor = acc.username;
+                            const currentSettings = acc.settings;
+                            const titleInput = document.getElementById('customTitleInput');
+                            const awayInput = document.getElementById('customAwayMessageInput');
+                            const offlineToggle = document.getElementById('appearOfflineToggle');
+                            const friendsToggle = document.getElementById('autoAcceptFriendsToggle');
+
+                            titleInput.value = currentSettings.customInGameTitle || '';
+                            awayInput.value = currentSettings.customAwayMessage || '';
+                            offlineToggle.checked = currentSettings.appearOffline;
+                            friendsToggle.checked = currentSettings.autoAcceptFriends;
+                            document.getElementById('autoReloginToggle').checked = currentSettings.autoRelogin;
+                            document.getElementById('sharedSecretInput').value = currentSettings.sharedSecret || '';
+
+                            titleInput.disabled = false; awayInput.disabled = false; offlineToggle.disabled = false; friendsToggle.disabled = false;
+
+                            if (currentUserPlan === 'free') {
+                                titleInput.disabled = true; awayInput.disabled = true; offlineToggle.disabled = true; friendsToggle.disabled = true;
+                            } else if (currentUserPlan === 'basic') {
+                                friendsToggle.disabled = true;
+                            }
                             document.getElementById('settingsModal').style.display = 'block';
-                            // (Lógica de preencher e desabilitar inputs permanece a mesma do passo anterior)
                         };
 
                         const btnDel = document.createElement('button'); btnDel.innerHTML=icons.remove+"Remover"; btnDel.className="remove-btn"; btnDel.onclick=()=>{if(confirm('Remover?'))fetch(`/api/remove-account/${acc.username}`,{method:'DELETE'}).then(updateUI);};
@@ -243,18 +279,16 @@
                 } catch(e){}
             }
 
-            // --- Lógica do Contador de Jogos ---
+            // --- Game Limit Counter ---
             function updateGameLimitText() {
                 const currentGames = appIdsInput.value.split(',').filter(id => id.trim() !== '').length;
                 gameLimitInfo.textContent = `Jogos selecionados: ${currentGames} / ${currentUserGameLimit}`;
-                
                 if (currentGames > currentUserGameLimit) {
-                    gameLimitInfo.style.color = '#ff6B6B'; // Vermelho se passar do limite
+                    gameLimitInfo.style.color = '#ff6B6B';
                 } else {
-                    gameLimitInfo.style.color = '#00ffff'; // Ciano se ok
+                    gameLimitInfo.style.color = '#00ffff';
                 }
             }
-
             appIdsInput.addEventListener('input', updateGameLimitText);
 
             // --- Add Account ---
@@ -266,8 +300,6 @@
             });
 
             // --- Modais Globais ---
-            // (Lógica de fechar modais, salvar jogos, configurações, licenças, etc. permanece igual)
-            
             const hideGamesModal = () => { gamesModal.style.display='none'; };
             document.getElementById('closeGamesModalButton').onclick = hideGamesModal;
             saveGamesButton.onclick = async () => {
@@ -276,6 +308,26 @@
                 const d = await res.json(); showToast(d.message, res.ok?'info':'error');
                 if(res.ok) hideGamesModal();
             };
+
+            const hideSettingsModal = () => { settingsModal.style.display = 'none'; currentlyEditingSettingsFor = null; }
+            closeSettingsModalButton.addEventListener('click', hideSettingsModal);
+            window.addEventListener('click', (event) => { if (event.target == settingsModal) hideSettingsModal(); });
+            saveSettingsButton.addEventListener('click', () => {
+                if (!currentlyEditingSettingsFor) return;
+                const newSettings = {
+                    customInGameTitle: document.getElementById('customTitleInput').value,
+                    customAwayMessage: document.getElementById('customAwayMessageInput').value,
+                    appearOffline: document.getElementById('appearOfflineToggle').checked,
+                    autoAcceptFriends: document.getElementById('autoAcceptFriendsToggle').checked,
+                    autoRelogin: document.getElementById('autoReloginToggle').checked,
+                    sharedSecret: document.getElementById('sharedSecretInput').value.trim()
+                };
+                const newPassword = document.getElementById('newPasswordInput').value.trim();
+                const payload = { settings: newSettings };
+                if (newPassword) payload.newPassword = newPassword;
+                
+                fetch(`/api/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(res => res.json()).then(data => { showToast(data.message, data.ok !== false ? 'info' : 'error'); if (data.ok !== false) hideSettingsModal(); });
+            });
 
             // Search Game
             let searchTimeout;
@@ -297,6 +349,63 @@
                     })
                 },300);
             });
+
+            // --- My Keys ---
+            const myKeysModal = document.getElementById('myKeysModal');
+            const myKeysList = document.getElementById('myKeysList');
+            document.getElementById('myKeysButton').onclick = async (e) => {
+                e.preventDefault();
+                myKeysModal.style.display = 'block';
+                try {
+                    const res = await fetch('/api/my-keys');
+                    const keys = await res.json();
+                    if(keys.length === 0) myKeysList.innerHTML = '<p>Sem chaves.</p>';
+                    else {
+                        myKeysList.innerHTML = '';
+                        keys.forEach(k => {
+                            const d = document.createElement('div');
+                            d.className = 'my-key-item';
+                            d.innerHTML = `<strong>${k.plan}</strong><span>${k.durationDays ? k.durationDays + ' dias' : 'Vitalícia'}</span><input type="text" value="${k.key}" readonly>`;
+                            myKeysList.appendChild(d);
+                        });
+                    }
+                } catch(e) { myKeysList.innerHTML = '<p>Erro.</p>'; }
+            };
+            document.getElementById('closeMyKeysModalButton').onclick = () => myKeysModal.style.display = 'none';
+
+            // --- License Modal ---
+            const licenseModal = document.getElementById('licenseModal');
+            const licenseKeyInput = document.getElementById('licenseKeyInput');
+            document.getElementById('activateLicenseButton').onclick = (e) => { e.preventDefault(); licenseModal.style.display = 'block'; };
+            document.getElementById('closeLicenseModalButton').onclick = () => licenseModal.style.display = 'none';
+            document.getElementById('saveLicenseButton').onclick = async () => {
+                const key = licenseKeyInput.value.trim();
+                if(!key) return showToast('Insira a chave.', 'error');
+                const res = await fetch('/api/activate-license', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({licenseKey:key})});
+                const d = await res.json(); showToast(d.message, res.ok?'info':'error');
+                if(res.ok) { licenseModal.style.display = 'none'; fetchUserInfo(); }
+            };
+
+            // --- Password Modal ---
+            const passwordModal = document.getElementById('passwordModal');
+            document.getElementById('changePasswordButton').onclick = (e) => { e.preventDefault(); passwordModal.style.display = 'block'; };
+            document.getElementById('closePasswordModalButton').onclick = () => passwordModal.style.display = 'none';
+            document.getElementById('savePasswordButton').onclick = async () => {
+                const cur = document.getElementById('currentPasswordInput').value;
+                const newP = document.getElementById('newPasswordInputModal').value;
+                const conf = document.getElementById('confirmPasswordInput').value;
+                const res = await fetch('/api/change-password', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({currentPassword:cur, newPassword:newP, confirmPassword:conf})});
+                const d = await res.json(); showToast(d.message, res.ok?'info':'error');
+                if(res.ok) passwordModal.style.display = 'none';
+            };
+
+            // --- Renew Free ---
+            document.getElementById('renewFreeButton').onclick = async () => {
+                if(!confirm('Renovar?')) return;
+                const res = await fetch('/api/renew-free-time', {method:'POST'});
+                const d = await res.json(); showToast(d.message, res.ok?'info':'error');
+                if(res.ok) fetchUserInfo();
+            };
 
             // Init
             fetchUserInfo();
