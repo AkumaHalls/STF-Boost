@@ -10,7 +10,7 @@ const bcrypt = require('bcryptjs');
 
 console.log("[SYSTEM] Inicializando módulos...");
 
-// --- CONFIGURAÇÃO ---
+// --- CONFIGURAÇÃO ----
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -584,3 +584,4 @@ async function startServer() {
 }
 
 startServer();
+
