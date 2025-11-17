@@ -48,7 +48,10 @@
                 </div>
 
                 <div class="admin-card">
-                    <h2>Gestão de Planos</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h2>Gestão de Planos</h2>
+                        <button id="addPlanButton" class="assign-key-btn">Criar Novo Plano</button>
+                    </div>
                     <div class="admin-table-wrapper">
                         <table class="admin-table">
                             <thead>
@@ -59,11 +62,13 @@
                                     <th>Dias</th>
                                     <th>Contas</th>
                                     <th>Jogos</th>
-                                    <th>Estilo</th>
+                                    <th>Ativo</th>
                                     <th>Ações</th>
                                 </tr>
                             </thead>
-                            <tbody id="plansTableBody"><tr><td colspan="8" style="text-align: center;">Carregando...</td></tr></tbody>
+                            <tbody id="plansTableBody">
+                                <tr><td colspan="8" style="text-align: center;">Carregando planos...</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -72,8 +77,19 @@
                     <h2>Licenças Geradas</h2>
                     <div class="admin-table-wrapper">
                         <table class="admin-table">
-                            <thead><tr><th>Chave</th><th>Plano</th><th>Duração</th><th>Status</th><th>Usada por</th><th>Ações</th></tr></thead>
-                            <tbody id="licensesTableBody"><tr><td colspan="6" style="text-align: center;">Carregando...</td></tr></tbody>
+                            <thead>
+                                <tr>
+                                    <th>Chave</th>
+                                    <th>Plano</th>
+                                    <th>Duração</th>
+                                    <th>Status</th>
+                                    <th>Usada por</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="licensesTableBody">
+                                <tr><td colspan="6" style="text-align: center;">Carregando...</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -82,8 +98,19 @@
                     <h2>Usuários Registrados</h2>
                     <div class="admin-table-wrapper">
                         <table class="admin-table">
-                            <thead><tr><th>Usuário</th><th>Email</th><th>Plano</th><th>Expira Em</th><th>Status</th><th>Ações</th></tr></thead>
-                            <tbody id="usersTableBody"><tr><td colspan="6" style="text-align: center;">Carregando...</td></tr></tbody>
+                            <thead>
+                                <tr>
+                                    <th>Usuário</th>
+                                    <th>Email</th>
+                                    <th>Plano</th>
+                                    <th>Expira Em</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <tr><td colspan="6" style="text-align: center;">Carregando...</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -93,9 +120,9 @@
 
     <div id="editPlanModal" class="modal">
         <div class="modal-content">
-            <h2>Editar Plano</h2>
-            <input type="hidden" id="editPlanId">
-            <div class="settings-form-row"><label>Nome:</label><input type="text" id="editPlanName"></div>
+            <h2 id="modalPlanTitle">Editar Plano</h2>
+            <div class="settings-form-row"><label>ID (Slug):</label><input type="text" id="editPlanId" placeholder="ex: premium-pro"></div>
+            <div class="settings-form-row"><label>Nome Visível:</label><input type="text" id="editPlanName"></div>
             <div class="settings-form-row"><label>Preço (R$):</label><input type="number" id="editPlanPrice" step="0.01"></div>
             <div class="settings-form-row"><label>Duração (Dias, 0=inf):</label><input type="number" id="editPlanDays"></div>
             <div class="settings-form-row"><label>Limite Contas:</label><input type="number" id="editPlanAccounts"></div>
@@ -132,6 +159,7 @@
         let allPlans = [];
 
         document.addEventListener('DOMContentLoaded', () => {
+            // Referencias
             const usersTableBody = document.getElementById('usersTableBody');
             const licensesTableBody = document.getElementById('licensesTableBody'); 
             const plansTableBody = document.getElementById('plansTableBody');
@@ -142,15 +170,18 @@
             const generatedKeys = document.getElementById('generatedKeys');
             const keysOutput = document.getElementById('keysOutput');
             
+            // Modal Edição
             const editPlanModal = document.getElementById('editPlanModal');
+            const addPlanButton = document.getElementById('addPlanButton');
             
-            // --- Fetch Plans ---
+            // --- Fetch Plans (ADMIN ROUTE) ---
             async function fetchPlans() {
                 try {
-                    const res = await fetch('/api/plans');
+                    const res = await fetch('/api/admin/all-plans'); // Rota que traz TUDO
                     allPlans = await res.json();
                     renderPlans(allPlans);
                     
+                    // Update Generator Select
                     planSelect.innerHTML = '';
                     allPlans.forEach(p => {
                         const opt = document.createElement('option');
@@ -172,19 +203,39 @@
                         <td>${p.days}</td>
                         <td>${p.accounts}</td>
                         <td>${p.games}</td>
-                        <td>${p.style}</td>
+                        <td>${p.active ? '<span style="color:#90ee90">Sim</span>' : '<span style="color:#ff6B6B">Não</span>'}</td>
                         <td class="actions-cell">
                             <button class="assign-key-btn" onclick='openEditPlan("${p.id}")'>Editar</button>
+                            <button class="delete-key-btn" onclick='deletePlan("${p.id}")'>Excluir</button>
                         </td>
                     `;
                     plansTableBody.appendChild(row);
                 });
             }
 
+            // --- CREATE NEW PLAN ---
+            addPlanButton.onclick = () => {
+                document.getElementById('modalPlanTitle').textContent = 'Criar Novo Plano';
+                document.getElementById('editPlanId').value = '';
+                document.getElementById('editPlanId').disabled = false; // ID editável na criação
+                document.getElementById('editPlanName').value = '';
+                document.getElementById('editPlanPrice').value = '';
+                document.getElementById('editPlanDays').value = 30;
+                document.getElementById('editPlanAccounts').value = 1;
+                document.getElementById('editPlanGames').value = 1;
+                document.getElementById('editPlanStyle').value = 'none';
+                document.getElementById('editPlanActive').value = 'true';
+                document.getElementById('editPlanFeatures').value = '';
+                editPlanModal.style.display = 'block';
+            };
+
+            // --- EDIT PLAN ---
             window.openEditPlan = (planId) => {
                 const p = allPlans.find(x => x.id === planId);
                 if (!p) return;
+                document.getElementById('modalPlanTitle').textContent = 'Editar Plano';
                 document.getElementById('editPlanId').value = p.id;
+                document.getElementById('editPlanId').disabled = true; // ID fixo na edição
                 document.getElementById('editPlanName').value = p.name;
                 document.getElementById('editPlanPrice').value = p.price;
                 document.getElementById('editPlanDays').value = p.days;
@@ -195,6 +246,24 @@
                 document.getElementById('editPlanFeatures').value = p.features.join('\n');
                 editPlanModal.style.display = 'block';
             }
+
+            // --- DELETE PLAN ---
+            window.deletePlan = async (planId) => {
+                if (!confirm(`Tem certeza que deseja EXCLUIR o plano "${planId}"? Isso pode quebrar contas que usam este plano.`)) return;
+                try {
+                    const res = await fetch('/api/admin/delete-plan', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ id: planId })
+                    });
+                    if (res.ok) {
+                        showToast('Plano excluído.');
+                        fetchPlans();
+                    } else {
+                        showToast('Erro ao excluir.', 'error');
+                    }
+                } catch(e) { showToast('Erro de rede.', 'error'); }
+            };
 
             document.getElementById('closeEditPlanModal').onclick = () => editPlanModal.style.display = 'none';
             
@@ -211,6 +280,8 @@
                     features: document.getElementById('editPlanFeatures').value.split('\n').filter(x => x.trim() !== '')
                 };
 
+                if (!updatedPlan.id) return showToast("ID é obrigatório.", 'error');
+
                 const res = await fetch('/api/admin/update-plan-details', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -218,15 +289,15 @@
                 });
 
                 if (res.ok) {
-                    showToast('Plano atualizado!');
+                    showToast('Plano salvo com sucesso!');
                     editPlanModal.style.display = 'none';
                     fetchPlans();
                 } else {
-                    showToast('Erro ao atualizar.', 'error');
+                    showToast('Erro ao salvar.', 'error');
                 }
             };
 
-            // --- Fetch Users ---
+            // --- Existing Fetch Functions (Users, Licenses) ---
             async function fetchUsers() {
                 try {
                     const response = await fetch('/api/admin/users');
@@ -250,6 +321,7 @@
                     const row = document.createElement('tr');
                     const isBanned = user.isBanned || false;
                     
+                    // Dropdown de Planos Dinâmico
                     let planOptions = '';
                     allPlans.forEach(p => {
                         planOptions += `<option value="${p.id}" ${user.plan === p.id ? 'selected' : ''}>${p.name}</option>`;
@@ -270,7 +342,6 @@
                 });
             }
 
-            // --- Fetch Licenses ---
             async function fetchLicenses() {
                 try {
                     const response = await fetch('/api/admin/licenses');
@@ -301,7 +372,7 @@
                 });
             }
 
-            // --- Listeners: Gerar Chaves ---
+            // Listeners (Gerar, Banir, Atribuir) - Mantidos iguais
             generateKeysButton.addEventListener('click', async () => {
                 try {
                     const res = await fetch('/api/admin/generate-keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan: planSelect.value, quantity: quantityInput.value, durationDays: durationInput.value})});
@@ -310,47 +381,43 @@
                 } catch(e){}
             });
             
-            // --- Listeners: Tabela de Usuários (Banir, Excluir, Mudar Plano) ---
-            usersTableBody.addEventListener('click', async (e) => {
+            // ... (Resto dos listeners de Banir, Excluir, Atribuir que já existiam) ...
+             usersTableBody.addEventListener('click', async (e) => { 
                 const target = e.target;
                 const userId = target.dataset.userid;
                 if (!userId) return;
-                let url, actionText;
-
+                let url, actionText, body;
                 if (target.classList.contains('ban-btn') || target.classList.contains('unban-btn')) {
                     const isBanning = target.classList.contains('ban-btn');
                     url = isBanning ? '/api/admin/ban-user' : '/api/admin/unban-user';
                     actionText = isBanning ? 'banir' : 'desbanir';
+                    body = JSON.stringify({ userId });
                 } else if (target.classList.contains('delete-btn')) {
                     url = '/api/admin/delete-user';
                     actionText = 'EXCLUIR PERMANENTEMENTE';
+                    body = JSON.stringify({ userId });
                 } else return;
-
                 if (!confirm(`Tem certeza que deseja ${actionText} este usuário?`)) return;
-
                 try {
-                    const res = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ userId })});
-                    if(res.ok) fetchUsers();
-                    else showToast('Erro na ação.', 'error');
-                } catch (e) { showToast('Erro.', 'error'); }
-            });
+                    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body });
+                    if (response.ok) fetchUsers();
+                } catch (e) { showToast(`Erro ao ${actionText} usuário.`, 'error'); }
+             });
 
-            usersTableBody.addEventListener('change', async (e) => {
-                if (e.target.classList.contains('plan-select')) {
+             usersTableBody.addEventListener('change', async (e) => { 
+                 if (e.target.classList.contains('plan-select')) {
                     const userId = e.target.dataset.userid;
                     const newPlan = e.target.value;
                     if (!confirm(`Mudar plano para ${newPlan}? (Vitalício)`)) { fetchUsers(); return; }
                     await fetch('/api/admin/update-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ userId, newPlan })});
                     fetchUsers();
                 }
-            });
+             });
 
-            // --- Listeners: Tabela de Licenças (Deletar, Atribuir) ---
-            licensesTableBody.addEventListener('click', async (e) => {
+             licensesTableBody.addEventListener('click', async (e) => { 
                 const target = e.target;
                 const licenseId = target.dataset.licenseid;
                 if (!licenseId) return;
-
                 if (target.classList.contains('delete-key-btn')) {
                     if (!confirm('Deletar chave?')) return;
                     await fetch('/api/admin/delete-license', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ licenseId })});
@@ -363,7 +430,7 @@
                     showToast(d.message, res.ok?'info':'error');
                     fetchLicenses();
                 }
-            });
+             });
 
              // Inicialização
              fetchPlans().then(() => {
