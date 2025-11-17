@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=1.92">
+    <link rel="stylesheet" href="/style.css?v=1.93">
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -19,10 +19,6 @@
         }
         .gradient-bg {
             background: linear-gradient(90deg, #0a0a14, #1E3A8A);
-        }
-        .feature-card {
-            /* Estilos base movidos para style.css, mas mantemos o apply aqui para Tailwind */
-            @apply rounded-lg p-6 flex flex-col; 
         }
     </style>
 </head>
@@ -61,30 +57,6 @@
         </section>
     </main>
 
-    <section id="features" class="container mx-auto px-4 py-24">
-        <h2 class="text-4xl font-bold text-center mb-12 tech-font">Porquê escolher o <span class="text-blue-400">STF Boost</span>?</h2>
-        <div class="grid md:grid-cols-3 gap-8">
-            <div class="feature-card p-6 rounded-lg text-center">
-                <h3 class="text-2xl font-semibold mb-3">50 Horas Grátis</h3>
-                <p class="text-gray-300">
-                    Crie sua conta e receba 50 horas de boost totalmente grátis, renováveis quando expirarem.
-                </p>
-            </div>
-            <div class="feature-card p-6 rounded-lg text-center">
-                <h3 class="text-2xl font-semibold mb-3">Seguro e Indetectável</h3>
-                <p class="text-gray-300">
-                    Nossa tecnologia simula que você está a jogar, garantindo zero risco de VAC ou banimento.
-                </p>
-            </div>
-            <div class="feature-card p-6 rounded-lg text-center">
-                <h3 class="text-2xl font-semibold mb-3">Painel Completo</h3>
-                <p class="text-gray-300">
-                    Controle total sobre suas contas. Adicione jogos, defina status customizados e muito mais, 24/7.
-                </p>
-            </div>
-        </div>
-    </section>
-
     <section id="pricing" class="bg-gray-800 py-24">
         <div class="container mx-auto px-4">
             <h2 class="text-4xl font-bold text-center mb-12 tech-font">Planos Simples e Justos</h2>
@@ -100,13 +72,11 @@
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>1</strong> Limite de Jogo</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Auto-Restart</li>
                         <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Aparecer Offline/Online</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Esconder Atividade Recente</li>
                         <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Auto-Aceitar Amigos</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Histórico de Chat</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Mensagem Ausente (Ad)</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Título no Jogo (Ad)</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Mensagem Ausente</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Título no Jogo</li>
                     </ul>
                     <a href="/register" class="mt-auto w-full text-center bg-gray-600 px-6 py-3 rounded-md font-semibold hover:bg-gray-500 transition-colors">
                         Começar de Graça
@@ -121,15 +91,11 @@
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>2</strong> Contas Steam</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>6</strong> Limite de Jogos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Auto-Restart</strong></li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Aparecer Offline</strong></li>
                         <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Auto-Aceitar Amigos</li>
-                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Histórico de Chat</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Mensagem Ausente</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Título no Jogo</li>
                     </ul>
                     <button data-plan="Basic" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
                         Comprar
@@ -144,15 +110,10 @@
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>4</strong> Contas Steam</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>12</strong> Limite de Jogos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Suporte 2FA & Steam Guard</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Sem Risco de VAC</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Aparecer Offline/Online</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Esconder Atividade Recente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Histórico de Chat</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Mensagem Ausente</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Título no Jogo</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart & Offline</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Auto-Aceitar Amigos</strong></li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Mensagem Ausente</li>
+                        <li class="flex items-center gap-3 text-gray-500"><span class="text-red-500">✗</span> Título no Jogo</li>
                     </ul>
                     <button data-plan="Plus" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
                         Comprar
@@ -168,7 +129,10 @@
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Horas Ilimitadas</strong></li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>6</strong> Contas Steam</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>24</strong> Limite de Jogos</li>
-                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Todos Recursos Premium</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Restart & Offline</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Auto-Aceitar Amigos</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Mensagem Ausente</strong></li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>Título no Jogo</strong></li>
                     </ul>
                     <button data-plan="Premium" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
                         Comprar
@@ -184,6 +148,7 @@
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>10</strong> Contas Steam</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> <strong>33</strong> Limite de Jogos (Máx)</li>
                         <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Prioridade no Suporte</li>
+                        <li class="flex items-center gap-3"><span class="text-green-400">✓</span> Todos Recursos Premium</li>
                     </ul>
                     <button data-plan="Ultimate" class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors">
                         Comprar
@@ -256,7 +221,6 @@
     <footer class="bg-gray-950 py-12">
         <div class="container mx-auto px-4 text-center text-gray-400">
             <p>&copy; 2025 STF Boost. Todos os direitos reservados.</p>
-            <p class="text-sm pt-2">Este é um projeto fictício. A Steam e todos os logotipos são marcas registadas da Valve Corporation.</p>
         </div>
     </footer>
     
