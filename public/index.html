@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=2.0">
+    <link rel="stylesheet" href="/style.css?v=2.1">
     <style>
         body { font-family: 'Inter', sans-serif; }
         .tech-font { font-family: 'Share Tech Mono', monospace; }
@@ -112,7 +112,6 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Auth Check ---
             const authButtons = document.getElementById('header-auth-buttons');
             if (authButtons) {
                 fetch('/api/auth-status').then(res => res.json()).then(data => {
@@ -120,24 +119,37 @@
                 }).catch(console.error);
             }
 
-            // --- Carregar Planos Dinâmicos ---
             const plansContainer = document.getElementById('plansContainer');
-            fetch('/api/plans') // Chama a API pública (que só mostra ativos)
+            fetch('/api/plans')
                 .then(res => res.json())
                 .then(plans => {
                     plansContainer.innerHTML = '';
                     
-                    // Renderiza Planos Normais
                     plans.forEach(p => {
                         let highlightClass = '';
                         let badge = '';
-                        
+                        let titleColor = 'text-blue-400'; // Default
+
                         if (p.style === 'fire') {
                             highlightClass = 'premium-highlight relative';
                             badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10">MAIS POPULAR</span>';
+                            titleColor = 'text-blue-400 relative z-20';
                         } else if (p.style === 'cosmic') {
                             highlightClass = 'lifetime-highlight relative';
                             badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">TEMPO LIMITADO</span>';
+                            titleColor = 'text-purple-400 relative z-20';
+                        } else if (p.style === 'halloween') {
+                            highlightClass = 'halloween-highlight relative';
+                            badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-orange-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">🎃 ESPECIAL</span>';
+                            titleColor = 'text-orange-400 relative z-20';
+                        } else if (p.style === 'christmas') {
+                            highlightClass = 'christmas-highlight relative';
+                            badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">🎄 NATAL</span>';
+                            titleColor = 'text-red-400 relative z-20';
+                        } else if (p.style === 'newyear') {
+                            highlightClass = 'newyear-highlight relative';
+                            badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-yellow-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">✨ ANO NOVO</span>';
+                            titleColor = 'text-yellow-400 relative z-20';
                         }
 
                         const priceDisplay = p.price === 0 ? 'R$ 0' : `R$ ${p.price.toFixed(2).replace('.',',')}`;
@@ -154,7 +166,7 @@
                         const cardHtml = `
                             <div class="feature-card ${highlightClass}">
                                 ${badge}
-                                <h3 class="text-2xl font-bold text-center mb-4 ${p.style === 'fire' ? 'text-blue-400 relative z-20' : (p.style === 'cosmic' ? 'text-purple-400 relative z-20' : 'text-blue-400')}">${p.name}</h3>
+                                <h3 class="text-2xl font-bold text-center mb-4 ${titleColor}">${p.name}</h3>
                                 <div class="text-5xl font-bold text-center my-4">${priceDisplay} <span class="text-lg font-normal">${periodDisplay}</span></div>
                                 ${p.days === 0 && p.price > 0 ? '<p class="text-center text-gray-400 mb-6 -mt-4">Pagamento Único</p>' : ''}
                                 <ul class="space-y-3 mb-8 text-sm flex-grow">
@@ -166,7 +178,6 @@
                         plansContainer.insertAdjacentHTML('beforeend', cardHtml);
                     });
 
-                    // Renderiza o Plano Personalizado (Fixo) no final
                     const customCardHtml = `
                         <div class="feature-card border-2 border-dashed border-gray-600 relative">
                             <h3 class="text-2xl font-bold text-center mb-2 text-white">Personalizado</h3>
@@ -185,7 +196,6 @@
                     setupPurchaseModals();
                 });
 
-            // --- Lógica Personalizada e Modais (Re-encapsulada para rodar após o fetch) ---
             function setupCustomPlanLogic() {
                 const daysRange = document.getElementById('daysRange');
                 const accountsRange = document.getElementById('accountsRange');
@@ -213,7 +223,6 @@
                 const purchaseTitle = document.getElementById('purchaseTitle');
                 const customPlanDetails = document.getElementById('customPlanDetails');
                 
-                // Event delegation para botões dinâmicos
                 document.body.addEventListener('click', (e) => {
                     if (e.target.classList.contains('purchase-button')) {
                         const planName = e.target.getAttribute('data-plan');
@@ -235,5 +244,6 @@
             }
         });
     </script>
+
 </body>
 </html>
