@@ -10,7 +10,7 @@ const bcrypt = require('bcryptjs');
 
 console.log("[SYSTEM] Inicializando módulos...");
 
-// --- CONFIGURAÇÃO ----
+// --- CONFIGURAÇÃO ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -24,12 +24,16 @@ if (!MONGODB_URI || !ADMIN_PASSWORD) {
 
 const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
-let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timestamp: 0 }; // Fallback seguro
+let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timestamp: 0 }; 
 
-// --- CONSTANTES DO PLANO DE NEGÓCIOS ---
+// --- DEFINIÇÃO DOS ROUTERS ---
+const apiRouter = express.Router();
+const adminApiRouter = express.Router();
+
+// --- CONFIGURAÇÃO DE PLANOS ---
 const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime'];
-const FREE_HOURS_MS = 50 * 60 * 60 * 1000; // 50 horas
-const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 horas
+const FREE_HOURS_MS = 50 * 60 * 60 * 1000; 
+const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; 
 
 const PLAN_LIMITS = {
     'free': { accounts: 1, games: 1 },
@@ -40,7 +44,7 @@ const PLAN_LIMITS = {
     'lifetime': { accounts: 10, games: 33 }
 };
 
-// --- GESTÃO DE DADOS (GLOBAIS) ---
+// --- GESTÃO DE DADOS ---
 const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection;
 let siteSettingsCollection;
@@ -48,7 +52,7 @@ let usersCollection;
 let licensesCollection; 
 let liveAccounts = {};
 
-// --- FUNÇÕES DE BANCO DE DADOS (IMPORTANTE: Definidas antes do uso) ---
+// --- FUNÇÕES DE BANCO DE DADOS ---
 async function connectToDB() { 
     try { 
         await mongoClient.connect(); 
@@ -104,46 +108,31 @@ async function getSteamAppList() {
         return steamAppListCache.data;
     }
     console.log("[GESTOR] A buscar lista de jogos...");
-    
-    // Tenta SteamSpy primeiro
     try {
         const response = await fetch('https://steamspy.com/api.php?request=all', { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (response.ok) {
             const jsonData = await response.json();
-            const appList = Object.values(jsonData);
-            if (appList.length > 0) {
-                steamAppListCache = { data: appList, timestamp: Date.now() };
-                console.log("[GESTOR] Lista de jogos atualizada via SteamSpy.");
-                return steamAppListCache.data;
-            }
+            steamAppListCache = { data: Object.values(jsonData), timestamp: Date.now() };
+            return steamAppListCache.data;
         }
-    } catch (e) {
-        console.error("[GESTOR] SteamSpy falhou, tentando API oficial...");
-    }
+    } catch (e) { console.error("[GESTOR] SteamSpy falhou, tentando API oficial..."); }
 
-    // Fallback para API Oficial da Steam
     try {
         const response = await fetch('http://api.steampowered.com/ISteamApps/GetAppList/v0002/', { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (response.ok) {
              const jsonData = await response.json();
              if (jsonData.applist && jsonData.applist.apps) {
                  steamAppListCache = { data: jsonData.applist.apps, timestamp: Date.now() };
-                 console.log("[GESTOR] Lista de jogos atualizada via Steam API.");
                  return steamAppListCache.data;
              }
         }
-    } catch (e) {
-        console.error("[GESTOR] API Oficial falhou também.");
-    }
-
-    console.warn("[GESTOR] Falha ao atualizar lista de jogos. Usando cache de emergência (CS2).");
+    } catch (e) { console.error("[GESTOR] API Oficial falhou também."); }
     return steamAppListCache.data;
 }
 
 // --- WORKER MANAGER ---
 function startWorkerForAccount(accountData) {
     const username = accountData.username;
-    console.log(`[GESTOR] Iniciando worker: ${username}`);
     if (liveAccounts[username]?.worker) liveAccounts[username].worker.kill();
     if (liveAccounts[username]?.startupTimeout) clearTimeout(liveAccounts[username].startupTimeout);
 
@@ -155,7 +144,6 @@ function startWorkerForAccount(accountData) {
 
     liveAccounts[username].startupTimeout = setTimeout(() => {
         if (liveAccounts[username]?.status === "Iniciando...") {
-            console.error(`[GESTOR] Timeout no worker ${username}. Reiniciando.`);
             sendDiscordNotification("❄️ Conta Congelada", "Worker não respondeu.", 16776960, username);
             worker.kill();
         }
@@ -184,9 +172,7 @@ function startWorkerForAccount(accountData) {
         if (liveAccounts[username]?.startupTimeout) clearTimeout(liveAccounts[username].startupTimeout);
         if (!liveAccounts[username]) return;
         
-        console.log(`[GESTOR] Worker ${username} saiu (Código: ${code}).`);
         const acc = liveAccounts[username];
-        
         if (!acc.manual_logout && acc.settings.autoRelogin) {
              usersCollection.findOne({ _id: new ObjectId(acc.ownerUserID) }).then(user => {
                 if (!user || user.isBanned || (user.plan === 'free' && user.freeHoursRemaining <= 0) || (user.planExpiresAt && user.planExpiresAt < new Date())) {
@@ -215,17 +201,11 @@ async function loadAccountsIntoMemory() {
     savedAccounts.forEach((acc, index) => {
         liveAccounts[acc.username] = { ...acc, encryptedPassword: acc.password, settings: { ...defaultSettings, ...(acc.settings || {}) }, status: 'Parado', worker: null, sessionStartTime: null, manual_logout: false };
         const delay = index * 15000;
-        console.log(`[GESTOR] Worker para ${acc.username} (Dono: ${acc.ownerUserID}) agendado para iniciar em ${delay / 1000}s.`);
         setTimeout(() => {
             const accountData = { ...liveAccounts[acc.username], password: decrypt(acc.password) };
-            if (accountData.password) {
-                startWorkerForAccount(accountData);
-            } else {
-                console.error(`[GESTOR] Falha ao desencriptar senha para ${acc.username}, início automático abortado.`);
-            }
+            if (accountData.password) startWorkerForAccount(accountData);
         }, delay);
     });
-    console.log(`[GESTOR] ${savedAccounts.length} contas (com auto-relogin) carregadas.`);
 }
 
 // --- MIDDLEWARES ---
@@ -245,13 +225,10 @@ const isAuthenticated = async (req, res, next) => {
         try {
             const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
             if (user) {
-                if (user.isBanned) {
-                    req.session.destroy(() => res.redirect('/banned'));
-                    return;
-                }
+                if (user.isBanned) { req.session.destroy(() => res.redirect('/banned')); return; }
                 return next();
             }
-        } catch (e) { console.error("Erro auth:", e); }
+        } catch (e) {}
     } 
     res.redirect('/login?error=unauthorized'); 
 };
@@ -261,7 +238,7 @@ const isAdminAuthenticated = (req, res, next) => {
     res.redirect('/admin/login?error=unauthorized');
 };
 
-// --- ROTAS DE PÁGINAS ---
+// --- ROTAS ---
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/register', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'register.html')));
@@ -269,28 +246,13 @@ app.get('/dashboard', isAuthenticated, (req, res) => res.sendFile(path.join(__di
 app.get('/banned', (req, res) => res.sendFile(path.join(__dirname, 'public', 'banned.html')));
 app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
-
-// --- ROTAS ADMIN PÁGINAS ---
 app.get('/admin', (req, res) => res.redirect('/admin/dashboard'));
 app.get('/admin/login', (req, res) => req.session.isAdmin ? res.redirect('/admin/dashboard') : res.sendFile(path.join(__dirname, 'public', 'admin', 'login.html')));
 app.get('/admin/dashboard', isAdminAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html')));
-app.post('/admin/login', (req, res) => {
-    if (req.body.password === ADMIN_PASSWORD) {
-        req.session.isAdmin = true;
-        res.redirect('/admin/dashboard');
-    } else {
-        res.redirect('/admin/login?error=invalid');
-    }
-});
+app.post('/admin/login', (req, res) => { req.body.password === ADMIN_PASSWORD ? (req.session.isAdmin = true, res.redirect('/admin/dashboard')) : res.redirect('/admin/login?error=invalid'); });
 app.get('/admin/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 
-// ==========================================
-// === API ROUTERS ===
-// ==========================================
-const apiRouter = express.Router();
-const adminApiRouter = express.Router();
-
-// === API PÚBLICA/AUTH ===
+// === API USUÁRIO ===
 apiRouter.get('/auth-status', (req, res) => res.json({ loggedIn: !!req.session.userId }));
 apiRouter.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
@@ -306,12 +268,11 @@ apiRouter.post('/login', async (req, res) => {
     const user = await usersCollection.findOne({ username });
     if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Credenciais inválidas." });
     if (user.isBanned) return res.status(403).json({ message: "Conta banida." });
-    req.session.userId = user._id.toString();
-    req.session.username = user.username;
+    req.session.userId = user._id.toString(); req.session.username = user.username;
     res.json({ message: "Login OK" });
 });
 
-// === API PROTEGIDA (USUÁRIO) ===
+// PROTEGIDAS
 apiRouter.use(isAuthenticated);
 
 apiRouter.get('/user-info', async (req, res) => {
@@ -319,8 +280,21 @@ apiRouter.get('/user-info', async (req, res) => {
     if (!user) return res.status(404).json({ message: "Erro user." });
     let fh = 0;
     if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 3600000);
-    res.json({ username: user.username, plan: user.plan, freeHoursRemaining: fh, planExpiresAt: user.planExpiresAt });
+    
+    // *** ATUALIZAÇÃO: ENVIA OS LIMITES PARA O FRONTEND ***
+    const limits = PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
+    
+    res.json({ 
+        username: user.username, 
+        plan: user.plan, 
+        freeHoursRemaining: fh, 
+        planExpiresAt: user.planExpiresAt,
+        // Novos campos:
+        gameLimit: limits.games,
+        accountLimit: limits.accounts 
+    });
 });
+
 apiRouter.get('/status', (req, res) => {
     const myAccounts = {};
     for (const user in liveAccounts) {
@@ -345,7 +319,8 @@ apiRouter.post('/add-account', async (req, res) => {
     res.json({ message: "Conta adicionada." });
 });
 apiRouter.post('/start/:username', async (req, res) => {
-    const acc = liveAccounts[req.params.username];
+    const username = req.params.username;
+    const acc = liveAccounts[username];
     if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({ message: "Conta não encontrada." });
     const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
     if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas grátis." });
@@ -443,13 +418,12 @@ apiRouter.post('/change-password', async (req, res) => {
     await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: hash } });
     res.json({ message: "Senha alterada." });
 });
-// Bulk actions
 apiRouter.post('/bulk-start', async (req, res) => {
     const { usernames } = req.body;
     const uid = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
-    if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." });
     const limit = PLAN_LIMITS[user.plan]?.games || 1;
+    if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." });
     let c = 0;
     usernames.forEach(u => {
         const acc = liveAccounts[u];
@@ -537,7 +511,7 @@ adminApiRouter.post('/update-plan', async (req, res) => {
     res.json({ message: "Atualizado." });
 });
 
-// --- APLICAÇÃO DAS ROTAS (No Fim) ---
+// --- APLICAÇÃO DOS ROUTERS ---
 app.use('/api', apiRouter);
 app.use('/api/admin', adminApiRouter);
 
@@ -582,6 +556,4 @@ async function startServer() {
         console.error("[SYSTEM] ERRO FATAL:", e);
     }
 }
-
 startServer();
-
