@@ -132,7 +132,6 @@
         let allPlans = [];
 
         document.addEventListener('DOMContentLoaded', () => {
-            // Referencias
             const usersTableBody = document.getElementById('usersTableBody');
             const licensesTableBody = document.getElementById('licensesTableBody'); 
             const plansTableBody = document.getElementById('plansTableBody');
@@ -143,17 +142,15 @@
             const generatedKeys = document.getElementById('generatedKeys');
             const keysOutput = document.getElementById('keysOutput');
             
-            // Modal Edição
             const editPlanModal = document.getElementById('editPlanModal');
             
             // --- Fetch Plans ---
             async function fetchPlans() {
                 try {
-                    const res = await fetch('/api/plans'); // Public API is fine for listing
+                    const res = await fetch('/api/plans');
                     allPlans = await res.json();
                     renderPlans(allPlans);
                     
-                    // Update Generator Select
                     planSelect.innerHTML = '';
                     allPlans.forEach(p => {
                         const opt = document.createElement('option');
@@ -229,7 +226,7 @@
                 }
             };
 
-            // --- Existing Fetch Functions (Users, Licenses) ---
+            // --- Fetch Users ---
             async function fetchUsers() {
                 try {
                     const response = await fetch('/api/admin/users');
@@ -253,7 +250,6 @@
                     const row = document.createElement('tr');
                     const isBanned = user.isBanned || false;
                     
-                    // Dropdown de Planos Dinâmico
                     let planOptions = '';
                     allPlans.forEach(p => {
                         planOptions += `<option value="${p.id}" ${user.plan === p.id ? 'selected' : ''}>${p.name}</option>`;
@@ -274,6 +270,7 @@
                 });
             }
 
+            // --- Fetch Licenses ---
             async function fetchLicenses() {
                 try {
                     const response = await fetch('/api/admin/licenses');
@@ -304,7 +301,7 @@
                 });
             }
 
-            // Listeners (Gerar, Banir, Atribuir) - Mantidos iguais
+            // --- Listeners: Gerar Chaves ---
             generateKeysButton.addEventListener('click', async () => {
                 try {
                     const res = await fetch('/api/admin/generate-keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan: planSelect.value, quantity: quantityInput.value, durationDays: durationInput.value})});
@@ -313,10 +310,60 @@
                 } catch(e){}
             });
             
-            // ... (Resto dos listeners de Banir, Excluir, Atribuir que já existiam) ...
-             usersTableBody.addEventListener('click', async (e) => { /* ...código anterior... */ });
-             usersTableBody.addEventListener('change', async (e) => { /* ...código anterior... */ });
-             licensesTableBody.addEventListener('click', async (e) => { /* ...código anterior... */ });
+            // --- Listeners: Tabela de Usuários (Banir, Excluir, Mudar Plano) ---
+            usersTableBody.addEventListener('click', async (e) => {
+                const target = e.target;
+                const userId = target.dataset.userid;
+                if (!userId) return;
+                let url, actionText;
+
+                if (target.classList.contains('ban-btn') || target.classList.contains('unban-btn')) {
+                    const isBanning = target.classList.contains('ban-btn');
+                    url = isBanning ? '/api/admin/ban-user' : '/api/admin/unban-user';
+                    actionText = isBanning ? 'banir' : 'desbanir';
+                } else if (target.classList.contains('delete-btn')) {
+                    url = '/api/admin/delete-user';
+                    actionText = 'EXCLUIR PERMANENTEMENTE';
+                } else return;
+
+                if (!confirm(`Tem certeza que deseja ${actionText} este usuário?`)) return;
+
+                try {
+                    const res = await fetch(url, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ userId })});
+                    if(res.ok) fetchUsers();
+                    else showToast('Erro na ação.', 'error');
+                } catch (e) { showToast('Erro.', 'error'); }
+            });
+
+            usersTableBody.addEventListener('change', async (e) => {
+                if (e.target.classList.contains('plan-select')) {
+                    const userId = e.target.dataset.userid;
+                    const newPlan = e.target.value;
+                    if (!confirm(`Mudar plano para ${newPlan}? (Vitalício)`)) { fetchUsers(); return; }
+                    await fetch('/api/admin/update-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ userId, newPlan })});
+                    fetchUsers();
+                }
+            });
+
+            // --- Listeners: Tabela de Licenças (Deletar, Atribuir) ---
+            licensesTableBody.addEventListener('click', async (e) => {
+                const target = e.target;
+                const licenseId = target.dataset.licenseid;
+                if (!licenseId) return;
+
+                if (target.classList.contains('delete-key-btn')) {
+                    if (!confirm('Deletar chave?')) return;
+                    await fetch('/api/admin/delete-license', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ licenseId })});
+                    fetchLicenses();
+                } else if (target.classList.contains('assign-key-btn')) {
+                    const username = prompt("Nome de usuário para atribuir:");
+                    if (!username) return;
+                    const res = await fetch('/api/admin/assign-key', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ licenseId, username })});
+                    const d = await res.json();
+                    showToast(d.message, res.ok?'info':'error');
+                    fetchLicenses();
+                }
+            });
 
              // Inicialização
              fetchPlans().then(() => {
