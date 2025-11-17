@@ -30,11 +30,24 @@ let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timest
 const apiRouter = express.Router();
 const adminApiRouter = express.Router();
 
-// --- CONSTANTES ---
+// --- CONFIGURAÇÃO DE PLANOS ---
+// Adicionados os planos especiais aqui
+const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime', 'halloween', 'christmas', 'newyear'];
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; 
 const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; 
-let GLOBAL_PLANS = {}; 
-let PLAN_LIMITS = {};
+
+const PLAN_LIMITS = {
+    'free': { accounts: 1, games: 1 },
+    'basic': { accounts: 2, games: 6 },
+    'plus': { accounts: 4, games: 12 },
+    'premium': { accounts: 6, games: 24 },
+    'ultimate': { accounts: 10, games: 33 },
+    'lifetime': { accounts: 10, games: 33 },
+    // Novos Limites
+    'halloween': { accounts: 8, games: 33 },
+    'christmas': { accounts: 10, games: 33 },
+    'newyear': { accounts: 10, games: 33 }
+};
 
 // --- GESTÃO DE DADOS ---
 const mongoClient = new MongoClient(MONGODB_URI);
@@ -42,7 +55,7 @@ let accountsCollection;
 let siteSettingsCollection;
 let usersCollection; 
 let licensesCollection; 
-let plansCollection;
+let plansCollection; 
 let liveAccounts = {};
 
 // --- FUNÇÕES DE BANCO DE DADOS ---
@@ -68,30 +81,40 @@ async function connectToDB() {
     } 
 }
 
+// *** FUNÇÃO ATUALIZADA: INICIALIZAR PLANOS (INSERE SE NÃO EXISTIR) ***
 async function initializePlans() {
-    const count = await plansCollection.countDocuments();
-    if (count === 0) {
-        console.log("[SYSTEM] Criando planos padrão no banco de dados...");
-        const defaultPlans = [
-            { id: 'free', name: 'Gratuito', price: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, features: ['50 Horas (Renovável)', '1 Conta Steam', '1 Limite de Jogo', 'Suporte 2FA & Guard', 'Sem Risco de VAC', 'Auto-Restart'] },
-            { id: 'basic', name: 'Basic', price: 7.90, days: 30, accounts: 2, games: 6, style: 'none', active: true, features: ['30 Dias de Acesso', 'Horas Ilimitadas', '2 Contas Steam', '6 Limite de Jogos', 'Suporte 2FA', 'Auto-Restart', 'Aparecer Offline'] },
-            { id: 'plus', name: 'Plus', price: 15.90, days: 30, accounts: 4, games: 12, style: 'none', active: true, features: ['30 Dias de Acesso', 'Horas Ilimitadas', '4 Contas Steam', '12 Limite de Jogos', 'Auto-Aceitar Amigos'] },
-            { id: 'premium', name: 'Premium', price: 27.90, days: 30, accounts: 6, games: 24, style: 'fire', active: true, features: ['30 Dias de Acesso', 'Horas Ilimitadas', '6 Contas Steam', '24 Limite de Jogos', 'Mensagem Ausente', 'Título no Jogo'] },
-            { id: 'ultimate', name: 'Ultimate', price: 54.90, days: 30, accounts: 10, games: 33, style: 'none', active: true, features: ['30 Dias de Acesso', 'Horas Ilimitadas', '10 Contas Steam', '33 Limite de Jogos (Máx)', 'Prioridade Suporte'] },
-            { id: 'lifetime', name: 'Vitalício', price: 249.90, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, features: ['Acesso Vitalício', 'Horas Ilimitadas', '10 Contas Steam', '33 Limite de Jogos (Máx)', 'Todos Recursos Premium'] }
-        ];
-        await plansCollection.insertMany(defaultPlans);
+    console.log("[SYSTEM] Verificando planos no banco de dados...");
+    const defaultPlans = [
+        { id: 'free', name: 'Gratuito', price: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, features: ['50 Horas (Renovável)', '1 Conta Steam', '1 Limite de Jogo', 'Suporte 2FA & Guard', 'Sem Risco de VAC', 'Auto-Restart'] },
+        { id: 'basic', name: 'Basic', price: 7.90, days: 30, accounts: 2, games: 6, style: 'none', active: true, features: ['30 Dias de Acesso', 'Horas Ilimitadas', '2 Contas Steam', '6 Limite de Jogos', 'Suporte 2FA', 'Auto-Restart', 'Aparecer Offline'] },
+        { id: 'plus', name: 'Plus', price: 15.90, days: 30, accounts: 4, games: 12, style: 'none', active: true, features: ['30 Dias de Acesso', 'Horas Ilimitadas', '4 Contas Steam', '12 Limite de Jogos', 'Auto-Aceitar Amigos'] },
+        { id: 'premium', name: 'Premium', price: 27.90, days: 30, accounts: 6, games: 24, style: 'fire', active: true, features: ['30 Dias de Acesso', 'Horas Ilimitadas', '6 Contas Steam', '24 Limite de Jogos', 'Mensagem Ausente', 'Título no Jogo'] },
+        { id: 'ultimate', name: 'Ultimate', price: 54.90, days: 30, accounts: 10, games: 33, style: 'none', active: true, features: ['30 Dias de Acesso', 'Horas Ilimitadas', '10 Contas Steam', '33 Limite de Jogos (Máx)', 'Prioridade Suporte'] },
+        { id: 'lifetime', name: 'Vitalício', price: 249.90, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, features: ['Acesso Vitalício', 'Horas Ilimitadas', '10 Contas Steam', '33 Limite de Jogos (Máx)', 'Todos Recursos Premium'] },
+        // Novos Planos Especiais
+        { id: 'halloween', name: 'Halloween Spooky', price: 19.90, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias (Promoção!)', 'Horas Ilimitadas', '8 Contas Steam', '33 Limite de Jogos', 'Efeito Assustador 🦇'] },
+        { id: 'christmas', name: 'Natal Gift', price: 89.90, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano de Acesso', 'Horas Ilimitadas', '10 Contas Steam', '33 Limite de Jogos', 'Efeito de Neve ❄️'] },
+        { id: 'newyear', name: 'Ano Novo Era', price: 12.90, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias de Acesso', 'Horas Ilimitadas', '10 Contas Steam', 'Força Total', 'Efeito Brilhante ✨'] }
+    ];
+
+    // Usa updateOne com upsert: true para inserir apenas se não existir, preservando edições
+    for (const plan of defaultPlans) {
+        await plansCollection.updateOne(
+            { id: plan.id },
+            { $setOnInsert: plan }, // Só define estes campos se for uma inserção nova
+            { upsert: true }
+        );
     }
+    
     await refreshPlansCache();
 }
 
 async function refreshPlansCache() {
     const plans = await plansCollection.find({}).toArray();
     GLOBAL_PLANS = {};
-    PLAN_LIMITS = {}; // Reinicia os limites
+    // Atualiza os limites globais
     plans.forEach(p => { 
         GLOBAL_PLANS[p.id] = p; 
-        // Atualiza os limites globais baseados no DB
         PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games };
     });
     console.log("[SYSTEM] Cache de planos atualizado.");
@@ -138,6 +161,7 @@ async function getSteamAppList() {
             }
         }
     } catch (e) {}
+
     try {
         const response = await fetch('http://api.steampowered.com/ISteamApps/GetAppList/v0002/', { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (response.ok) {
@@ -317,7 +341,6 @@ apiRouter.get('/user-info', async (req, res) => {
     let fh = 0;
     if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 3600000);
     
-    // Busca limites do DB, fallback para PLAN_LIMITS inicial se der erro
     const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
     
     res.json({ 
@@ -371,8 +394,12 @@ apiRouter.post('/start/:username', async (req, res) => {
     if (acc.games.length > limit) return res.status(403).json({ message: `Limite de jogos (${limit}) excedido.` });
 
     const pass = decrypt(acc.encryptedPassword);
-    if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "Iniciando..." }); } 
-    else { res.status(500).json({ message: "Erro senha." }); }
+    if (pass) {
+        startWorkerForAccount({ ...acc, password: pass });
+        res.json({ message: "Iniciando..." });
+    } else {
+        res.status(500).json({ message: "Erro senha." });
+    }
 });
 apiRouter.post('/stop/:username', (req, res) => {
     const acc = liveAccounts[req.params.username];
@@ -419,7 +446,7 @@ apiRouter.post('/set-games/:username', async (req, res) => {
     
     const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
     const limit = planDetails.games;
-
+    
     if (games.length > limit) return res.status(403).json({ message: `Limite de jogos (${limit}) excedido.` });
 
     if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) {
@@ -442,14 +469,13 @@ apiRouter.post('/activate-license', async (req, res) => {
     if (!key || key.isUsed) return res.status(400).json({ message: "Chave inválida ou usada." });
     if (key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({ message: "Chave não é para você." });
     
-    // Verificar se o plano existe no DB/Cache
-    if (!GLOBAL_PLANS[key.plan]) return res.status(400).json({ message: "Erro: Plano da chave não existe." });
+    if (!GLOBAL_PLANS[key.plan] && !PLAN_LIMITS[key.plan]) return res.status(400).json({ message: "Erro: Plano da chave não existe." });
 
     let expiry = null;
-    // Usa duração da chave ou do plano
-    const duration = key.durationDays || GLOBAL_PLANS[key.plan].days;
+    const duration = key.durationDays || (GLOBAL_PLANS[key.plan] ? GLOBAL_PLANS[key.plan].days : 30);
     
     if (duration > 0) { expiry = new Date(); expiry.setDate(expiry.getDate() + duration); }
+    
     await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: expiry, freeHoursRemaining: 0 } });
     await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } });
     res.json({ message: "Plano ativado!" });
@@ -474,13 +500,14 @@ apiRouter.post('/change-password', async (req, res) => {
     await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: hash } });
     res.json({ message: "Senha alterada." });
 });
+// Bulk actions
 apiRouter.post('/bulk-start', async (req, res) => {
     const { usernames } = req.body;
     const uid = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." });
     
-    const planDetails = GLOBAL_PLANS[user.plan] || GLOBAL_PLANS['free'];
+    const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
     const limit = planDetails.games;
 
     let c = 0;
@@ -493,7 +520,6 @@ apiRouter.post('/bulk-start', async (req, res) => {
     });
     res.json({ message: `${c} iniciadas.` });
 });
-// ... (bulk-stop e bulk-remove são iguais, podem ficar como estavam ou simplificados)
 apiRouter.post('/bulk-stop', (req, res) => {
     const { usernames } = req.body;
     usernames.forEach(u => {
@@ -520,29 +546,25 @@ apiRouter.post('/bulk-remove', async (req, res) => {
 });
 
 // ==========================================
-// === API ADMIN (PROTEGIDA) ===
+// === API ADMIN ===
 // ==========================================
 adminApiRouter.use(isAdminAuthenticated);
 
-// *** ROTA CRÍTICA PARA O PAINEL ADMIN: VER TODOS OS PLANOS ***
+// *** NOVA ROTA ADMIN: Gerir Planos ***
 adminApiRouter.get('/all-plans', async (req, res) => {
-    try {
-        const plans = await plansCollection.find({}).sort({ price: 1 }).toArray();
-        res.json(plans);
-    } catch(e) { res.status(500).json([]); }
+    const plans = await plansCollection.find({}).sort({ price: 1 }).toArray();
+    res.json(plans);
 });
-
 adminApiRouter.post('/update-plan-details', async (req, res) => {
     const { id, name, price, days, accounts, games, style, active, features } = req.body;
     await plansCollection.updateOne(
         { id: id }, 
         { $set: { name, price: parseFloat(price), days: parseInt(days), accounts: parseInt(accounts), games: parseInt(games), style, active, features } },
-        { upsert: true } 
+        { upsert: true }
     );
     await refreshPlansCache();
     res.json({ message: "Plano atualizado." });
 });
-
 adminApiRouter.post('/delete-plan', async (req, res) => {
     const { id } = req.body;
     await plansCollection.deleteOne({ id: id });
@@ -600,7 +622,7 @@ adminApiRouter.post('/update-plan', async (req, res) => {
     res.json({ message: "Atualizado." });
 });
 
-// --- APLICAÇÃO DOS ROUTERS (IMPORTANTE: No Fim) ---
+// --- APLICAÇÃO DOS ROUTERS (No Fim) ---
 app.use('/api/admin', adminApiRouter);
 app.use('/api', apiRouter);
 
@@ -636,7 +658,7 @@ async function startServer() {
     console.log("[SYSTEM] Conectando ao DB...");
     try {
         await connectToDB();
-        await initializePlans(); // Cria planos
+        await initializePlans(); 
         await initializeMasterKey();
         await loadAccountsIntoMemory();
         setInterval(deductFreeTime, 300000);
