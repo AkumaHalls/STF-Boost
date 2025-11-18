@@ -57,8 +57,8 @@
                     </div>
                     <div class="admin-table-wrapper" style="margin-top: 15px;">
                         <table class="admin-table">
-                            <thead><tr><th>Código</th><th>Desconto</th><th>Ações</th></tr></thead>
-                            <tbody id="couponsTableBody"><tr><td colspan="3" style="text-align: center;">Carregando...</td></tr></tbody>
+                            <thead><tr><th>Código</th><th>Desconto</th><th>Usos</th><th>Ações</th></tr></thead>
+                            <tbody id="couponsTableBody"><tr><td colspan="4" style="text-align: center;">Carregando...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -127,7 +127,7 @@
             const usersTableBody = document.getElementById('usersTableBody');
             const licensesTableBody = document.getElementById('licensesTableBody'); 
             const plansTableBody = document.getElementById('plansTableBody');
-            const couponsTableBody = document.getElementById('couponsTableBody'); // *** NOVO ***
+            const couponsTableBody = document.getElementById('couponsTableBody');
             const planSelect = document.getElementById('planSelect');
             
             async function fetchAll() {
@@ -147,15 +147,16 @@
                 } catch(e) {}
             }
 
-            // *** FUNÇÕES DE CUPOM ***
+            // Cupons
             async function fetchCoupons() {
                 try {
                     const res = await fetch('/api/admin/coupons'); const coupons = await res.json();
                     couponsTableBody.innerHTML = '';
-                    if(coupons.length===0) couponsTableBody.innerHTML = '<tr><td colspan="3" style="text-align:center">Sem cupons.</td></tr>';
+                    if(coupons.length===0) couponsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">Sem cupons.</td></tr>';
                     coupons.forEach(c => {
                         const row = document.createElement('tr');
-                        row.innerHTML = `<td><code style="color:var(--primary-color)">${c.code}</code></td><td>${c.discount}%</td><td class="actions-cell"><button class="delete-key-btn" onclick='deleteCoupon("${c._id}")'>Excluir</button></td>`;
+                        // ATUALIZADO: Mostra usageCount
+                        row.innerHTML = `<td><code style="color:var(--primary-color)">${c.code}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick='deleteCoupon("${c._id}")'>Excluir</button></td>`;
                         couponsTableBody.appendChild(row);
                     });
                 } catch(e) {}
@@ -175,7 +176,6 @@
                 fetchCoupons();
             };
 
-            // ... (Resto das funções de Users e Licenças simplificadas mas funcionais igual antes) ...
             async function fetchUsers() { const res = await fetch('/api/admin/users'); const users = await res.json(); users.forEach(u => userMap.set(u._id, u.username)); renderUsers(users); }
             function renderUsers(users) { 
                 usersTableBody.innerHTML = '';
@@ -197,21 +197,14 @@
                 });
             }
 
-            // Event Listeners globais
             document.getElementById('generateKeysButton').onclick = async () => {
                 await fetch('/api/admin/generate-keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:document.getElementById('planSelect').value, quantity:document.getElementById('quantityInput').value})});
                 fetchLicenses();
             };
             
-            // Delegation para tabelas dinâmicas
             usersTableBody.onclick = async (e) => {
                 if(e.target.classList.contains('ban-btn')) {
                     const uid = e.target.dataset.uid;
-                    // Lógica simplificada de toggle ban (precisaria verificar status atual, mas para brevidade...)
-                    // Idealmente buscar o user completo ou ter atributo data-isbanned
-                    const u = userMap.get(uid); // Só tem nome no map...
-                    // Melhor: implementar endpoints separados ou toggle inteligente. 
-                    // Vou assumir Banir por padrão para exemplo, mas o ideal é checkar.
                     await fetch('/api/admin/ban-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
                     fetchUsers();
                 }
@@ -234,7 +227,6 @@
                 }
             };
 
-            // Plan Edit Modal
             const editModal = document.getElementById('editPlanModal');
             window.openEditPlan = (id) => {
                 const p = allPlans.find(x=>x.id===id);
