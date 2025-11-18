@@ -21,7 +21,7 @@ const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 const SITE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 
 if (!MONGODB_URI || !ADMIN_PASSWORD) { 
-    console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI e SITE_PASSWORD precisam de ser definidas!"); 
+    console.error("ERRO CRÍTICO: Variáveis de ambiente faltando!"); 
     process.exit(1); 
 }
 
@@ -35,12 +35,12 @@ const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
 let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timestamp: 0 }; 
 
-// --- DEFINIÇÃO DOS ROUTERS ---
+// --- ROUTERS ---
 const apiRouter = express.Router();
 const adminApiRouter = express.Router();
 
 // --- CONSTANTES ---
-const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime', 'halloween', 'christmas', 'newyear', 'custom'];
+const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime', 'halloween', 'christmas', 'newyear'];
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; 
 const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; 
 const CUSTOM_PRICING = { BASE: 5.00, DAY: 0.10, ACCOUNT: 2.00, GAME: 0.10 };
@@ -54,8 +54,7 @@ let PLAN_LIMITS = {
     'lifetime': { accounts: 10, games: 33 },
     'halloween': { accounts: 8, games: 33 },
     'christmas': { accounts: 10, games: 33 },
-    'newyear': { accounts: 10, games: 33 },
-    'custom': { accounts: 0, games: 0 } // Limites são dinâmicos no usuário
+    'newyear': { accounts: 10, games: 33 }
 };
 let GLOBAL_PLANS = {}; 
 
@@ -86,50 +85,7 @@ async function connectToDB() {
         await usersCollection.createIndex({ email: 1 }, { unique: true });
         await licensesCollection.createIndex({ key: 1 }, { unique: true }); 
         await couponsCollection.createIndex({ code: 1 }, { unique: true }); 
-    } catch (e) { 
-        console.error("[DB] Erro fatal:", e); process.exit(1); 
-    } 
-}
-
-async function deductFreeTime() {
-    const updates = new Set();
-    for (const u in liveAccounts) { if (liveAccounts[u].status === 'Rodando') updates.add(liveAccounts[u].ownerUserID); }
-    if (updates.size === 0) return;
-    const ids = Array.from(updates).map(id => new ObjectId(id));
-    try {
-        await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -300000 } });
-        const expired = await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 } }).toArray();
-        expired.forEach(u => { 
-            for (const acc in liveAccounts) { 
-                if (liveAccounts[acc].ownerUserID === u._id.toString() && liveAccounts[acc].worker) { 
-                    try{ liveAccounts[acc].worker.kill(); }catch(e){} 
-                    liveAccounts[acc].status = "Tempo Esgotado"; 
-                } 
-            } 
-        });
-    } catch(e) { console.error("[CRON] Erro deductFreeTime:", e); }
-}
-
-async function checkExpiredPlans() {
-    const now = new Date();
-    try {
-        const expired = await usersCollection.find({ plan: { $ne: 'free' }, planExpiresAt: { $lt: now } }).toArray();
-        for (const u of expired) {
-            await usersCollection.updateOne({ _id: u._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: FREE_HOURS_MS } });
-            for (const acc in liveAccounts) { if (liveAccounts[acc].ownerUserID === u._id.toString()) { try{ if(liveAccounts[acc].worker) liveAccounts[acc].worker.kill(); }catch(e){} liveAccounts[acc].status = "Expirado"; } }
-            
-            const userSteamAccounts = await accountsCollection.find({ ownerUserID: u._id.toString() }).toArray();
-            if (userSteamAccounts.length > 0) {
-                const firstAccount = userSteamAccounts[0];
-                await accountsCollection.updateOne({ _id: firstAccount._id }, { $set: { games: [730] } });
-                if (userSteamAccounts.length > 1) {
-                    const accountsToDelete = userSteamAccounts.slice(1).map(acc => acc._id);
-                    await accountsCollection.deleteMany({ _id: { $in: accountsToDelete } });
-                    userSteamAccounts.slice(1).forEach(acc => { if (liveAccounts[acc.username]) delete liveAccounts[acc.username]; });
-                }
-            }
-        }
-    } catch(e) { console.error("[CRON] Erro checkExpiredPlans:", e); }
+    } catch (e) { console.error("[DB] Erro fatal:", e); process.exit(1); } 
 }
 
 async function initializePlans() {
@@ -142,9 +98,7 @@ async function initializePlans() {
         { id: 'lifetime', name: 'Vitalício', price: 249.90, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, features: ['Vitalício', '10 Contas', '33 Jogos'] },
         { id: 'halloween', name: 'Halloween Spooky', price: 19.90, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias', '8 Contas', '33 Jogos'] },
         { id: 'christmas', name: 'Natal Gift', price: 89.90, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] },
-        { id: 'newyear', name: 'Ano Novo Era', price: 12.90, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
-        // *** NOVO: PLANO PERSONALIZADO NO DB ***
-        { id: 'custom', name: 'Personalizado', price: 15.00, days: 30, accounts: 1, games: 10, style: 'none', active: true, features: ['Monte o seu plano', 'Escolha dias, contas e jogos'] }
+        { id: 'newyear', name: 'Ano Novo Era', price: 12.90, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] }
     ];
     for (const plan of defaultPlans) { await plansCollection.updateOne({ id: plan.id }, { $setOnInsert: plan }, { upsert: true }); }
     await refreshPlansCache();
@@ -155,7 +109,6 @@ async function refreshPlansCache() {
         const plans = await plansCollection.find({}).toArray();
         GLOBAL_PLANS = {};
         plans.forEach(p => { GLOBAL_PLANS[p.id] = p; PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games }; });
-        console.log("[SYSTEM] Planos carregados.");
     } catch (e) {}
 }
 
@@ -336,20 +289,15 @@ apiRouter.post('/validate-coupon', async (req, res) => {
     } catch (e) { res.status(500).json({ valid: false }); }
 });
 
+// Rota protegida: Checkout
 apiRouter.use(isAuthenticated);
 apiRouter.post('/create-checkout', async (req, res) => {
     if (!mpClient) return res.status(500).json({ message: "Pagamento indisponível." });
     
-    const { planId, customConfig, couponCode } = req.body;
+    const { planId, customConfig, couponCode, deliveryMethod } = req.body; // **NOVO: deliveryMethod**
     let price = 0; let title = ""; let metadata = {};
 
     if (planId === 'custom' && customConfig) {
-        // *** NOVO: VERIFICA SE O PLANO CUSTOM ESTÁ ATIVO NO BANCO DE DADOS ***
-        const customPlanDB = GLOBAL_PLANS['custom'];
-        if (!customPlanDB || !customPlanDB.active) {
-            return res.status(400).json({ message: "O Plano Personalizado está desativado no momento." });
-        }
-
         const d = parseInt(customConfig.days) || 30; const a = parseInt(customConfig.accounts) || 1; const g = parseInt(customConfig.games) || 10;
         price = CUSTOM_PRICING.BASE + (d * CUSTOM_PRICING.DAY) + (a * CUSTOM_PRICING.ACCOUNT) + (g * CUSTOM_PRICING.GAME);
         title = `STF Boost - Personalizado (${d}d, ${a}c, ${g}j)`;
@@ -364,6 +312,9 @@ apiRouter.post('/create-checkout', async (req, res) => {
         const coupon = await couponsCollection.findOne({ code: couponCode.toUpperCase() });
         if (coupon) { const discountAmount = (price * coupon.discount) / 100; price = Math.max(0, price - discountAmount); metadata.coupon_code = couponCode.toUpperCase(); }
     }
+    
+    // *** NOVO: Adiciona delivery_method aos metadados ***
+    metadata.delivery_method = deliveryMethod || 'direct';
 
     try {
         const preference = new Preference(mpClient);
@@ -381,7 +332,7 @@ apiRouter.post('/create-checkout', async (req, res) => {
     } catch (e) { console.error("[MP] Erro:", e); res.status(500).json({ message: "Erro ao criar pagamento." }); }
 });
 
-// ... (Resto das rotas mantido igual) ...
+// *** WEBHOOK ATUALIZADO (Verifica delivery_method) ***
 app.post('/api/mp-webhook', async (req, res) => {
     const { query } = req;
     if (query.topic === 'payment' || query.type === 'payment') {
@@ -391,21 +342,31 @@ app.post('/api/mp-webhook', async (req, res) => {
             if (payment.status === 'approved') {
                 const userId = payment.external_reference;
                 const meta = payment.metadata;
+                
                 if (userId) {
                     if (meta.coupon_code) await couponsCollection.updateOne({ code: meta.coupon_code }, { $inc: { usageCount: 1 } });
-                    let updateData = { freeHoursRemaining: 0 };
-                    if (meta.plan_id === 'custom') {
-                        const expiry = new Date(); expiry.setDate(expiry.getDate() + parseInt(meta.custom_days));
-                        updateData.plan = 'custom'; updateData.planExpiresAt = expiry;
-                        updateData.customLimits = { accounts: parseInt(meta.custom_accounts), games: parseInt(meta.custom_games) };
+                    
+                    // *** LÓGICA DE ENTREGA ***
+                    // Se for 'email', NÃO ativa automaticamente. Apenas o Admin vê o pagamento no MP.
+                    if (meta.delivery_method === 'email') {
+                        console.log(`[MP] Pagamento MANUAL (Email) recebido de ${userId}. Requer ação do Admin.`);
                     } else {
-                        const plan = GLOBAL_PLANS[meta.plan_id];
-                        if (plan) {
-                            let expiry = null; if (plan.days > 0) { expiry = new Date(); expiry.setDate(expiry.getDate() + plan.days); }
-                            updateData.plan = meta.plan_id; updateData.planExpiresAt = expiry; updateData.customLimits = null; 
+                        // Método 'direct' ou padrão: Ativa na hora
+                        let updateData = { freeHoursRemaining: 0 };
+                        if (meta.plan_id === 'custom') {
+                            const expiry = new Date(); expiry.setDate(expiry.getDate() + parseInt(meta.custom_days));
+                            updateData.plan = 'custom'; updateData.planExpiresAt = expiry;
+                            updateData.customLimits = { accounts: parseInt(meta.custom_accounts), games: parseInt(meta.custom_games) };
+                        } else {
+                            const plan = GLOBAL_PLANS[meta.plan_id];
+                            if (plan) {
+                                let expiry = null; if (plan.days > 0) { expiry = new Date(); expiry.setDate(expiry.getDate() + plan.days); }
+                                updateData.plan = meta.plan_id; updateData.planExpiresAt = expiry; updateData.customLimits = null; 
+                            }
                         }
+                        await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: updateData });
+                        console.log(`[MP] Plano ${meta.plan_id} ATIVADO para ${userId}`);
                     }
-                    await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: updateData });
                 }
             }
         } catch (e) { console.error("[MP] Webhook erro:", e); }
@@ -414,6 +375,7 @@ app.post('/api/mp-webhook', async (req, res) => {
 });
 
 apiRouter.get('/user-info', async (req, res) => { const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (!user) return res.status(404).json({ message: "Erro." }); let fh = 0; if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 3600000); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free']; res.json({ username: user.username, plan: user.plan, freeHoursRemaining: fh, planExpiresAt: user.planExpiresAt, gameLimit: p.games, accountLimit: p.accounts }); });
+// ... (Resto das rotas de user e admin permanecem exatamente iguais) ...
 apiRouter.get('/status', (req, res) => { const accs = {}; for(const u in liveAccounts) { if(liveAccounts[u].ownerUserID === req.session.userId) { const a = liveAccounts[u]; accs[u] = { username: a.username, status: a.status, games: a.games, settings: a.settings, uptime: a.sessionStartTime ? Date.now() - a.sessionStartTime : 0 }; } } res.json({ accounts: accs }); });
 apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); const count = await accountsCollection.countDocuments({ ownerUserID: uid }); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']; if (count >= p.accounts) return res.status(403).json({ message: `Limite atingido.` }); if (await accountsCollection.findOne({ username })) return res.status(400).json({ message: "Já existe." }); const ep = encrypt(password); await accountsCollection.insertOne({ username, password: ep, games: [730], settings: {}, ownerUserID: uid }); liveAccounts[username] = { username, encryptedPassword: ep, games: [730], settings: {}, status: 'Parado', ownerUserID: uid }; res.json({ message: "OK" }); });
 apiRouter.post('/start/:username', async (req, res) => { const u = req.params.username; const acc = liveAccounts[u]; if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({}); const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem tempo." }); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']; if (acc.games.length > p.games) return res.status(403).json({ message: "Limite jogos." }); try { const pass = decrypt(acc.encryptedPassword); if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "OK" }); } else { res.status(500).json({ message: "Erro senha." }); } } catch(e) { res.status(500).json({ message: "Erro interno." }); } });
