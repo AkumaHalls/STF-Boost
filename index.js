@@ -35,15 +35,14 @@ const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
 let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timestamp: 0 }; 
 
-// --- ROUTERS ---
+// --- DEFINIÇÃO DOS ROUTERS ---
 const apiRouter = express.Router();
 const adminApiRouter = express.Router();
 
-// --- PLANOS E PREÇOS ---
+// --- CONSTANTES ---
 const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime', 'halloween', 'christmas', 'newyear'];
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; 
 const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; 
-
 const CUSTOM_PRICING = { BASE: 5.00, DAY: 0.10, ACCOUNT: 2.00, GAME: 0.10 };
 
 let PLAN_LIMITS = {
@@ -69,11 +68,11 @@ let plansCollection;
 let couponsCollection; 
 let liveAccounts = {};
 
-// --- FUNÇÕES CORE ---
+// --- FUNÇÕES CORE (DB & CRON) ---
 async function connectToDB() { 
     try { 
         await mongoClient.connect(); 
-        console.log("[DB] Conectado ao MongoDB Atlas com sucesso!"); 
+        console.log("[DB] Conectado ao MongoDB Atlas!"); 
         const db = mongoClient.db("stf-saas-db"); 
         accountsCollection = db.collection("accounts");
         siteSettingsCollection = db.collection("site_settings");
@@ -89,6 +88,49 @@ async function connectToDB() {
     } catch (e) { 
         console.error("[DB] Erro fatal:", e); process.exit(1); 
     } 
+}
+
+// DEFINIÇÃO DAS FUNÇÕES DE CRON (MOVIDAS PARA CIMA PARA EVITAR ERROS)
+async function deductFreeTime() {
+    const updates = new Set();
+    for (const u in liveAccounts) { if (liveAccounts[u].status === 'Rodando') updates.add(liveAccounts[u].ownerUserID); }
+    if (updates.size === 0) return;
+    const ids = Array.from(updates).map(id => new ObjectId(id));
+    try {
+        await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -300000 } });
+        const expired = await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 } }).toArray();
+        expired.forEach(u => { 
+            for (const acc in liveAccounts) { 
+                if (liveAccounts[acc].ownerUserID === u._id.toString() && liveAccounts[acc].worker) { 
+                    try{ liveAccounts[acc].worker.kill(); }catch(e){} 
+                    liveAccounts[acc].status = "Tempo Esgotado"; 
+                } 
+            } 
+        });
+    } catch(e) { console.error("[CRON] Erro deductFreeTime:", e); }
+}
+
+async function checkExpiredPlans() {
+    const now = new Date();
+    try {
+        const expired = await usersCollection.find({ plan: { $ne: 'free' }, planExpiresAt: { $lt: now } }).toArray();
+        for (const u of expired) {
+            await usersCollection.updateOne({ _id: u._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: FREE_HOURS_MS } });
+            for (const acc in liveAccounts) { if (liveAccounts[acc].ownerUserID === u._id.toString()) { try{ if(liveAccounts[acc].worker) liveAccounts[acc].worker.kill(); }catch(e){} liveAccounts[acc].status = "Expirado"; } }
+            
+            // Downgrade: Reseta jogos da primeira conta e apaga as outras
+            const userSteamAccounts = await accountsCollection.find({ ownerUserID: u._id.toString() }).toArray();
+            if (userSteamAccounts.length > 0) {
+                const firstAccount = userSteamAccounts[0];
+                await accountsCollection.updateOne({ _id: firstAccount._id }, { $set: { games: [730] } });
+                if (userSteamAccounts.length > 1) {
+                    const accountsToDelete = userSteamAccounts.slice(1).map(acc => acc._id);
+                    await accountsCollection.deleteMany({ _id: { $in: accountsToDelete } });
+                    userSteamAccounts.slice(1).forEach(acc => { if (liveAccounts[acc.username]) delete liveAccounts[acc.username]; });
+                }
+            }
+        }
+    } catch(e) { console.error("[CRON] Erro checkExpiredPlans:", e); }
 }
 
 async function initializePlans() {
@@ -112,8 +154,8 @@ async function refreshPlansCache() {
         const plans = await plansCollection.find({}).toArray();
         GLOBAL_PLANS = {};
         plans.forEach(p => { GLOBAL_PLANS[p.id] = p; PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games }; });
-        console.log("[SYSTEM] Cache de planos atualizado.");
-    } catch (e) { console.error("Erro cache planos:", e); }
+        console.log("[SYSTEM] Planos carregados.");
+    } catch (e) {}
 }
 
 async function initializeMasterKey() {
@@ -147,20 +189,10 @@ async function getSteamAppList() {
             return steamAppListCache.data;
         }
     } catch (e) {}
-    try {
-        const response = await fetch('http://api.steampowered.com/ISteamApps/GetAppList/v0002/', { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (response.ok) {
-             const jsonData = await response.json();
-             if (jsonData.applist && jsonData.applist.apps) {
-                 steamAppListCache = { data: jsonData.applist.apps, timestamp: Date.now() };
-                 return steamAppListCache.data;
-             }
-        }
-    } catch (e) {}
     return steamAppListCache.data;
 }
 
-// --- WORKER ---
+// --- WORKER MANAGER ---
 function startWorkerForAccount(accountData) {
     const username = accountData.username;
     if (liveAccounts[username]?.worker) {
@@ -273,11 +305,9 @@ apiRouter.get('/auth-status', async (req, res) => {
         res.json({ loggedIn: true, username: req.session.username || 'Usuário' });
     } else { res.json({ loggedIn: false }); }
 });
-
 apiRouter.get('/plans', async (req, res) => {
     try { const plans = await plansCollection.find({ active: true }).toArray(); plans.sort((a, b) => (a.id === 'free' ? -1 : b.id === 'free' ? 1 : a.price - b.price)); res.json(plans); } catch(e) { res.status(500).json([]); }
 });
-
 apiRouter.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
     if (!username || !password) return res.status(400).json({ message: "Dados incompletos." });
@@ -287,7 +317,6 @@ apiRouter.post('/register', async (req, res) => {
         res.status(201).json({ message: "Conta criada!" });
     } catch (e) { res.status(409).json({ message: "Usuário já existe." }); }
 });
-
 apiRouter.post('/login', async (req, res) => {
     const { username, password } = req.body;
     const user = await usersCollection.findOne({ username });
@@ -295,7 +324,6 @@ apiRouter.post('/login', async (req, res) => {
     if (user.isBanned) return res.status(403).json({ message: "Conta banida." });
     req.session.userId = user._id.toString(); req.session.username = user.username; res.json({ message: "Login OK" });
 });
-
 apiRouter.post('/validate-coupon', async (req, res) => {
     const { code } = req.body;
     if (!code) return res.status(400).json({ valid: false });
@@ -305,40 +333,24 @@ apiRouter.post('/validate-coupon', async (req, res) => {
     } catch (e) { res.status(500).json({ valid: false }); }
 });
 
-// Rota protegida: Checkout
 apiRouter.use(isAuthenticated);
 apiRouter.post('/create-checkout', async (req, res) => {
     if (!mpClient) return res.status(500).json({ message: "Pagamento indisponível." });
-    
     const { planId, customConfig, couponCode } = req.body;
     let price = 0; let title = ""; let metadata = {};
-
-    // 1. Calcula Preço
     if (planId === 'custom' && customConfig) {
-        const d = parseInt(customConfig.days) || 30;
-        const a = parseInt(customConfig.accounts) || 1;
-        const g = parseInt(customConfig.games) || 10;
+        const d = parseInt(customConfig.days) || 30; const a = parseInt(customConfig.accounts) || 1; const g = parseInt(customConfig.games) || 10;
         price = CUSTOM_PRICING.BASE + (d * CUSTOM_PRICING.DAY) + (a * CUSTOM_PRICING.ACCOUNT) + (g * CUSTOM_PRICING.GAME);
         title = `STF Boost - Personalizado (${d}d, ${a}c, ${g}j)`;
         metadata = { plan_id: 'custom', custom_days: d, custom_accounts: a, custom_games: g };
     } else {
-        const plan = GLOBAL_PLANS[planId];
-        if (!plan) return res.status(400).json({ message: "Plano inválido." });
-        price = plan.price;
-        title = `STF Boost - ${plan.name}`;
-        metadata = { plan_id: planId };
+        const plan = GLOBAL_PLANS[planId]; if (!plan) return res.status(400).json({ message: "Plano inválido." });
+        price = plan.price; title = `STF Boost - ${plan.name}`; metadata = { plan_id: planId };
     }
-
-    // 2. Aplica Cupom e Adiciona aos Metadados
     if (couponCode) {
         const coupon = await couponsCollection.findOne({ code: couponCode.toUpperCase() });
-        if (coupon) {
-            const discountAmount = (price * coupon.discount) / 100;
-            price = Math.max(0, price - discountAmount);
-            metadata.coupon_code = couponCode.toUpperCase(); // *** CORREÇÃO: Enviando cupom no metadata ***
-        }
+        if (coupon) { const discountAmount = (price * coupon.discount) / 100; price = Math.max(0, price - discountAmount); metadata.coupon_code = couponCode.toUpperCase(); }
     }
-
     try {
         const preference = new Preference(mpClient);
         const result = await preference.create({
@@ -355,44 +367,6 @@ apiRouter.post('/create-checkout', async (req, res) => {
     } catch (e) { console.error("[MP] Erro:", e); res.status(500).json({ message: "Erro ao criar pagamento." }); }
 });
 
-// Webhook MP
-app.post('/api/mp-webhook', async (req, res) => {
-    const { query } = req;
-    if (query.topic === 'payment' || query.type === 'payment') {
-        const paymentId = query.id || query['data.id'];
-        try {
-            const payment = await new Payment(mpClient).get({ id: paymentId });
-            if (payment.status === 'approved') {
-                const userId = payment.external_reference;
-                const meta = payment.metadata;
-                
-                if (userId) {
-                    // Aumenta contagem do Cupom se existir
-                    if (meta.coupon_code) {
-                        await couponsCollection.updateOne({ code: meta.coupon_code }, { $inc: { usageCount: 1 } });
-                    }
-
-                    let updateData = { freeHoursRemaining: 0 };
-                    if (meta.plan_id === 'custom') {
-                        const expiry = new Date(); expiry.setDate(expiry.getDate() + parseInt(meta.custom_days));
-                        updateData.plan = 'custom'; updateData.planExpiresAt = expiry;
-                        updateData.customLimits = { accounts: parseInt(meta.custom_accounts), games: parseInt(meta.custom_games) };
-                    } else {
-                        const plan = GLOBAL_PLANS[meta.plan_id];
-                        if (plan) {
-                            let expiry = null; if (plan.days > 0) { expiry = new Date(); expiry.setDate(expiry.getDate() + plan.days); }
-                            updateData.plan = meta.plan_id; updateData.planExpiresAt = expiry; updateData.customLimits = null; 
-                        }
-                    }
-                    await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: updateData });
-                }
-            }
-        } catch (e) { console.error("[MP] Webhook erro:", e); }
-    }
-    res.sendStatus(200);
-});
-
-// ... (Resto das APIs de usuário)
 apiRouter.get('/user-info', async (req, res) => { const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (!user) return res.status(404).json({ message: "Erro." }); let fh = 0; if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 3600000); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free']; res.json({ username: user.username, plan: user.plan, freeHoursRemaining: fh, planExpiresAt: user.planExpiresAt, gameLimit: p.games, accountLimit: p.accounts }); });
 apiRouter.get('/status', (req, res) => { const accs = {}; for(const u in liveAccounts) { if(liveAccounts[u].ownerUserID === req.session.userId) { const a = liveAccounts[u]; accs[u] = { username: a.username, status: a.status, games: a.games, settings: a.settings, uptime: a.sessionStartTime ? Date.now() - a.sessionStartTime : 0 }; } } res.json({ accounts: accs }); });
 apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); const count = await accountsCollection.countDocuments({ ownerUserID: uid }); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']; if (count >= p.accounts) return res.status(403).json({ message: `Limite atingido.` }); if (await accountsCollection.findOne({ username })) return res.status(400).json({ message: "Já existe." }); const ep = encrypt(password); await accountsCollection.insertOne({ username, password: ep, games: [730], settings: {}, ownerUserID: uid }); liveAccounts[username] = { username, encryptedPassword: ep, games: [730], settings: {}, status: 'Parado', ownerUserID: uid }; res.json({ message: "OK" }); });
@@ -432,6 +406,37 @@ adminApiRouter.post('/create-coupon', async (req, res) => { const { code, discou
 adminApiRouter.post('/delete-coupon', async (req, res) => { await couponsCollection.deleteOne({ _id: new ObjectId(req.body.id) }); res.json({ message: "Deletado." }); });
 
 app.use('/api/admin', adminApiRouter);
+
+app.post('/api/mp-webhook', async (req, res) => {
+    const { query } = req;
+    if (query.topic === 'payment' || query.type === 'payment') {
+        const paymentId = query.id || query['data.id'];
+        try {
+            const payment = await new Payment(mpClient).get({ id: paymentId });
+            if (payment.status === 'approved') {
+                const userId = payment.external_reference;
+                const meta = payment.metadata;
+                if (userId) {
+                    if (meta.coupon_code) await couponsCollection.updateOne({ code: meta.coupon_code }, { $inc: { usageCount: 1 } });
+                    let updateData = { freeHoursRemaining: 0 };
+                    if (meta.plan_id === 'custom') {
+                        const expiry = new Date(); expiry.setDate(expiry.getDate() + parseInt(meta.custom_days));
+                        updateData.plan = 'custom'; updateData.planExpiresAt = expiry;
+                        updateData.customLimits = { accounts: parseInt(meta.custom_accounts), games: parseInt(meta.custom_games) };
+                    } else {
+                        const plan = GLOBAL_PLANS[meta.plan_id];
+                        if (plan) {
+                            let expiry = null; if (plan.days > 0) { expiry = new Date(); expiry.setDate(expiry.getDate() + plan.days); }
+                            updateData.plan = meta.plan_id; updateData.planExpiresAt = expiry; updateData.customLimits = null; 
+                        }
+                    }
+                    await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: updateData });
+                }
+            }
+        } catch (e) { console.error("[MP] Webhook erro:", e); }
+    }
+    res.sendStatus(200);
+});
 
 async function startServer() {
     console.log("[SYSTEM] Conectando ao DB...");
