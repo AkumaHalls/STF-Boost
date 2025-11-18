@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=2.1">
+    <link rel="stylesheet" href="/style.css?v=2.2">
     <style>
         body { font-family: 'Inter', sans-serif; }
         .tech-font { font-family: 'Share Tech Mono', monospace; }
@@ -84,7 +84,7 @@
         <div class="space-y-4">
             <div class="feature-card rounded-lg p-4">
                 <h3 class="text-lg font-semibold">Posso levar banimento (VAC)?</h3>
-                <p class="text-gray-300 pt-2">Não. Nosso serviço não interage com arquivos de jogo.</p>
+                <p class="text-gray-300 pt-2">Não. Nosso serviço não interage com nenhum arquivo de jogo.</p>
             </div>
         </div>
     </section>
@@ -112,6 +112,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            // --- Auth Check ---
             const authButtons = document.getElementById('header-auth-buttons');
             if (authButtons) {
                 fetch('/api/auth-status').then(res => res.json()).then(data => {
@@ -119,6 +120,7 @@
                 }).catch(console.error);
             }
 
+            // --- Carregar Planos Dinâmicos ---
             const plansContainer = document.getElementById('plansContainer');
             fetch('/api/plans')
                 .then(res => res.json())
@@ -128,7 +130,7 @@
                     plans.forEach(p => {
                         let highlightClass = '';
                         let badge = '';
-                        let titleColor = 'text-blue-400'; // Default
+                        let titleColor = 'text-blue-400'; 
 
                         if (p.style === 'fire') {
                             highlightClass = 'premium-highlight relative';
@@ -155,8 +157,14 @@
                         const priceDisplay = p.price === 0 ? 'R$ 0' : `R$ ${p.price.toFixed(2).replace('.',',')}`;
                         const periodDisplay = p.price === 0 ? '/para sempre' : (p.days > 0 ? '/mês' : 'Único');
                         const buttonText = p.price === 0 ? 'Começar de Graça' : (p.days === 0 ? 'Comprar Acesso' : 'Comprar');
-                        const buttonAction = p.price === 0 ? `href="/register"` : `class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors cursor-pointer" data-plan="${p.name}"`;
-                        const buttonHtml = p.price === 0 ? `<a ${buttonAction} class="mt-auto w-full text-center bg-gray-600 px-6 py-3 rounded-md font-semibold hover:bg-gray-500 transition-colors">${buttonText}</a>` : `<button ${buttonAction}>${buttonText}</button>`;
+                        
+                        // *** AQUI ESTÁ A MUDANÇA DO PASSO 4 ***
+                        // Se for pago, manda para /checkout. Se for free, manda para /register.
+                        const buttonAction = p.price === 0 ? `href="/register"` : `href="/checkout?plan=${p.id}"`;
+                        
+                        const buttonHtml = p.price === 0 ? 
+                            `<a ${buttonAction} class="mt-auto w-full text-center bg-gray-600 px-6 py-3 rounded-md font-semibold hover:bg-gray-500 transition-colors cursor-pointer">${buttonText}</a>` : 
+                            `<a ${buttonAction} class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors cursor-pointer">${buttonText}</a>`;
                         
                         let featuresHtml = '';
                         p.features.forEach(f => {
@@ -178,6 +186,7 @@
                         plansContainer.insertAdjacentHTML('beforeend', cardHtml);
                     });
 
+                    // Plano Personalizado (Mantém o modal manual por ser complexo)
                     const customCardHtml = `
                         <div class="feature-card border-2 border-dashed border-gray-600 relative">
                             <h3 class="text-2xl font-bold text-center mb-2 text-white">Personalizado</h3>
@@ -193,7 +202,7 @@
                     `;
                     plansContainer.insertAdjacentHTML('beforeend', customCardHtml);
                     setupCustomPlanLogic();
-                    setupPurchaseModals();
+                    setupPurchaseModals(); // Apenas para o plano personalizado
                 });
 
             function setupCustomPlanLogic() {
@@ -223,13 +232,8 @@
                 const purchaseTitle = document.getElementById('purchaseTitle');
                 const customPlanDetails = document.getElementById('customPlanDetails');
                 
+                // Apenas para o botão personalizado
                 document.body.addEventListener('click', (e) => {
-                    if (e.target.classList.contains('purchase-button')) {
-                        const planName = e.target.getAttribute('data-plan');
-                        purchaseTitle.textContent = `Comprar Plano ${planName}`;
-                        customPlanDetails.style.display = 'none';
-                        purchaseModal.style.display = 'block';
-                    }
                     if (e.target.id === 'customBuyButton') {
                         purchaseTitle.textContent = `Comprar Plano Personalizado`;
                         customPlanDetails.style.display = 'block';
