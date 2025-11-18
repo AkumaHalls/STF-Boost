@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=2.1"> 
+    <link rel="stylesheet" href="/style.css?v=2.2"> 
 </head>
 <body class="panel-page">
 
@@ -38,6 +38,10 @@
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                     Planos (Pricing)
                 </a>
+                <a href="/tutorial">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    Guia / Tutorial
+                </a>
             </div>
 
             <div class="sidebar-nav">
@@ -50,7 +54,10 @@
 
             <div class="sidebar-nav">
                 <span class="nav-title">Account</span>
-                <a href="#" id="myKeysButton"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg> Minhas Chaves</a>
+                <a href="#" id="myKeysButton">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
+                    Minhas Chaves
+                </a>
                 <a href="#" id="activateLicenseButton">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
                     Ativar Licença
@@ -131,14 +138,37 @@
         <div class="modal-content">
             <h2>Configurações da Conta</h2>
             <div id="settingsForm">
-                <div class="settings-form-row"><label>Título Customizado:</label><input type="text" id="customTitleInput"></div>
-                <div class="settings-form-row"><label>Mensagem Automática:</label><input type="text" id="customAwayMessageInput"></div>
-                <div class="settings-form-row"><label>Aparecer Offline:</label><label class="switch"><input type="checkbox" id="appearOfflineToggle"><span class="slider"></span></label></div>
-                <div class="settings-form-row"><label>Aceitar Amigos:</label><label class="switch"><input type="checkbox" id="autoAcceptFriendsToggle"><span class="slider"></span></label></div>
-                <div class="settings-form-row"><label>Reconectar Auto:</label><label class="switch"><input type="checkbox" id="autoReloginToggle"><span class="slider"></span></label></div>
-                <div class="settings-form-row"><label>Shared Secret:</label><input type="password" id="sharedSecretInput"></div>
-                <div class="settings-form-row separator"><label>Credenciais</label></div>
-                <div class="settings-form-row"><label>Nova Senha:</label><input type="password" id="newPasswordInput"></div>
+                <div class="settings-form-row">
+                    <label for="customTitleInput">Título Customizado no Jogo:</label>
+                    <input type="text" id="customTitleInput" placeholder="Ex: A Farmar Horas">
+                </div>
+                <div class="settings-form-row">
+                    <label for="customAwayMessageInput">Mensagem Automática:</label>
+                    <input type="text" id="customAwayMessageInput" placeholder="Deixe em branco para desativar">
+                </div>
+                <div class="settings-form-row">
+                    <label>Aparecer Offline:</label>
+                    <label class="switch"><input type="checkbox" id="appearOfflineToggle"><span class="slider"></span></label>
+                </div>
+                <div class="settings-form-row">
+                    <label>Aceitar Amigos Automaticamente:</label>
+                    <label class="switch"><input type="checkbox" id="autoAcceptFriendsToggle"><span class="slider"></span></label>
+                </div>
+                <div class="settings-form-row">
+                    <label>Reconectar Automaticamente:</label>
+                    <label class="switch"><input type="checkbox" id="autoReloginToggle"><span class="slider"></span></label>
+                </div>
+                 <div class="settings-form-row">
+                    <label for="sharedSecretInput">Shared Secret (TOTP):</label>
+                    <input type="password" id="sharedSecretInput" placeholder="Cole aqui para automação total">
+                </div>
+                <div class="settings-form-row separator">
+                   <label>Atualizar Credenciais</label>
+                </div>
+                <div class="settings-form-row">
+                    <label for="newPasswordInput">Nova Senha Steam:</label>
+                    <input type="password" id="newPasswordInput" placeholder="Deixe em branco para não alterar">
+                </div>
             </div>
             <button id="saveSettingsButton">Salvar</button>
             <button id="closeSettingsModalButton" class="remove-btn">Cancelar</button>
@@ -148,7 +178,8 @@
     <div id="licenseModal" class="modal">
         <div class="modal-content">
             <h2>Ativar Licença</h2>
-            <input type="text" id="licenseKeyInput" placeholder="Chave...">
+            <p>Cole a sua chave de licença abaixo para fazer upgrade do seu plano.</p>
+            <input type="text" id="licenseKeyInput" placeholder="PREMIUM-XXXX-YYYY-ZZZZ">
             <button id="saveLicenseButton">Ativar</button>
             <button id="closeLicenseModalButton" class="remove-btn">Cancelar</button>
         </div>
@@ -156,11 +187,12 @@
     
     <div id="passwordModal" class="modal">
         <div class="modal-content">
-            <h2>Mudar Senha</h2>
-            <input type="password" id="currentPasswordInput" placeholder="Atual">
-            <input type="password" id="newPasswordInputModal" placeholder="Nova">
-            <input type="password" id="confirmPasswordInput" placeholder="Confirmar">
-            <button id="savePasswordButton">Salvar</button>
+            <h2>Mudar Senha da Conta</h2>
+            <p>Insira sua senha atual e a nova senha do site (não da Steam).</p>
+            <input type="password" id="currentPasswordInput" placeholder="Senha Atual">
+            <input type="password" id="newPasswordInputModal" placeholder="Nova Senha">
+            <input type="password" id="confirmPasswordInput" placeholder="Confirmar Nova Senha">
+            <button id="savePasswordButton">Mudar Senha</button>
             <button id="closePasswordModalButton" class="remove-btn">Cancelar</button>
         </div>
     </div>
@@ -177,7 +209,7 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // ... (Seletores mantidos) ...
+            // --- Seletores ---
             const accountsTableBody = document.getElementById('accountsTableBody');
             const addAccountButton = document.getElementById('addAccountButton');
             const gamesModal = document.getElementById('gamesModal');
@@ -218,11 +250,12 @@
             let currentUserPlan = 'free';
             let currentUserGameLimit = 1; 
 
-            const icons = { play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`, stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`, guard: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`, games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`, remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`, settings: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`, refresh: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>` };
+            const icons = { play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`, stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`, guard: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`, games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`, remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`, settings: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`, refresh: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>` };
 
             function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
             function formatUptime(ms) { if(!ms||ms<=0)return '00:00:00'; let s=Math.floor(ms/1000), d=Math.floor(s/86400); s%=86400; let h=Math.floor(s/3600).toString().padStart(2,'0'); s%=3600; let m=Math.floor(s/60).toString().padStart(2,'0'); s=(s%60).toString().padStart(2,'0'); return d>0?`${d}d, ${h}:${m}:${s}`:`${h}:${m}:${s}`; }
 
+            // --- *** NOVO: Função de Efeitos Visuais *** ---
             let effectInterval;
             const effectsContainer = document.getElementById('effectsContainer');
 
@@ -230,10 +263,12 @@
                 effectsContainer.innerHTML = '';
                 if (effectInterval) clearInterval(effectInterval);
                 let symbol = '', className = '', intervalTime = 500;
+                
                 if (plan === 'halloween') { symbol = '🦇'; className = 'bat'; intervalTime = 800; }
                 else if (plan === 'christmas') { symbol = '❄️'; className = 'snow'; intervalTime = 300; }
                 else if (plan === 'newyear') { symbol = '✨'; className = 'sparkle'; intervalTime = 600; }
-                else return;
+                else return; // Sai se não for plano especial
+                
                 effectInterval = setInterval(() => {
                     const p = document.createElement('div'); p.className = `particle ${className}`; p.textContent = symbol; p.style.left = Math.random() * 100 + 'vw';
                     const size = Math.random() * 20 + 10; p.style.fontSize = size + 'px';
@@ -243,6 +278,7 @@
                 }, intervalTime);
             }
 
+            // --- Fetch User Info (ATUALIZADO) ---
             async function fetchUserInfo() {
                 try {
                     const res = await fetch('/api/user-info');
@@ -250,10 +286,14 @@
                     const data = await res.json();
                     
                     const planName = data.plan.charAt(0).toUpperCase() + data.plan.slice(1);
-                    sidebarUser.textContent = `Bem-vindo, ${data.username}!`;
-                    sidebarPlan.textContent = `Plano: ${planName}`;
+                    document.getElementById('sidebarUser').textContent = `Bem-vindo, ${data.username}!`;
+                    document.getElementById('sidebarPlan').textContent = `Plano: ${planName}`;
                     
-                    if (currentUserPlan !== data.plan) applyThemeEffects(data.plan);
+                    // Verifica se precisa aplicar efeito visual
+                    if (currentUserPlan !== data.plan) {
+                        applyThemeEffects(data.plan);
+                    }
+
                     currentUserPlan = data.plan;
                     currentUserGameLimit = data.gameLimit; 
 
@@ -262,6 +302,7 @@
                     btn.style.display = 'none';
                     exp.textContent = '';
 
+                    // Lógica de Data de Expiração
                     if (data.plan === 'free') {
                         exp.textContent = `Horas: ${data.freeHoursRemaining}`;
                         if (data.freeHoursRemaining <= 0) btn.style.display = 'inline-flex';
@@ -272,15 +313,15 @@
                         const now = new Date();
                         const diffDays = Math.ceil((expiryDate - now) / (86400000));
                         const formattedDate = expiryDate.toLocaleDateString('pt-BR'); 
-                        exp.textContent = diffDays > 0 ? `Expira em: ${formattedDate} (${diffDays} dias)` : `Expirado em: ${formattedDate}`;
+                        if (diffDays > 0) exp.textContent = `Expira em: ${formattedDate} (${diffDays} dias)`;
+                        else exp.textContent = `Expirado em: ${formattedDate}`;
                     } else {
                         exp.textContent = `Plano Ativo`;
                     }
                 } catch (e) {}
             }
 
-            // ... (Resto das funções updateUI, listeners e inicialização iguais ao anterior) ...
-            
+            // --- Update UI ---
             async function updateUI() {
                 const selectAllState = selectAllCheckbox.checked;
                 const checkedUsernames = new Set();
@@ -304,6 +345,7 @@
                         
                         const btnGuard = document.createElement('button'); btnGuard.innerHTML=icons.guard+"Guard"; if (acc.status === "Pendente: Steam Guard") btnGuard.classList.add('pulse-attention'); btnGuard.onclick=()=>{const c=prompt('Código:');if(c)fetch(`/api/submit-guard/${acc.username}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:c})});};
                         const btnGames = document.createElement('button'); btnGames.innerHTML=icons.games+"Jogos"; btnGames.onclick=()=>{ currentlyEditingGamesFor=acc.username; appIdsInput.value=acc.games.join(', '); gamesModal.style.display='block'; updateGameLimitText(); };
+                        
                         const btnSettings = document.createElement('button'); btnSettings.innerHTML=icons.settings+"Config"; btnSettings.className="settings-btn";
                         btnSettings.onclick=()=>{ 
                             currentlyEditingSettingsFor=acc.username;
@@ -332,13 +374,15 @@
                 } catch(e){}
             }
 
+            // --- Game Limit Counter ---
             function updateGameLimitText() {
                 const c = appIdsInput.value.split(',').filter(id => id.trim() !== '').length;
-                gameLimitInfo.textContent = `Jogos: ${c} / ${currentUserGameLimit}`;
+                gameLimitInfo.textContent = `Jogos selecionados: ${c} / ${currentUserGameLimit}`;
                 gameLimitInfo.style.color = c > currentUserGameLimit ? '#ff6B6B' : '#00ffff';
             }
             appIdsInput.addEventListener('input', updateGameLimitText);
 
+            // --- Add Account ---
             addAccountButton.addEventListener('click', async () => {
                 const u = prompt("User Steam:"); if(!u)return;
                 const p = prompt("Senha:"); if(!p)return;
@@ -346,6 +390,7 @@
                 const d = await res.json(); showToast(d.message, res.ok?'info':'error'); updateUI();
             });
 
+            // --- Modais Globais ---
             const hideGamesModal = () => { gamesModal.style.display='none'; };
             document.getElementById('closeGamesModalButton').onclick = hideGamesModal;
             saveGamesButton.onclick = async () => {
@@ -373,7 +418,7 @@
                 fetch(`/api/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(res => res.json()).then(data => { showToast(data.message, data.ok !== false ? 'info' : 'error'); if (data.ok !== false) hideSettingsModal(); });
             });
 
-            // Search Game logic...
+            // Search Game
             let searchTimeout;
             gameSearchInput.addEventListener('input', () => {
                 clearTimeout(searchTimeout);
@@ -394,6 +439,7 @@
                 },300);
             });
 
+            // Bulk Actions
             function updateBulkButtons() {
                 const selected = document.querySelectorAll('.account-checkbox:checked').length;
                 bulkStartButton.disabled = selected === 0;
