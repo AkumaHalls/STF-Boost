@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Checkout - STF Boost</title>
     <link rel="icon" type="image/png" href="/logo.png?v=1.1">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -14,7 +13,20 @@
         h1 { font-weight: 700; color: #1a202c; }
         h2 { font-weight: 600; color: #2d3748; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
         select, input[type="text"] { width: 100%; padding: 10px; border: 1px solid #cbd5e0; border-radius: 6px; background-color: #fff; color: #2d3748; margin-top: 5px; }
-        .info-box { background-color: #ebf8ff; border: 1px solid #bee3f8; color: #2c5282; padding: 15px; border-radius: 6px; font-size: 0.9em; margin-top: 10px; }
+        
+        /* CAIXA DE INFORMAÇÃO MELHORADA */
+        .info-box { 
+            background-color: #fffbeb; /* Amarelo suave */
+            border: 1px solid #fcd34d; 
+            color: #92400e; 
+            padding: 15px; 
+            border-radius: 6px; 
+            font-size: 0.9em; 
+            margin-top: 15px;
+            line-height: 1.5;
+        }
+        .info-box strong { color: #78350f; }
+
         .summary-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
         .total-row { display: flex; justify-content: space-between; font-size: 1.25em; font-weight: 700; margin-top: 20px; padding-top: 20px; border-top: 2px solid #edf2f7; }
         .pay-btn { background-color: #009ee3; color: white; font-weight: 600; width: 100%; padding: 15px; border-radius: 6px; transition: background 0.2s; margin-top: 20px; }
@@ -45,11 +57,15 @@
                     <div class="mb-4">
                         <label class="block text-sm font-semibold text-gray-600">Método de Entrega</label>
                         <select id="deliveryMethod">
-                            <option value="direct">Direct - Ativação Automática na Conta</option>
-                            <option value="email">Email - Enviar Chave de Licença</option>
+                            <option value="manual">Entrega Manual (Chave de Licença)</option>
                         </select>
+                        
                         <div id="deliveryInfo" class="info-box">
-                            O plano será ativado na conta <strong><span id="usernameDisplay">...</span></strong> imediatamente após o pagamento.
+                            <strong>Nota Importante:</strong> Este processo é verificado manualmente. A entrega pode levar alguns minutos após a confirmação do pagamento.<br><br>
+                            Você receberá uma <strong>Chave de Licença</strong> (ex: <code>PREMIUM-XXXX</code>) que será:<br>
+                            1. Enviada para o seu e-mail.<br>
+                            2. Adicionada ao menu <strong>"Minhas Chaves"</strong> no seu painel.<br><br>
+                            <em>Você poderá ativar a chave na sua conta ou enviá-la para um amigo.</em>
                         </div>
                     </div>
                     <div class="mb-4">
@@ -65,6 +81,7 @@
                         <span id="planNameSummary" class="font-semibold">...</span>
                         <span id="planPriceSummary">...</span>
                     </div>
+                    <div class="text-xs text-gray-500 mt-2"><ul id="planFeaturesList" class="list-disc list-inside space-y-1"></ul></div>
                     <div class="total-row">
                         <span>Total</span>
                         <span id="totalPrice" class="text-blue-600">...</span>
@@ -85,9 +102,21 @@
         document.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
             const planId = urlParams.get('plan');
+            
+            // Lógica Custom
+            let isCustom = (planId === 'custom');
+            let customConfig = {};
+            if (isCustom) {
+                customConfig = {
+                    days: parseInt(urlParams.get('days')) || 30,
+                    accounts: parseInt(urlParams.get('accounts')) || 1,
+                    games: parseInt(urlParams.get('games')) || 10
+                };
+            }
+
             if (!planId) { window.location.href = '/'; return; }
 
-            const usernameDisplay = document.getElementById('usernameDisplay');
+            const usernameDisplay = document.getElementById('usernameDisplay'); // (Não usado mais no texto, mas mantido se precisar)
             const accountInput = document.getElementById('accountInput');
             const payBtn = document.getElementById('payButton');
             const termsCheckbox = document.getElementById('termsCheckbox');
@@ -100,23 +129,36 @@
                     window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
                     return;
                 }
-                usernameDisplay.textContent = authData.username;
                 accountInput.value = authData.username;
 
                 // 2. Plan
-                const plansRes = await fetch('/api/plans');
-                const plans = await plansRes.json();
-                const plan = plans.find(p => p.id === planId);
+                let planName, planPrice, features = [];
 
-                if (!plan) { alert('Plano inválido.'); window.location.href = '/'; return; }
+                if (isCustom) {
+                    const BASE=5, DAY=0.1, ACC=2, GAME=0.1;
+                    planPrice = BASE + (customConfig.days * DAY) + (customConfig.accounts * ACC) + (customConfig.games * GAME);
+                    planName = "Personalizado";
+                    features = [`${customConfig.days} Dias`, `${customConfig.accounts} Contas`, `${customConfig.games} Jogos`];
+                } else {
+                    const plansRes = await fetch('/api/plans');
+                    const plans = await plansRes.json();
+                    const plan = plans.find(p => p.id === planId);
+                    if (!plan) { alert('Plano inválido.'); window.location.href = '/'; return; }
+                    planName = plan.name;
+                    planPrice = plan.price;
+                    features = [`${plan.days > 0 ? plan.days + ' Dias' : 'Vitalício'}`, `${plan.accounts} Contas`, `${plan.games} Jogos`];
+                }
 
-                document.getElementById('pageTitle').textContent = `Comprar Plano ${plan.name}`;
-                document.getElementById('planNameSummary').textContent = `1x ${plan.name}`;
-                const price = `R$ ${plan.price.toFixed(2).replace('.', ',')}`;
-                document.getElementById('planPriceSummary').textContent = price;
-                document.getElementById('totalPrice').textContent = price;
+                document.getElementById('pageTitle').textContent = `Comprar Plano ${planName}`;
+                document.getElementById('planNameSummary').textContent = `1x ${planName}`;
+                const priceFormatted = `R$ ${planPrice.toFixed(2).replace('.', ',')}`;
+                document.getElementById('planPriceSummary').textContent = priceFormatted;
+                document.getElementById('totalPrice').textContent = priceFormatted;
+                
+                const featuresList = document.getElementById('planFeaturesList');
+                features.forEach(f => featuresList.innerHTML += `<li>${f}</li>`);
 
-                // 3. Pay
+                // 3. Pay Logic
                 termsCheckbox.addEventListener('change', () => {
                     payBtn.disabled = !termsCheckbox.checked;
                     payBtn.style.opacity = termsCheckbox.checked ? "1" : "0.7";
@@ -126,10 +168,13 @@
                     payBtn.disabled = true;
                     payBtn.textContent = 'Processando...';
                     try {
+                        const body = { planId: planId };
+                        if (isCustom) body.customConfig = customConfig;
+
                         const res = await fetch('/api/create-checkout', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ planId: plan.id })
+                            body: JSON.stringify(body)
                         });
                         const data = await res.json();
                         if (res.ok && data.url) window.location.href = data.url;
