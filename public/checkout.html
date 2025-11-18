@@ -10,7 +10,7 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f8f9fa; /* Fundo claro profissional */
+            background-color: #f8f9fa; 
             color: #333;
         }
         .checkout-container {
@@ -66,7 +66,7 @@
         }
         
         .pay-btn {
-            background-color: #009ee3; /* Azul Mercado Pago */
+            background-color: #009ee3; 
             color: white;
             font-weight: 600;
             width: 100%;
@@ -162,7 +162,7 @@
                     </div>
 
                     <button id="payButton" disabled class="pay-btn">
-                        Continuar para Pagamento
+                        Pagar com Mercado Pago
                     </button>
                     
                     <div class="mt-4 flex justify-center gap-2 opacity-50">
@@ -190,22 +190,31 @@
             const payBtn = document.getElementById('payButton');
             const termsCheckbox = document.getElementById('termsCheckbox');
 
-            // 1. Verifica Login e Carrega Dados
+            // 1. Verifica Login e Carrega Dados do Usuário (CORREÇÃO AQUI)
+            let userData = null;
             try {
                 const authRes = await fetch('/api/auth-status');
-                const authData = await authRes.json();
+                userData = await authRes.json();
                 
-                if (!authData.loggedIn) {
+                if (!userData.loggedIn) {
                     // Salva a URL atual para voltar depois do login
                     window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
                     return;
                 }
                 
-                // Preenche dados do usuário
-                usernameDisplay.textContent = authData.username;
-                accountInput.value = authData.username;
+                // Preenche dados do usuário na tela
+                usernameDisplay.textContent = userData.username;
+                accountInput.value = userData.username;
 
-                // 2. Carrega Detalhes do Plano
+            } catch (e) {
+                console.error("Erro de autenticação:", e);
+                alert('Erro ao verificar sessão. Por favor, faça login novamente.');
+                window.location.href = '/login';
+                return;
+            }
+
+            // 2. Carrega Detalhes do Plano
+            try {
                 const plansRes = await fetch('/api/plans');
                 const plans = await plansRes.json();
                 const plan = plans.find(p => p.id === planId);
@@ -233,7 +242,7 @@
                 // Lógica de Método de Entrega
                 deliveryMethod.addEventListener('change', () => {
                     if (deliveryMethod.value === 'direct') {
-                        deliveryInfo.innerHTML = `A ativação direta é o método recomendado. O plano será aplicado à conta <strong>${authData.username}</strong> imediatamente após o pagamento.`;
+                        deliveryInfo.innerHTML = `A ativação direta é o método recomendado. O plano será aplicado à conta <strong>${userData.username}</strong> imediatamente após o pagamento.`;
                         deliveryInfo.style.backgroundColor = '#ebf8ff';
                         deliveryInfo.style.borderColor = '#bee3f8';
                         deliveryInfo.style.color = '#2c5282';
@@ -287,7 +296,7 @@
 
             } catch (e) {
                 console.error(e);
-                alert('Erro ao carregar dados.');
+                alert('Erro ao carregar dados do plano.');
             }
         });
     </script>
