@@ -21,7 +21,7 @@ const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 const SITE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 
 if (!MONGODB_URI || !ADMIN_PASSWORD) { 
-    console.error("ERRO CRÍTICO: Variáveis de ambiente faltando!"); 
+    console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI e SITE_PASSWORD precisam de ser definidas!"); 
     process.exit(1); 
 }
 
@@ -35,7 +35,7 @@ const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
 let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timestamp: 0 }; 
 
-// --- CONSTANTES E LIMITES ---
+// --- CONSTANTES ---
 const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime', 'halloween', 'christmas', 'newyear'];
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; 
 const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; 
@@ -64,7 +64,7 @@ let plansCollection;
 let couponsCollection; 
 let liveAccounts = {};
 
-// --- FUNÇÕES CORE (DATABASE) ---
+// --- FUNÇÕES CORE (DEFINIDAS ANTES DO USO) ---
 async function connectToDB() { 
     try { 
         await mongoClient.connect(); 
@@ -86,7 +86,71 @@ async function connectToDB() {
     } 
 }
 
-// --- FUNÇÕES CRON (DEFINIDAS NO TOPO PARA EVITAR ERROS) ---
+async function initializePlans() {
+    const defaultPlans = [
+        { id: 'free', name: 'Gratuito', price: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, features: ['50 Horas (Renovável)', '1 Conta Steam', '1 Limite de Jogo'] },
+        { id: 'basic', name: 'Basic', price: 7.90, days: 30, accounts: 2, games: 6, style: 'none', active: true, features: ['30 Dias', '2 Contas', '6 Jogos'] },
+        { id: 'plus', name: 'Plus', price: 15.90, days: 30, accounts: 4, games: 12, style: 'none', active: true, features: ['30 Dias', '4 Contas', '12 Jogos'] },
+        { id: 'premium', name: 'Premium', price: 27.90, days: 30, accounts: 6, games: 24, style: 'fire', active: true, features: ['30 Dias', '6 Contas', '24 Jogos'] },
+        { id: 'ultimate', name: 'Ultimate', price: 54.90, days: 30, accounts: 10, games: 33, style: 'none', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
+        { id: 'lifetime', name: 'Vitalício', price: 249.90, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, features: ['Vitalício', '10 Contas', '33 Jogos'] },
+        { id: 'halloween', name: 'Halloween Spooky', price: 19.90, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias', '8 Contas', '33 Jogos'] },
+        { id: 'christmas', name: 'Natal Gift', price: 89.90, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] },
+        { id: 'newyear', name: 'Ano Novo Era', price: 12.90, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
+        // *** NOVO: PLANO PERSONALIZADO NO DB ***
+        { id: 'custom', name: 'Personalizado', price: 15.00, days: 30, accounts: 1, games: 10, style: 'none', active: true, features: ['Monte o seu plano', 'Escolha dias, contas e jogos'] }
+    ];
+    for (const plan of defaultPlans) { await plansCollection.updateOne({ id: plan.id }, { $setOnInsert: plan }, { upsert: true }); }
+    await refreshPlansCache();
+}
+
+async function refreshPlansCache() {
+    try {
+        const plans = await plansCollection.find({}).toArray();
+        GLOBAL_PLANS = {};
+        plans.forEach(p => { 
+            GLOBAL_PLANS[p.id] = p; 
+            PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games }; 
+        });
+        console.log("[SYSTEM] Planos carregados.");
+    } catch (e) {}
+}
+
+async function initializeMasterKey() {
+    let settings = await siteSettingsCollection.findOne({ _id: 'config' });
+    if (!settings || !settings.appSecret) {
+        const newSecret = crypto.randomBytes(32).toString('hex');
+        appSecretKey = crypto.createHash('sha256').update(newSecret).digest('base64').substr(0, 32);
+        await siteSettingsCollection.updateOne( { _id: 'config' }, { $set: { appSecret: newSecret } }, { upsert: true } );
+    } else { appSecretKey = crypto.createHash('sha256').update(settings.appSecret).digest('base64').substr(0, 32); }
+}
+
+const encrypt = (text) => { if (!appSecretKey) return null; const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
+const decrypt = (text) => { try { if (!appSecretKey || !text) return ""; const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { return ""; }};
+
+function sendDiscordNotification(title, message, color, username) {
+    if (!DISCORD_WEBHOOK_URL) return;
+    const payload = JSON.stringify({ embeds: [{ title: title || '\u200b', description: message || '\u200b', color: color, fields: [{ name: "Conta", value: `\`${username || 'N/A'}\``, inline: true }], footer: { text: "STF Boost Notifier" }, timestamp: new Date().toISOString() }] });
+    try {
+        const req = https.request({ hostname: new URL(DISCORD_WEBHOOK_URL).hostname, path: new URL(DISCORD_WEBHOOK_URL).pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }}, () => {});
+        req.on('error', (e) => {}); req.write(payload); req.end();
+    } catch (e) {}
+}
+
+async function getSteamAppList() {
+    if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 1) return steamAppListCache.data;
+    try {
+        const response = await fetch('https://steamspy.com/api.php?request=all', { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        if (response.ok) {
+            const jsonData = await response.json();
+            steamAppListCache = { data: Object.values(jsonData), timestamp: Date.now() };
+            return steamAppListCache.data;
+        }
+    } catch (e) {}
+    return steamAppListCache.data;
+}
+
+// --- CRON JOBS (DEFINIDOS ANTES DE USAR) ---
 async function deductFreeTime() {
     const updates = new Set();
     for (const u in liveAccounts) { if (liveAccounts[u].status === 'Rodando') updates.add(liveAccounts[u].ownerUserID); }
@@ -133,66 +197,6 @@ async function checkExpiredPlans() {
     } catch(e) { console.error("[CRON] Erro checkExpiredPlans:", e); }
 }
 
-// --- INICIALIZAÇÃO DO SERVIDOR E CACHES ---
-async function initializePlans() {
-    const defaultPlans = [
-        { id: 'free', name: 'Gratuito', price: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, features: ['50 Horas (Renovável)', '1 Conta Steam', '1 Limite de Jogo'] },
-        { id: 'basic', name: 'Basic', price: 7.90, days: 30, accounts: 2, games: 6, style: 'none', active: true, features: ['30 Dias', '2 Contas', '6 Jogos'] },
-        { id: 'plus', name: 'Plus', price: 15.90, days: 30, accounts: 4, games: 12, style: 'none', active: true, features: ['30 Dias', '4 Contas', '12 Jogos'] },
-        { id: 'premium', name: 'Premium', price: 27.90, days: 30, accounts: 6, games: 24, style: 'fire', active: true, features: ['30 Dias', '6 Contas', '24 Jogos'] },
-        { id: 'ultimate', name: 'Ultimate', price: 54.90, days: 30, accounts: 10, games: 33, style: 'none', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
-        { id: 'lifetime', name: 'Vitalício', price: 249.90, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, features: ['Vitalício', '10 Contas', '33 Jogos'] },
-        { id: 'halloween', name: 'Halloween Spooky', price: 19.90, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias', '8 Contas', '33 Jogos'] },
-        { id: 'christmas', name: 'Natal Gift', price: 89.90, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] },
-        { id: 'newyear', name: 'Ano Novo Era', price: 12.90, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] }
-    ];
-    for (const plan of defaultPlans) { await plansCollection.updateOne({ id: plan.id }, { $setOnInsert: plan }, { upsert: true }); }
-    await refreshPlansCache();
-}
-
-async function refreshPlansCache() {
-    try {
-        const plans = await plansCollection.find({}).toArray();
-        GLOBAL_PLANS = {};
-        plans.forEach(p => { GLOBAL_PLANS[p.id] = p; PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games }; });
-        console.log("[SYSTEM] Planos carregados.");
-    } catch (e) {}
-}
-
-async function initializeMasterKey() {
-    let settings = await siteSettingsCollection.findOne({ _id: 'config' });
-    if (!settings || !settings.appSecret) {
-        const newSecret = crypto.randomBytes(32).toString('hex');
-        appSecretKey = crypto.createHash('sha256').update(newSecret).digest('base64').substr(0, 32);
-        await siteSettingsCollection.updateOne( { _id: 'config' }, { $set: { appSecret: newSecret } }, { upsert: true } );
-    } else { appSecretKey = crypto.createHash('sha256').update(settings.appSecret).digest('base64').substr(0, 32); }
-}
-
-const encrypt = (text) => { if (!appSecretKey) return null; const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
-const decrypt = (text) => { try { if (!appSecretKey || !text) return ""; const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { return ""; }};
-
-function sendDiscordNotification(title, message, color, username) {
-    if (!DISCORD_WEBHOOK_URL) return;
-    const payload = JSON.stringify({ embeds: [{ title: title || '\u200b', description: message || '\u200b', color: color, fields: [{ name: "Conta", value: `\`${username || 'N/A'}\``, inline: true }], footer: { text: "STF Boost Notifier" }, timestamp: new Date().toISOString() }] });
-    try {
-        const req = https.request({ hostname: new URL(DISCORD_WEBHOOK_URL).hostname, path: new URL(DISCORD_WEBHOOK_URL).pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }}, () => {});
-        req.on('error', (e) => {}); req.write(payload); req.end();
-    } catch (e) {}
-}
-
-async function getSteamAppList() {
-    if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 1) return steamAppListCache.data;
-    try {
-        const response = await fetch('https://steamspy.com/api.php?request=all', { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (response.ok) {
-            const jsonData = await response.json();
-            steamAppListCache = { data: Object.values(jsonData), timestamp: Date.now() };
-            return steamAppListCache.data;
-        }
-    } catch (e) {}
-    return steamAppListCache.data;
-}
-
 // --- WORKER ---
 function startWorkerForAccount(accountData) {
     const username = accountData.username;
@@ -228,6 +232,7 @@ function startWorkerForAccount(accountData) {
             accountsCollection.updateOne({ username, ownerUserID: liveAccounts[username].ownerUserID }, { $set: { sentryFileHash: msg.payload.sentryFileHash } });
         }
     });
+
     worker.on('exit', (code) => {
         if (liveAccounts[username]?.startupTimeout) clearTimeout(liveAccounts[username].startupTimeout);
         if (!liveAccounts[username]) return;
@@ -261,7 +266,7 @@ async function loadAccountsIntoMemory() {
     });
 }
 
-// --- APP ---
+// --- MIDDLEWARES ---
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
 app.use(session({ secret: 'stfboost_secret_key_change_this', resave: false, saveUninitialized: false, store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000 } })); 
@@ -279,10 +284,7 @@ const isAuthenticated = async (req, res, next) => {
 };
 const isAdminAuthenticated = (req, res, next) => { if (req.session.isAdmin) return next(); res.redirect('/admin/login?error=unauthorized'); };
 
-// --- ROTAS ---
-const apiRouter = express.Router();
-const adminApiRouter = express.Router();
-
+// --- ROTAS DE PÁGINAS ---
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/register', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'register.html')));
@@ -298,7 +300,7 @@ app.post('/admin/login', (req, res) => { req.body.password === ADMIN_PASSWORD ? 
 app.get('/admin/dashboard', isAdminAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html')));
 app.get('/admin/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 
-// === API PUBLIC ===
+// === API ===
 apiRouter.get('/auth-status', async (req, res) => {
     if (req.session.userId) {
         if (!req.session.username) {
@@ -307,9 +309,11 @@ apiRouter.get('/auth-status', async (req, res) => {
         res.json({ loggedIn: true, username: req.session.username || 'Usuário' });
     } else { res.json({ loggedIn: false }); }
 });
+
 apiRouter.get('/plans', async (req, res) => {
     try { const plans = await plansCollection.find({ active: true }).toArray(); plans.sort((a, b) => (a.id === 'free' ? -1 : b.id === 'free' ? 1 : a.price - b.price)); res.json(plans); } catch(e) { res.status(500).json([]); }
 });
+
 apiRouter.post('/register', async (req, res) => {
     const { username, email, password } = req.body;
     if (!username || !password) return res.status(400).json({ message: "Dados incompletos." });
@@ -319,6 +323,7 @@ apiRouter.post('/register', async (req, res) => {
         res.status(201).json({ message: "Conta criada!" });
     } catch (e) { res.status(409).json({ message: "Usuário já existe." }); }
 });
+
 apiRouter.post('/login', async (req, res) => {
     const { username, password } = req.body;
     const user = await usersCollection.findOne({ username });
@@ -326,6 +331,7 @@ apiRouter.post('/login', async (req, res) => {
     if (user.isBanned) return res.status(403).json({ message: "Conta banida." });
     req.session.userId = user._id.toString(); req.session.username = user.username; res.json({ message: "Login OK" });
 });
+
 apiRouter.post('/validate-coupon', async (req, res) => {
     const { code } = req.body;
     if (!code) return res.status(400).json({ valid: false });
@@ -335,18 +341,15 @@ apiRouter.post('/validate-coupon', async (req, res) => {
     } catch (e) { res.status(500).json({ valid: false }); }
 });
 
-// === API AUTHENTICATED ===
+// Rota protegida: Checkout
 apiRouter.use(isAuthenticated);
 apiRouter.post('/create-checkout', async (req, res) => {
     if (!mpClient) return res.status(500).json({ message: "Pagamento indisponível." });
+    
     const { planId, customConfig, couponCode, deliveryMethod } = req.body;
     let price = 0; let title = ""; let metadata = {};
 
-    // CHECK PLAN ACTIVE
-    if (planId === 'custom') {
-        const customPlanDB = GLOBAL_PLANS['custom'];
-        if (!customPlanDB || !customPlanDB.active) return res.status(400).json({ message: "Plano desativado." });
-        
+    if (planId === 'custom' && customConfig) {
         const d = parseInt(customConfig.days) || 30; const a = parseInt(customConfig.accounts) || 1; const g = parseInt(customConfig.games) || 10;
         price = CUSTOM_PRICING.BASE + (d * CUSTOM_PRICING.DAY) + (a * CUSTOM_PRICING.ACCOUNT) + (g * CUSTOM_PRICING.GAME);
         title = `STF Boost - Personalizado (${d}d, ${a}c, ${g}j)`;
@@ -354,7 +357,6 @@ apiRouter.post('/create-checkout', async (req, res) => {
     } else {
         const plan = GLOBAL_PLANS[planId];
         if (!plan) return res.status(400).json({ message: "Plano inválido." });
-        if (!plan.active) return res.status(400).json({ message: "Plano desativado." });
         price = plan.price; title = `STF Boost - ${plan.name}`; metadata = { plan_id: planId };
     }
 
@@ -380,6 +382,7 @@ apiRouter.post('/create-checkout', async (req, res) => {
     } catch (e) { console.error("[MP] Erro:", e); res.status(500).json({ message: "Erro ao criar pagamento." }); }
 });
 
+// Webhook MP
 app.post('/api/mp-webhook', async (req, res) => {
     const { query } = req;
     if (query.topic === 'payment' || query.type === 'payment') {
@@ -389,6 +392,7 @@ app.post('/api/mp-webhook', async (req, res) => {
             if (payment.status === 'approved') {
                 const userId = payment.external_reference;
                 const meta = payment.metadata;
+                
                 if (userId) {
                     if (meta.coupon_code) await couponsCollection.updateOne({ code: meta.coupon_code }, { $inc: { usageCount: 1 } });
                     
