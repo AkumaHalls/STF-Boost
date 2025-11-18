@@ -7,6 +7,8 @@ const crypto = require('crypto');
 const { fork } = require('child_process');
 const https = require('https');
 const bcrypt = require('bcryptjs'); 
+// *** NOVO: Mercado Pago ***
+const { MercadoPagoConfig, Preference, Payment } = require('mercadopago');
 
 console.log("[SYSTEM] Inicializando módulos...");
 
@@ -16,10 +18,24 @@ const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const ADMIN_PASSWORD = process.env.SITE_PASSWORD; 
 const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; 
+const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN; // *** NOVO ***
+
+// URL do seu site (para o Mercado Pago saber para onde voltar)
+// No Render, geralmente é definido automaticamente, mas vamos garantir
+const SITE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 
 if (!MONGODB_URI || !ADMIN_PASSWORD) { 
     console.error("ERRO CRÍTICO: As variáveis de ambiente MONGODB_URI e SITE_PASSWORD precisam de ser definidas!"); 
     process.exit(1); 
+}
+
+// Configura Mercado Pago
+let mpClient;
+if (MP_ACCESS_TOKEN) {
+    mpClient = new MercadoPagoConfig({ accessToken: MP_ACCESS_TOKEN });
+    console.log("[SYSTEM] Mercado Pago configurado.");
+} else {
+    console.warn("[SYSTEM] AVISO: MP_ACCESS_TOKEN não definido. Pagamentos automáticos não funcionarão.");
 }
 
 const ALGORITHM = 'aes-256-cbc';
@@ -35,8 +51,7 @@ const ALL_PLANS = ['free', 'basic', 'plus', 'premium', 'ultimate', 'lifetime', '
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; 
 const FREE_RENEW_COOLDOWN_MS = 24 * 60 * 60 * 1000; 
 
-// *** FALLBACK DE LIMITES (SEGURANÇA) ***
-// Se o DB falhar, usamos estes valores
+// *** FALLBACK DE LIMITES ***
 let PLAN_LIMITS = {
     'free': { accounts: 1, games: 1 },
     'basic': { accounts: 2, games: 6 },
@@ -49,7 +64,6 @@ let PLAN_LIMITS = {
     'newyear': { accounts: 10, games: 33 }
 };
 
-// Cache dinâmico do DB
 let GLOBAL_PLANS = {}; 
 
 // --- GESTÃO DE DADOS ---
@@ -85,7 +99,6 @@ async function connectToDB() {
 }
 
 async function initializePlans() {
-    // Insere ou atualiza os planos padrão para garantir que existam
     const defaultPlans = [
         { id: 'free', name: 'Gratuito', price: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, features: ['50 Horas (Renovável)', '1 Conta Steam', '1 Limite de Jogo'] },
         { id: 'basic', name: 'Basic', price: 7.90, days: 30, accounts: 2, games: 6, style: 'none', active: true, features: ['30 Dias', '2 Contas', '6 Jogos'] },
@@ -97,7 +110,6 @@ async function initializePlans() {
         { id: 'christmas', name: 'Natal Gift', price: 89.90, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] },
         { id: 'newyear', name: 'Ano Novo Era', price: 12.90, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] }
     ];
-
     for (const plan of defaultPlans) {
         await plansCollection.updateOne({ id: plan.id }, { $setOnInsert: plan }, { upsert: true });
     }
@@ -108,7 +120,6 @@ async function refreshPlansCache() {
     try {
         const plans = await plansCollection.find({}).toArray();
         GLOBAL_PLANS = {};
-        // Atualiza o cache global e também os limites de fallback
         plans.forEach(p => { 
             GLOBAL_PLANS[p.id] = p; 
             PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games };
@@ -285,6 +296,7 @@ app.get('/login', (req, res) => req.session.userId ? res.redirect('/dashboard') 
 app.get('/register', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'register.html')));
 app.get('/dashboard', isAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
 app.get('/banned', (req, res) => res.sendFile(path.join(__dirname, 'public', 'banned.html')));
+app.get('/checkout', isAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'checkout.html'))); // *** NOVA ROTA ***
 app.get('/health', (req, res) => res.status(200).send('OK'));
 app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 
@@ -300,7 +312,6 @@ app.get('/admin/logout', (req, res) => req.session.destroy(() => res.redirect('/
 // ==========================================
 apiRouter.get('/auth-status', (req, res) => res.json({ loggedIn: !!req.session.userId }));
 
-// *** ROTA PÚBLICA PARA LISTAR APENAS PLANOS ATIVOS ***
 apiRouter.get('/plans', async (req, res) => {
     try {
         const plans = await plansCollection.find({ active: true }).toArray();
@@ -331,268 +342,138 @@ apiRouter.post('/login', async (req, res) => {
 // ROTAS PROTEGIDAS (Usuário)
 apiRouter.use(isAuthenticated);
 
+// *** NOVA ROTA: CRIAR CHECKOUT MERCADO PAGO ***
+apiRouter.post('/create-checkout', async (req, res) => {
+    if (!mpClient) return res.status(500).json({ message: "Pagamento indisponível." });
+    
+    const { planId } = req.body;
+    const userId = req.session.userId;
+    
+    // Busca info do plano
+    const plan = GLOBAL_PLANS[planId];
+    if (!plan) return res.status(400).json({ message: "Plano não encontrado." });
+
+    try {
+        const preference = new Preference(mpClient);
+        const result = await preference.create({
+            body: {
+                items: [
+                    {
+                        title: `STF Boost - Plano ${plan.name}`,
+                        quantity: 1,
+                        unit_price: plan.price,
+                        currency_id: 'BRL'
+                    }
+                ],
+                payer: {
+                    email: req.session.username + "@stf-boost.user" // MP precisa de um email, usamos um placeholder se não tivermos o real
+                },
+                back_urls: {
+                    success: `${SITE_URL}/dashboard?payment=success`,
+                    failure: `${SITE_URL}/checkout?payment=failure`,
+                    pending: `${SITE_URL}/dashboard?payment=pending`
+                },
+                auto_return: "approved",
+                external_reference: userId, // ID do usuário para sabermos quem pagou
+                metadata: {
+                    plan_id: planId
+                }
+            }
+        });
+        
+        res.json({ url: result.init_point });
+    } catch (e) {
+        console.error("[MP] Erro ao criar preferência:", e);
+        res.status(500).json({ message: "Erro ao criar pagamento." });
+    }
+});
+
+// ... (outras rotas de usuário - status, add-account, etc. permanecem iguais) ...
 apiRouter.get('/user-info', async (req, res) => {
     const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
     if (!user) return res.status(404).json({ message: "Erro user." });
     let fh = 0;
     if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 3600000);
-    
-    // *** ATUALIZAÇÃO CRÍTICA: Fallback Seguro ***
-    // Tenta pegar do Cache GLOBAL_PLANS, se não existir, tenta PLAN_LIMITS, se não, usa Free.
     const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
-    
-    res.json({ 
-        username: user.username, 
-        plan: user.plan, 
-        freeHoursRemaining: fh, 
-        planExpiresAt: user.planExpiresAt,
-        gameLimit: planDetails.games,
-        accountLimit: planDetails.accounts 
-    });
+    res.json({ username: user.username, plan: user.plan, freeHoursRemaining: fh, planExpiresAt: user.planExpiresAt, gameLimit: planDetails.games, accountLimit: planDetails.accounts });
 });
+apiRouter.get('/status', (req, res) => { const myAccounts = {}; for (const user in liveAccounts) { if (liveAccounts[user].ownerUserID === req.session.userId) { const acc = liveAccounts[user]; myAccounts[user] = { username: acc.username, status: acc.status, games: acc.games, settings: acc.settings, uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0 }; } } res.json({ accounts: myAccounts }); });
+apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); const count = await accountsCollection.countDocuments({ ownerUserID: uid }); const limit = PLAN_LIMITS[user.plan]?.accounts || 1; if (count >= limit) return res.status(403).json({ message: `Limite atingido.` }); if (await accountsCollection.findOne({ username })) return res.status(400).json({ message: "Já existe." }); const encPass = encrypt(password); await accountsCollection.insertOne({ username, password: encPass, games: [730], settings: {}, ownerUserID: uid }); liveAccounts[username] = { username, encryptedPassword: encPass, games: [730], settings: {}, status: 'Parado', ownerUserID: uid }; res.json({ message: "Conta adicionada." }); });
+apiRouter.post('/start/:username', async (req, res) => { const username = req.params.username; const acc = liveAccounts[username]; if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({ message: "Erro." }); const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." }); if (user.planExpiresAt && user.planExpiresAt < new Date()) return res.status(403).json({ message: "Expirado." }); const limit = PLAN_LIMITS[user.plan]?.games || 1; if (acc.games.length > limit) return res.status(403).json({ message: `Limite jogos excedido.` }); const pass = decrypt(acc.encryptedPassword); if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "Iniciando..." }); } else { res.status(500).json({ message: "Erro senha." }); } });
+apiRouter.post('/stop/:username', (req, res) => { const acc = liveAccounts[req.params.username]; if (acc && acc.ownerUserID === req.session.userId) { acc.manual_logout = true; if (acc.worker) acc.worker.kill(); acc.status = "Parado"; res.json({ message: "Parando..." }); } else { res.status(404).json({ message: "Erro." }); } });
+apiRouter.delete('/remove-account/:username', async (req, res) => { const username = req.params.username; const acc = liveAccounts[username]; if (acc && acc.ownerUserID === req.session.userId) { acc.manual_logout = true; if (acc.worker) acc.worker.kill(); delete liveAccounts[username]; } await accountsCollection.deleteOne({ username, ownerUserID: req.session.userId }); res.json({ message: "Removido." }); });
+apiRouter.post('/save-settings/:username', async (req, res) => { const { username } = req.params; const { settings } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); if (user.plan === 'free' && (settings.appearOffline || settings.customInGameTitle)) return res.status(403).json({ message: "Funcionalidade Premium." }); if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) { if (settings) { await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { settings } }); liveAccounts[username].settings = settings; if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings, games: liveAccounts[username].games } }); } res.json({ message: "Salvo." }); } else { res.status(404).json({ message: "Erro." }); } });
+apiRouter.post('/set-games/:username', async (req, res) => { const { username } = req.params; const { games } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); const limit = PLAN_LIMITS[user.plan]?.games || 1; if (games.length > limit) return res.status(403).json({ message: `Limite excedido.` }); if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) { await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { games } }); liveAccounts[username].games = games; if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings: liveAccounts[username].settings, games } }); res.json({ message: "Jogos salvos." }); } else { res.status(404).json({ message: "Erro." }); } });
+apiRouter.get('/search-game', async (req, res) => { const q = (req.query.q || '').toLowerCase(); if (q.length < 2) return res.json([]); const list = await getSteamAppList(); res.json(list.filter(a => a.name.toLowerCase().includes(q)).slice(0, 50)); });
+apiRouter.post('/activate-license', async (req, res) => { const { licenseKey } = req.body; const uid = req.session.userId; const key = await licensesCollection.findOne({ key: licenseKey }); if (!key || key.isUsed) return res.status(400).json({ message: "Inválida." }); if (key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({ message: "Não é sua." }); let expiry = null; if (key.durationDays) { expiry = new Date(); expiry.setDate(expiry.getDate() + key.durationDays); } await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: expiry, freeHoursRemaining: 0 } }); await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } }); res.json({ message: "Ativado!" }); });
+apiRouter.get('/my-keys', async (req, res) => { const keys = await licensesCollection.find({ assignedTo: new ObjectId(req.session.userId), isUsed: false }).toArray(); res.json(keys); });
+apiRouter.post('/renew-free-time', async (req, res) => { const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); if (user.plan !== 'free' || user.freeHoursRemaining > 0) return res.status(400).json({ message: "Não elegível." }); if (user.lastFreeRenew && (Date.now() - user.lastFreeRenew < FREE_RENEW_COOLDOWN_MS)) return res.status(429).json({ message: "Aguarde 24h." }); await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { freeHoursRemaining: FREE_HOURS_MS, lastFreeRenew: new Date() } }); res.json({ message: "Renovado!" }); });
+apiRouter.post('/change-password', async (req, res) => { const { currentPassword, newPassword } = req.body; const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (!await bcrypt.compare(currentPassword, user.password)) return res.status(401).json({ message: "Senha errada." }); const hash = await bcrypt.hash(newPassword, 10); await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: hash } }); res.json({ message: "Senha alterada." }); });
+// Bulk Actions
+apiRouter.post('/bulk-start', async (req, res) => { const { usernames } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." }); const limit = PLAN_LIMITS[user.plan]?.games || 1; let c = 0; usernames.forEach(u => { const acc = liveAccounts[u]; if (acc && acc.ownerUserID === uid && acc.games.length <= limit) { const p = decrypt(acc.encryptedPassword); if (p) { startWorkerForAccount({ ...acc, password: p }); c++; } } }); res.json({ message: `${c} iniciadas.` }); });
+apiRouter.post('/bulk-stop', (req, res) => { const { usernames } = req.body; usernames.forEach(u => { const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { acc.manual_logout = true; if (acc.worker) acc.worker.kill(); acc.status = "Parado"; } }); res.json({ message: "Paradas." }); });
+apiRouter.post('/bulk-remove', async (req, res) => { const { usernames } = req.body; usernames.forEach(u => { const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { if (acc.worker) acc.worker.kill(); delete liveAccounts[u]; } }); await accountsCollection.deleteMany({ username: { $in: usernames }, ownerUserID: req.session.userId }); res.json({ message: "Removidas." }); });
+apiRouter.post('/submit-guard/:username', (req, res) => { const account = liveAccounts[req.params.username]; if (account && account.worker) { account.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); res.status(200).json({ message: "Enviado." }); } else { res.status(404).json({ message: "Erro." }); } });
 
-apiRouter.get('/status', (req, res) => {
-    const myAccounts = {};
-    for (const user in liveAccounts) {
-        if (liveAccounts[user].ownerUserID === req.session.userId) {
-            const acc = liveAccounts[user];
-            myAccounts[user] = { username: acc.username, status: acc.status, games: acc.games, settings: acc.settings, uptime: acc.sessionStartTime ? Date.now() - acc.sessionStartTime : 0 };
-        }
-    }
-    res.json({ accounts: myAccounts });
-});
-apiRouter.post('/add-account', async (req, res) => {
-    const { username, password } = req.body;
-    const uid = req.session.userId;
-    const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
-    const count = await accountsCollection.countDocuments({ ownerUserID: uid });
-    
-    const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
-    const limit = planDetails.accounts;
+app.use('/api', apiRouter);
 
-    if (count >= limit) return res.status(403).json({ message: `Limite de contas do plano atingido (${limit}).` });
-    if (await accountsCollection.findOne({ username })) return res.status(400).json({ message: "Conta Steam já cadastrada." });
-    const encPass = encrypt(password);
-    await accountsCollection.insertOne({ username, password: encPass, games: [730], settings: {}, ownerUserID: uid });
-    liveAccounts[username] = { username, encryptedPassword: encPass, games: [730], settings: {}, status: 'Parado', ownerUserID: uid };
-    res.json({ message: "Conta adicionada." });
-});
-apiRouter.post('/start/:username', async (req, res) => {
-    const username = req.params.username;
-    const acc = liveAccounts[username];
-    if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({ message: "Conta não encontrada." });
-    
-    const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
-    if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas grátis." });
-    if (user.planExpiresAt && user.planExpiresAt < new Date()) return res.status(403).json({ message: "Plano expirado." });
-    
-    const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
-    const limit = planDetails.games;
-
-    if (acc.games.length > limit) return res.status(403).json({ message: `Limite de jogos (${limit}) excedido.` });
-
-    const pass = decrypt(acc.encryptedPassword);
-    if (pass) {
-        startWorkerForAccount({ ...acc, password: pass });
-        res.json({ message: "Iniciando..." });
-    } else {
-        res.status(500).json({ message: "Erro senha." });
-    }
-});
-apiRouter.post('/stop/:username', (req, res) => {
-    const acc = liveAccounts[req.params.username];
-    if (acc && acc.ownerUserID === req.session.userId) {
-        acc.manual_logout = true;
-        if (acc.worker) acc.worker.kill();
-        acc.status = "Parado";
-        res.json({ message: "Parando..." });
-    } else { res.status(404).json({ message: "Erro." }); }
-});
-apiRouter.delete('/remove-account/:username', async (req, res) => {
-    const username = req.params.username;
-    const acc = liveAccounts[username];
-    if (acc && acc.ownerUserID === req.session.userId) {
-        acc.manual_logout = true;
-        if (acc.worker) acc.worker.kill();
-        delete liveAccounts[username];
-    }
-    await accountsCollection.deleteOne({ username, ownerUserID: req.session.userId });
-    res.json({ message: "Removido." });
-});
-apiRouter.post('/save-settings/:username', async (req, res) => {
-    const { username } = req.params;
-    const { settings, newPassword } = req.body;
-    const uid = req.session.userId;
-    const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
-    
-    // Paywall check simples
-    if (user.plan === 'free' && (settings.appearOffline || settings.customInGameTitle)) return res.status(403).json({ message: "Funcionalidade Premium." });
-
-    if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) {
-        if (settings) {
-            await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { settings } });
-            liveAccounts[username].settings = settings;
-            if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings, games: liveAccounts[username].games } });
-        }
-        res.json({ message: "Salvo." });
-    } else { res.status(404).json({ message: "Erro." }); }
-});
-apiRouter.post('/set-games/:username', async (req, res) => {
-    const { username } = req.params;
-    const { games } = req.body;
-    const uid = req.session.userId;
-    const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
-    
-    const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
-    const limit = planDetails.games;
-
-    if (games.length > limit) return res.status(403).json({ message: `Limite de jogos (${limit}) excedido.` });
-
-    if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) {
-        await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { games } });
-        liveAccounts[username].games = games;
-        if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings: liveAccounts[username].settings, games } });
-        res.json({ message: "Jogos salvos." });
-    } else { res.status(404).json({ message: "Erro." }); }
-});
-apiRouter.get('/search-game', async (req, res) => {
-    const q = (req.query.q || '').toLowerCase();
-    if (q.length < 2) return res.json([]);
-    const list = await getSteamAppList();
-    res.json(list.filter(a => a.name.toLowerCase().includes(q)).slice(0, 50));
-});
-apiRouter.post('/activate-license', async (req, res) => {
-    const { licenseKey } = req.body;
-    const uid = req.session.userId;
-    const key = await licensesCollection.findOne({ key: licenseKey });
-    if (!key || key.isUsed) return res.status(400).json({ message: "Chave inválida ou usada." });
-    if (key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({ message: "Chave não é para você." });
-    
-    const planDetails = GLOBAL_PLANS[key.plan] || PLAN_LIMITS[key.plan];
-    if (!planDetails) return res.status(400).json({ message: "Erro: Plano não existe." });
-
-    let expiry = null;
-    const duration = key.durationDays || planDetails.days;
-    
-    if (duration > 0) { expiry = new Date(); expiry.setDate(expiry.getDate() + duration); }
-    await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: expiry, freeHoursRemaining: 0 } });
-    await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } });
-    res.json({ message: "Plano ativado!" });
-});
-apiRouter.get('/my-keys', async (req, res) => {
-    const keys = await licensesCollection.find({ assignedTo: new ObjectId(req.session.userId), isUsed: false }).toArray();
-    res.json(keys);
-});
-apiRouter.post('/renew-free-time', async (req, res) => {
-    const uid = req.session.userId;
-    const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
-    if (user.plan !== 'free' || user.freeHoursRemaining > 0) return res.status(400).json({ message: "Não elegível." });
-    if (user.lastFreeRenew && (Date.now() - user.lastFreeRenew < FREE_RENEW_COOLDOWN_MS)) return res.status(429).json({ message: "Aguarde 24h." });
-    await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { freeHoursRemaining: FREE_HOURS_MS, lastFreeRenew: new Date() } });
-    res.json({ message: "Renovado!" });
-});
-apiRouter.post('/change-password', async (req, res) => {
-    const { currentPassword, newPassword } = req.body;
-    const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
-    if (!await bcrypt.compare(currentPassword, user.password)) return res.status(401).json({ message: "Senha atual errada." });
-    const hash = await bcrypt.hash(newPassword, 10);
-    await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: hash } });
-    res.json({ message: "Senha alterada." });
-});
-apiRouter.post('/bulk-start', async (req, res) => {
-    const { usernames } = req.body;
-    const uid = req.session.userId;
-    const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
-    if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." });
-    
-    const planDetails = GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free'];
-    const limit = planDetails.games;
-
-    let c = 0;
-    usernames.forEach(u => {
-        const acc = liveAccounts[u];
-        if (acc && acc.ownerUserID === uid && acc.games.length <= limit) {
-            const p = decrypt(acc.encryptedPassword);
-            if (p) { startWorkerForAccount({ ...acc, password: p }); c++; }
-        }
-    });
-    res.json({ message: `${c} iniciadas.` });
-});
-apiRouter.post('/bulk-stop', (req, res) => {
-    const { usernames } = req.body;
-    usernames.forEach(u => {
-        const acc = liveAccounts[u];
-        if (acc && acc.ownerUserID === req.session.userId) {
-            acc.manual_logout = true;
-            if (acc.worker) acc.worker.kill();
-            acc.status = "Parado";
-        }
-    });
-    res.json({ message: "Paradas." });
-});
-apiRouter.post('/bulk-remove', async (req, res) => {
-    const { usernames } = req.body;
-    usernames.forEach(u => {
-        const acc = liveAccounts[u];
-        if (acc && acc.ownerUserID === req.session.userId) {
-            if (acc.worker) acc.worker.kill();
-            delete liveAccounts[u];
-        }
-    });
-    await accountsCollection.deleteMany({ username: { $in: usernames }, ownerUserID: req.session.userId });
-    res.json({ message: "Removidas." });
-});
 
 // ==========================================
+// === WEBHOOK MERCADO PAGO (PÚBLICO) ===
+// ==========================================
+// IMPORTANTE: Esta rota não pode ter autenticação de usuário, pois é o MP que chama
+app.post('/api/mp-webhook', async (req, res) => {
+    const query = req.query;
+    const topic = query.topic || query.type;
+
+    if (topic === 'payment') {
+        const paymentId = query.id || query['data.id'];
+        try {
+            const payment = await new Payment(mpClient).get({ id: paymentId });
+            
+            if (payment.status === 'approved') {
+                const userId = payment.external_reference;
+                const planId = payment.metadata.plan_id;
+
+                // ATIVA O PLANO AUTOMATICAMENTE
+                const plan = GLOBAL_PLANS[planId];
+                if (userId && plan) {
+                    let expiry = null;
+                    if (plan.days > 0) {
+                        expiry = new Date();
+                        expiry.setDate(expiry.getDate() + plan.days);
+                    }
+
+                    await usersCollection.updateOne(
+                        { _id: new ObjectId(userId) }, 
+                        { $set: { plan: planId, planExpiresAt: expiry, freeHoursRemaining: 0 } }
+                    );
+                    console.log(`[MP] Pagamento aprovado! Plano ${planId} ativado para ${userId}`);
+                    sendDiscordNotification("💰 Venda Aprovada!", `Usuário: ${userId}\nPlano: ${planId}\nValor: R$ ${plan.price}`, 5763719, "Sistema");
+                }
+            }
+        } catch (error) {
+            console.error("[MP] Erro no webhook:", error);
+        }
+    }
+    res.status(200).send();
+});
+
+
 // === API ADMIN ===
-// ==========================================
 adminApiRouter.use(isAdminAuthenticated);
-adminApiRouter.get('/all-plans', async (req, res) => {
-    const plans = await plansCollection.find({}).sort({ price: 1 }).toArray();
-    res.json(plans);
-});
-adminApiRouter.post('/update-plan-details', async (req, res) => {
-    const { id, name, price, days, accounts, games, style, active, features } = req.body;
-    await plansCollection.updateOne(
-        { id: id }, 
-        { $set: { name, price: parseFloat(price), days: parseInt(days), accounts: parseInt(accounts), games: parseInt(games), style, active, features } },
-        { upsert: true } 
-    );
-    await refreshPlansCache();
-    res.json({ message: "Plano atualizado." });
-});
-adminApiRouter.post('/delete-plan', async (req, res) => {
-    const { id } = req.body;
-    await plansCollection.deleteOne({ id: id });
-    await refreshPlansCache();
-    res.json({ message: "Plano excluído." });
-});
-adminApiRouter.get('/users', async (req, res) => {
-    res.json(await usersCollection.find({}, { projection: { password: 0 } }).toArray());
-});
-adminApiRouter.get('/licenses', async (req, res) => {
-    res.json(await licensesCollection.find({}).sort({ createdAt: -1 }).toArray());
-});
+adminApiRouter.get('/users', async (req, res) => { res.json(await usersCollection.find({}, { projection: { password: 0 } }).toArray()); });
+adminApiRouter.get('/licenses', async (req, res) => { res.json(await licensesCollection.find({}).sort({ createdAt: -1 }).toArray()); });
+adminApiRouter.get('/all-plans', async (req, res) => { res.json(await plansCollection.find({}).sort({ price: 1 }).toArray()); });
 adminApiRouter.post('/generate-keys', async (req, res) => {
-    const { plan, quantity, durationDays } = req.body;
-    const qty = parseInt(quantity) || 1;
-    const keys = [];
-    for(let i=0; i<qty; i++) {
-        const key = `${plan.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
-        await licensesCollection.insertOne({ key, plan, durationDays: parseInt(durationDays) || null, isUsed: false, createdAt: new Date() });
-        keys.push(key);
-    }
+    const { plan, quantity, durationDays } = req.body; const qty = parseInt(quantity) || 1; const keys = [];
+    for(let i=0; i<qty; i++) { const key = `${plan.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`; await licensesCollection.insertOne({ key, plan, durationDays: parseInt(durationDays) || null, isUsed: false, createdAt: new Date() }); keys.push(key); }
     res.json({ keys, message: "Gerado." });
 });
-adminApiRouter.post('/ban-user', async (req, res) => {
-    await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } });
-    for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId && liveAccounts[u].worker) liveAccounts[u].worker.kill(); }
-    res.json({ message: "Banido." });
-});
-adminApiRouter.post('/unban-user', async (req, res) => {
-    await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: false } });
-    res.json({ message: "Desbanido." });
-});
+adminApiRouter.post('/ban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId && liveAccounts[u].worker) liveAccounts[u].worker.kill(); } res.json({ message: "Banido." }); });
+adminApiRouter.post('/unban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: false } }); res.json({ message: "Desbanido." }); });
+adminApiRouter.post('/delete-user', async (req, res) => { const uid = req.body.userId; await usersCollection.deleteOne({ _id: new ObjectId(uid) }); await accountsCollection.deleteMany({ ownerUserID: uid }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === uid) delete liveAccounts[u]; } res.json({ message: "Deletado." }); });
+adminApiRouter.post('/update-plan', async (req, res) => { const { userId, newPlan } = req.body; await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { plan: newPlan, planExpiresAt: null } }); res.json({ message: "Atualizado." }); });
 adminApiRouter.post('/assign-key', async (req, res) => {
     const { licenseId, username } = req.body;
     const user = await usersCollection.findOne({ username });
@@ -600,24 +481,15 @@ adminApiRouter.post('/assign-key', async (req, res) => {
     await licensesCollection.updateOne({ _id: new ObjectId(licenseId) }, { $set: { assignedTo: user._id, assignedToUsername: user.username } });
     res.json({ message: "Atribuído." });
 });
-adminApiRouter.post('/delete-license', async (req, res) => {
-    await licensesCollection.deleteOne({ _id: new ObjectId(req.body.licenseId) });
-    res.json({ message: "Deletado." });
-});
-adminApiRouter.post('/delete-user', async (req, res) => {
-    const uid = req.body.userId;
-    await usersCollection.deleteOne({ _id: new ObjectId(uid) });
-    await accountsCollection.deleteMany({ ownerUserID: uid });
-    for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === uid) delete liveAccounts[u]; }
-    res.json({ message: "Deletado." });
-});
-adminApiRouter.post('/update-plan', async (req, res) => {
-    const { userId, newPlan } = req.body;
-    await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { plan: newPlan, planExpiresAt: null } });
+adminApiRouter.post('/delete-license', async (req, res) => { await licensesCollection.deleteOne({ _id: new ObjectId(req.body.licenseId) }); res.json({ message: "Deletado." }); });
+adminApiRouter.post('/update-plan-details', async (req, res) => {
+    const { id, name, price, days, accounts, games, style, active, features } = req.body;
+    await plansCollection.updateOne({ id: id }, { $set: { name, price: parseFloat(price), days: parseInt(days), accounts: parseInt(accounts), games: parseInt(games), style, active, features } }, { upsert: true });
+    await refreshPlansCache();
     res.json({ message: "Atualizado." });
 });
+adminApiRouter.post('/delete-plan', async (req, res) => { await plansCollection.deleteOne({ id: req.body.id }); await refreshPlansCache(); res.json({ message: "Deletado." }); });
 
-app.use('/api', apiRouter);
 app.use('/api/admin', adminApiRouter);
 
 // --- CRON JOBS ---
@@ -628,14 +500,7 @@ async function deductFreeTime() {
     const ids = Array.from(updates).map(id => new ObjectId(id));
     await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -300000 } });
     const expired = await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 } }).toArray();
-    expired.forEach(u => {
-        for (const acc in liveAccounts) {
-            if (liveAccounts[acc].ownerUserID === u._id.toString() && liveAccounts[acc].worker) {
-                liveAccounts[acc].worker.kill();
-                liveAccounts[acc].status = "Tempo Esgotado";
-            }
-        }
-    });
+    expired.forEach(u => { for (const acc in liveAccounts) { if (liveAccounts[acc].ownerUserID === u._id.toString() && liveAccounts[acc].worker) { liveAccounts[acc].worker.kill(); liveAccounts[acc].status = "Tempo Esgotado"; } } });
 }
 
 async function checkExpiredPlans() {
