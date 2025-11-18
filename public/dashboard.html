@@ -8,10 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=1.8"> </head>
+    <link rel="stylesheet" href="/style.css?v=2.1"> 
+</head>
 <body class="panel-page">
 
-    <div class="dashboard-layout">
+    <div id="effectsContainer"></div>
+
+    <div class="dashboard-layout" style="position: relative; z-index: 10;">
         
         <nav class="sidebar">
             <div class="sidebar-logo">
@@ -47,10 +50,7 @@
 
             <div class="sidebar-nav">
                 <span class="nav-title">Account</span>
-                <a href="#" id="myKeysButton">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg>
-                    Minhas Chaves
-                </a>
+                <a href="#" id="myKeysButton"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path></svg> Minhas Chaves</a>
                 <a href="#" id="activateLicenseButton">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
                     Ativar Licença
@@ -120,7 +120,8 @@
             <input type="text" id="gameSearchInput" placeholder="Procurar jogo pelo nome...">
             <div id="gameSearchResults" class="search-results"></div>
             <p>AppIDs a serem farmados (separados por vírgula):</p>
-            <textarea id="appIdsInput" rows="2" placeholder="Ex: 730, 2923300, 107410"></textarea>
+            <textarea id="appIdsInput" rows="2" placeholder="Ex: 730, 2923300"></textarea>
+            <p id="gameLimitInfo" style="color: var(--primary-color); font-weight: bold; margin-top: 5px; font-size: 14px;"></p>
             <button id="saveGamesButton">Salvar</button>
             <button id="closeGamesModalButton" class="remove-btn">Cancelar</button>
         </div>
@@ -130,72 +131,44 @@
         <div class="modal-content">
             <h2>Configurações da Conta</h2>
             <div id="settingsForm">
-                <div class="settings-form-row">
-                    <label for="customTitleInput">Título Customizado no Jogo:</label>
-                    <input type="text" id="customTitleInput" placeholder="Ex: A Farmar Horas">
-                </div>
-                <div class="settings-form-row">
-                    <label for="customAwayMessageInput">Mensagem Automática:</label>
-                    <input type="text" id="customAwayMessageInput" placeholder="Deixe em branco para desativar">
-                </div>
-                <div class="settings-form-row">
-                    <label>Aparecer Offline:</label>
-                    <label class="switch"><input type="checkbox" id="appearOfflineToggle"><span class="slider"></span></label>
-                </div>
-                <div class="settings-form-row">
-                    <label>Aceitar Amigos Automaticamente:</label>
-                    <label class="switch"><input type="checkbox" id="autoAcceptFriendsToggle"><span class="slider"></span></label>
-                </div>
-                <div class="settings-form-row">
-                    <label>Reconectar Automaticamente:</label>
-                    <label class="switch"><input type="checkbox" id="autoReloginToggle"><span class="slider"></span></label>
-                </div>
-                 <div class="settings-form-row">
-                    <label for="sharedSecretInput">Shared Secret (TOTP):</label>
-                    <input type="password" id="sharedSecretInput" placeholder="Cole aqui para automação total">
-                </div>
-                <div class="settings-form-row separator">
-                   <label>Atualizar Credenciais</label>
-                </div>
-                <div class="settings-form-row">
-                    <label for="newPasswordInput">Nova Senha Steam:</label>
-                    <input type="password" id="newPasswordInput" placeholder="Deixe em branco para não alterar">
-                </div>
+                <div class="settings-form-row"><label>Título Customizado:</label><input type="text" id="customTitleInput"></div>
+                <div class="settings-form-row"><label>Mensagem Automática:</label><input type="text" id="customAwayMessageInput"></div>
+                <div class="settings-form-row"><label>Aparecer Offline:</label><label class="switch"><input type="checkbox" id="appearOfflineToggle"><span class="slider"></span></label></div>
+                <div class="settings-form-row"><label>Aceitar Amigos:</label><label class="switch"><input type="checkbox" id="autoAcceptFriendsToggle"><span class="slider"></span></label></div>
+                <div class="settings-form-row"><label>Reconectar Auto:</label><label class="switch"><input type="checkbox" id="autoReloginToggle"><span class="slider"></span></label></div>
+                <div class="settings-form-row"><label>Shared Secret:</label><input type="password" id="sharedSecretInput"></div>
+                <div class="settings-form-row separator"><label>Credenciais</label></div>
+                <div class="settings-form-row"><label>Nova Senha:</label><input type="password" id="newPasswordInput"></div>
             </div>
             <button id="saveSettingsButton">Salvar</button>
             <button id="closeSettingsModalButton" class="remove-btn">Cancelar</button>
         </div>
     </div>
-
+    
     <div id="licenseModal" class="modal">
         <div class="modal-content">
             <h2>Ativar Licença</h2>
-            <p>Cole a sua chave de licença abaixo para fazer upgrade do seu plano.</p>
-            <input type="text" id="licenseKeyInput" placeholder="PREMIUM-XXXX-YYYY-ZZZZ">
+            <input type="text" id="licenseKeyInput" placeholder="Chave...">
             <button id="saveLicenseButton">Ativar</button>
             <button id="closeLicenseModalButton" class="remove-btn">Cancelar</button>
         </div>
     </div>
-
+    
     <div id="passwordModal" class="modal">
         <div class="modal-content">
-            <h2>Mudar Senha da Conta</h2>
-            <p>Insira sua senha atual e a nova senha do site (não da Steam).</p>
-            <input type="password" id="currentPasswordInput" placeholder="Senha Atual">
-            <input type="password" id="newPasswordInputModal" placeholder="Nova Senha">
-            <input type="password" id="confirmPasswordInput" placeholder="Confirmar Nova Senha">
-            <button id="savePasswordButton">Mudar Senha</button>
+            <h2>Mudar Senha</h2>
+            <input type="password" id="currentPasswordInput" placeholder="Atual">
+            <input type="password" id="newPasswordInputModal" placeholder="Nova">
+            <input type="password" id="confirmPasswordInput" placeholder="Confirmar">
+            <button id="savePasswordButton">Salvar</button>
             <button id="closePasswordModalButton" class="remove-btn">Cancelar</button>
         </div>
     </div>
 
     <div id="myKeysModal" class="modal">
         <div class="modal-content">
-            <h2>Minhas Chaves (Inventário)</h2>
-            <p>Estas são as chaves de licença que você recebeu. Copie-as e use no modal "Ativar Licença".</p>
-            <div id="myKeysList" class="my-keys-list">
-                A carregar...
-            </div>
+            <h2>Minhas Chaves</h2>
+            <div id="myKeysList" class="my-keys-list">A carregar...</div>
             <button id="closeMyKeysModalButton" class="remove-btn">Fechar</button>
         </div>
     </div>
@@ -204,25 +177,17 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // Seletores
+            // ... (Seletores mantidos) ...
             const accountsTableBody = document.getElementById('accountsTableBody');
             const addAccountButton = document.getElementById('addAccountButton');
             const gamesModal = document.getElementById('gamesModal');
             const closeGamesModalButton = document.getElementById('closeGamesModalButton');
             const saveGamesButton = document.getElementById('saveGamesButton');
             const appIdsInput = document.getElementById('appIdsInput');
+            const gameLimitInfo = document.getElementById('gameLimitInfo');
             const settingsModal = document.getElementById('settingsModal');
             const closeSettingsModalButton = document.getElementById('closeSettingsModalButton');
             const saveSettingsButton = document.getElementById('saveSettingsButton');
-            let currentlyEditingGamesFor = null;
-            let currentlyEditingSettingsFor = null;
-
-            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
-            const bulkStartButton = document.getElementById('bulkStartButton');
-            const bulkStopButton = document.getElementById('bulkStopButton');
-            const bulkRemoveButton = document.getElementById('bulkRemoveButton');
-            const gameSearchInput = document.getElementById('gameSearchInput');
-            const gameSearchResults = document.getElementById('gameSearchResults');
             const newPasswordInput = document.getElementById('newPasswordInput');
             const sidebarUser = document.getElementById('sidebarUser');
             const sidebarPlan = document.getElementById('sidebarPlan');
@@ -232,286 +197,170 @@
             const closeLicenseModalButton = document.getElementById('closeLicenseModalButton');
             const saveLicenseButton = document.getElementById('saveLicenseButton');
             const licenseKeyInput = document.getElementById('licenseKeyInput');
-            
             const changePasswordButton = document.getElementById('changePasswordButton');
             const passwordModal = document.getElementById('passwordModal');
             const closePasswordModalButton = document.getElementById('closePasswordModalButton');
             const savePasswordButton = document.getElementById('savePasswordButton');
             const renewFreeButton = document.getElementById('renewFreeButton');
-
-            // --- *** NOVOS Seletores (Passo 10) *** ---
             const myKeysButton = document.getElementById('myKeysButton');
             const myKeysModal = document.getElementById('myKeysModal');
             const closeMyKeysModalButton = document.getElementById('closeMyKeysModalButton');
             const myKeysList = document.getElementById('myKeysList');
-
-            // --- Variável Global para guardar o plano ---
-            let currentUserPlan = 'free';
-
-            // --- Ícones (sem alterações) ---
-            const icons = {
-                play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
-                stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`,
-                guard: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`,
-                games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`,
-                remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`,
-                settings: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
-                refresh: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`
-            };
+            const gameSearchInput = document.getElementById('gameSearchInput');
+            const gameSearchResults = document.getElementById('gameSearchResults');
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            const bulkStartButton = document.getElementById('bulkStartButton');
+            const bulkStopButton = document.getElementById('bulkStopButton');
+            const bulkRemoveButton = document.getElementById('bulkRemoveButton');
             
-            // --- Funções Toast e Uptime (sem alterações) ---
-            function showToast(message, type = 'info') { const container = document.getElementById('toastContainer'); const toast = document.createElement('div'); toast.className = `toast ${type}`; toast.textContent = message; container.appendChild(toast); setTimeout(() => toast.classList.add('show'), 10); setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 500); }, 4000); }
-            function formatUptime(ms) { if (!ms || ms <= 0) return '00:00:00'; let totalSeconds = Math.floor(ms / 1000); const days = Math.floor(totalSeconds / 86400); totalSeconds %= 86400; const hours = Math.floor(totalSeconds / 3600).toString().padStart(2, '0'); totalSeconds %= 3600; const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0'); const seconds = (totalSeconds % 60).toString().padStart(2, '0'); if (days > 0) { const dayString = days === 1 ? 'dia' : 'dias'; return `${days} ${dayString}, ${hours}:${minutes}:${seconds}`; } else { return `${hours}:${minutes}:${seconds}`; } }
+            let currentlyEditingGamesFor = null;
+            let currentlyEditingSettingsFor = null;
+            let currentUserPlan = 'free';
+            let currentUserGameLimit = 1; 
 
-            // --- Função fetchUserInfo (sem alterações) ---
-            async function fetchUserInfo() {
-                try {
-                    const response = await fetch('/api/user-info');
-                    if (!response.ok) {
-                        if (response.status === 401) window.location.href = '/login?error=unauthorized';
-                        return;
-                    }
-                    const userInfo = await response.json();
-                    
-                    const planName = userInfo.plan.charAt(0).toUpperCase() + userInfo.plan.slice(1);
-                    sidebarUser.textContent = `Bem-vindo, ${userInfo.username}!`;
-                    sidebarPlan.textContent = `Plano: ${planName}`;
-                    
-                    currentUserPlan = userInfo.plan; 
+            const icons = { play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`, stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`, guard: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`, games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`, remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`, settings: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`, refresh: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>` };
 
-                    renewFreeButton.style.display = 'none'; 
-                    sidebarExpiry.textContent = ''; 
+            function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
+            function formatUptime(ms) { if(!ms||ms<=0)return '00:00:00'; let s=Math.floor(ms/1000), d=Math.floor(s/86400); s%=86400; let h=Math.floor(s/3600).toString().padStart(2,'0'); s%=3600; let m=Math.floor(s/60).toString().padStart(2,'0'); s=(s%60).toString().padStart(2,'0'); return d>0?`${d}d, ${h}:${m}:${s}`:`${h}:${m}:${s}`; }
 
-                    if (userInfo.plan === 'free') {
-                        sidebarExpiry.textContent = `Horas restantes: ${userInfo.freeHoursRemaining}`;
-                        if (userInfo.freeHoursRemaining <= 0) {
-                            renewFreeButton.style.display = 'inline-flex';
-                        }
-                    } else if (userInfo.plan === 'lifetime') {
-                        sidebarExpiry.textContent = `Plano Vitalício`;
-                    } else if (userInfo.planExpiresAt) {
-                        const expiryDate = new Date(userInfo.planExpiresAt);
-                        const now = new Date();
-                        const diffTime = expiryDate - now;
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        const formattedDate = expiryDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }); 
+            let effectInterval;
+            const effectsContainer = document.getElementById('effectsContainer');
 
-                        if (diffDays > 0) {
-                            sidebarExpiry.textContent = `Expira em: ${formattedDate} (${diffDays} dias)`;
-                        } else {
-                            sidebarExpiry.textContent = `Expirado em: ${formattedDate}`;
-                        }
-                    } else {
-                        sidebarExpiry.textContent = `Plano Ativo (sem expiração)`;
-                    }
-
-                } catch (e) {
-                    console.error("Erro ao buscar info do usuário", e);
-                    sidebarUser.textContent = 'Erro ao carregar perfil.';
-                    sidebarPlan.textContent = 'Plano: Erro';
-                    sidebarExpiry.textContent = '';
-                }
+            function applyThemeEffects(plan) {
+                effectsContainer.innerHTML = '';
+                if (effectInterval) clearInterval(effectInterval);
+                let symbol = '', className = '', intervalTime = 500;
+                if (plan === 'halloween') { symbol = '🦇'; className = 'bat'; intervalTime = 800; }
+                else if (plan === 'christmas') { symbol = '❄️'; className = 'snow'; intervalTime = 300; }
+                else if (plan === 'newyear') { symbol = '✨'; className = 'sparkle'; intervalTime = 600; }
+                else return;
+                effectInterval = setInterval(() => {
+                    const p = document.createElement('div'); p.className = `particle ${className}`; p.textContent = symbol; p.style.left = Math.random() * 100 + 'vw';
+                    const size = Math.random() * 20 + 10; p.style.fontSize = size + 'px';
+                    const duration = Math.random() * 3 + 2; p.style.animationDuration = duration + 's';
+                    effectsContainer.appendChild(p);
+                    setTimeout(() => p.remove(), duration * 1000);
+                }, intervalTime);
             }
 
-            // --- Função updateUI (sem alterações) ---
+            async function fetchUserInfo() {
+                try {
+                    const res = await fetch('/api/user-info');
+                    if (!res.ok) { if (res.status === 401) window.location.href = '/login?error=unauthorized'; return; }
+                    const data = await res.json();
+                    
+                    const planName = data.plan.charAt(0).toUpperCase() + data.plan.slice(1);
+                    sidebarUser.textContent = `Bem-vindo, ${data.username}!`;
+                    sidebarPlan.textContent = `Plano: ${planName}`;
+                    
+                    if (currentUserPlan !== data.plan) applyThemeEffects(data.plan);
+                    currentUserPlan = data.plan;
+                    currentUserGameLimit = data.gameLimit; 
+
+                    const exp = document.getElementById('sidebarExpiry');
+                    const btn = document.getElementById('renewFreeButton');
+                    btn.style.display = 'none';
+                    exp.textContent = '';
+
+                    if (data.plan === 'free') {
+                        exp.textContent = `Horas: ${data.freeHoursRemaining}`;
+                        if (data.freeHoursRemaining <= 0) btn.style.display = 'inline-flex';
+                    } else if (data.plan === 'lifetime') {
+                        exp.textContent = `Plano Vitalício`;
+                    } else if (data.planExpiresAt) {
+                        const expiryDate = new Date(data.planExpiresAt);
+                        const now = new Date();
+                        const diffDays = Math.ceil((expiryDate - now) / (86400000));
+                        const formattedDate = expiryDate.toLocaleDateString('pt-BR'); 
+                        exp.textContent = diffDays > 0 ? `Expira em: ${formattedDate} (${diffDays} dias)` : `Expirado em: ${formattedDate}`;
+                    } else {
+                        exp.textContent = `Plano Ativo`;
+                    }
+                } catch (e) {}
+            }
+
+            // ... (Resto das funções updateUI, listeners e inicialização iguais ao anterior) ...
+            
             async function updateUI() {
                 const selectAllState = selectAllCheckbox.checked;
                 const checkedUsernames = new Set();
-                document.querySelectorAll('.account-checkbox:checked').forEach(cb => {
-                    checkedUsernames.add(cb.dataset.username);
-                });
-
+                document.querySelectorAll('.account-checkbox:checked').forEach(cb => checkedUsernames.add(cb.dataset.username));
                 try {
-                    const response = await fetch('/api/status'); 
-                    if (!response.ok) { 
-                        if (response.status === 401) window.location.href = '/login?error=unauthorized';
-                        return; 
-                    }
-                    const data = await response.json();
-                    const accounts = data.accounts; 
+                    const res = await fetch('/api/status');
+                    if (!res.ok) { if (res.status === 401) window.location.href = '/login?error=unauthorized'; return; }
+                    const data = await res.json();
                     accountsTableBody.innerHTML = '';
-                    
-                    if (Object.keys(accounts).length === 0) { 
-                        accountsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Nenhuma conta adicionada. Clique em "Adicionar Conta" para começar.</td></tr>`; 
-                    }
-                    
-                    for (const username in accounts) {
-                        const acc = accounts[username];
+                    if (Object.keys(data.accounts).length === 0) accountsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Nenhuma conta.</td></tr>`;
+                    for (const u in data.accounts) {
+                        const acc = data.accounts[u];
                         const row = document.createElement('tr');
-                        row.innerHTML = `
-                            <td><input type="checkbox" class="account-checkbox" data-username="${acc.username}"></td>
-                            <td>${acc.username}</td>
-                            <td class="status-cell">${acc.status}</td>
-                            <td>${formatUptime(acc.uptime)}</td>
-                            <td class="actions-cell"></td>
-                        `;
-                        if (checkedUsernames.has(acc.username)) {
-                            const newCheckbox = row.querySelector('.account-checkbox');
-                            if (newCheckbox) newCheckbox.checked = true;
-                        }
-                        const statusCell = row.querySelector('.status-cell');
-                        statusCell.className = 'status-cell';
-                        if (acc.status === 'Rodando') { statusCell.classList.add('status-running'); } 
-                        else if (acc.status === 'Parado') { statusCell.classList.add('status-stopped'); } 
-                        else { statusCell.classList.add('status-pending'); }
+                        row.innerHTML = `<td><input type="checkbox" class="account-checkbox" data-username="${acc.username}"></td><td>${acc.username}</td><td class="${acc.status === 'Rodando' ? 'status-running' : 'status-stopped'}">${acc.status}</td><td>${formatUptime(acc.uptime)}</td><td class="actions-cell"></td>`;
+                        if (checkedUsernames.has(acc.username)) row.querySelector('.account-checkbox').checked = true;
+                        const actions = row.querySelector('.actions-cell');
                         
-                        const actionsCell = row.querySelector('.actions-cell');
-                        const primaryBtn = document.createElement('button');
-                        const status = acc.status;
-                        if (status === 'Rodando') {
-                            primaryBtn.innerHTML = icons.stop + "Parar";
-                            primaryBtn.className = 'stop-btn';
-                            primaryBtn.onclick = () => fetch(`/api/stop/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
-                        } else if (status === 'Pendente: Steam Guard' || status.startsWith('Reconectando')) {
-                            primaryBtn.innerHTML = icons.refresh + "Tentar Novamente";
-                            primaryBtn.className = 'reconnect-btn';
-                            primaryBtn.onclick = () => fetch(`/api/start/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
-                        } else {
-                            primaryBtn.innerHTML = icons.play + "Iniciar";
-                            primaryBtn.className = 'start-btn';
-                            primaryBtn.onclick = () => fetch(`/api/start/${acc.username}`, { method: 'POST' }).finally(() => setTimeout(updateUI, 500));
-                        }
+                        const btnStart = document.createElement('button');
+                        if(acc.status==='Rodando'){ btnStart.innerHTML=icons.stop+"Parar"; btnStart.className='stop-btn'; btnStart.onclick=()=>fetch(`/api/stop/${acc.username}`,{method:'POST'}).then(updateUI); }
+                        else { btnStart.innerHTML=icons.play+"Iniciar"; btnStart.className='start-btn'; btnStart.onclick=()=>fetch(`/api/start/${acc.username}`,{method:'POST'}).then(res=>res.json()).then(d=>{showToast(d.message, res.ok?'info':'error'); updateUI();}); }
                         
-                        const guardBtn = document.createElement('button');
-                        guardBtn.innerHTML = icons.guard + "Guard";
-                        if (acc.status === "Pendente: Steam Guard") guardBtn.classList.add('pulse-attention');
-                        guardBtn.onclick = () => { const code = prompt(`Insira o código do Steam Guard para ${acc.username}:`); if (code) fetch(`/api/submit-guard/${acc.username}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) }).finally(() => setTimeout(updateUI, 1000)); };
-                        const manageBtn = document.createElement('button');
-                        manageBtn.innerHTML = icons.games + "Jogos";
-                        manageBtn.onclick = () => { currentlyEditingGamesFor = acc.username; appIdsInput.value = acc.games.join(', '); gamesModal.style.display = 'block'; };
-                        
-                        const settingsBtn = document.createElement('button');
-                        settingsBtn.innerHTML = icons.settings + "Config.";
-                        settingsBtn.className = "settings-btn";
-                        
-                        settingsBtn.onclick = () => {
-                            currentlyEditingSettingsFor = acc.username;
-                            const currentSettings = acc.settings;
+                        const btnGuard = document.createElement('button'); btnGuard.innerHTML=icons.guard+"Guard"; if (acc.status === "Pendente: Steam Guard") btnGuard.classList.add('pulse-attention'); btnGuard.onclick=()=>{const c=prompt('Código:');if(c)fetch(`/api/submit-guard/${acc.username}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:c})});};
+                        const btnGames = document.createElement('button'); btnGames.innerHTML=icons.games+"Jogos"; btnGames.onclick=()=>{ currentlyEditingGamesFor=acc.username; appIdsInput.value=acc.games.join(', '); gamesModal.style.display='block'; updateGameLimitText(); };
+                        const btnSettings = document.createElement('button'); btnSettings.innerHTML=icons.settings+"Config"; btnSettings.className="settings-btn";
+                        btnSettings.onclick=()=>{ 
+                            currentlyEditingSettingsFor=acc.username;
+                            const s=acc.settings;
+                            document.getElementById('customTitleInput').value=s.customInGameTitle||'';
+                            document.getElementById('customAwayMessageInput').value=s.customAwayMessage||'';
+                            document.getElementById('appearOfflineToggle').checked=s.appearOffline;
+                            document.getElementById('autoAcceptFriendsToggle').checked=s.autoAcceptFriends;
+                            document.getElementById('autoReloginToggle').checked=s.autoRelogin;
+                            document.getElementById('sharedSecretInput').value=s.sharedSecret||'';
                             
-                            const titleInput = document.getElementById('customTitleInput');
-                            const awayInput = document.getElementById('customAwayMessageInput');
-                            const offlineToggle = document.getElementById('appearOfflineToggle');
-                            const friendsToggle = document.getElementById('autoAcceptFriendsToggle');
-
-                            titleInput.value = currentSettings.customInGameTitle || '';
-                            awayInput.value = currentSettings.customAwayMessage || '';
-                            offlineToggle.checked = currentSettings.appearOffline;
-                            friendsToggle.checked = currentSettings.autoAcceptFriends;
-                            document.getElementById('autoReloginToggle').checked = currentSettings.autoRelogin;
-                            document.getElementById('sharedSecretInput').value = currentSettings.sharedSecret || '';
-
-                            titleInput.disabled = false;
-                            awayInput.disabled = false;
-                            offlineToggle.disabled = false;
-                            friendsToggle.disabled = false;
-
-                            if (currentUserPlan === 'free') {
-                                titleInput.disabled = true;
-                                awayInput.disabled = true;
-                                offlineToggle.disabled = true;
-                                friendsToggle.disabled = true;
-                            } else if (currentUserPlan === 'basic') {
-                                friendsToggle.disabled = true;
-                            }
+                            const els = ['customTitleInput','customAwayMessageInput','appearOfflineToggle','autoAcceptFriendsToggle'];
+                            els.forEach(id=>document.getElementById(id).disabled=false);
+                            if(currentUserPlan==='free') els.forEach(id=>document.getElementById(id).disabled=true);
+                            else if(currentUserPlan==='basic') document.getElementById('autoAcceptFriendsToggle').disabled=true;
                             
-                            settingsModal.style.display = 'block';
+                            settingsModal.style.display='block';
                         };
+                        const btnDel = document.createElement('button'); btnDel.innerHTML=icons.remove+"Remover"; btnDel.className="remove-btn"; btnDel.onclick=()=>{if(confirm('Remover?'))fetch(`/api/remove-account/${acc.username}`,{method:'DELETE'}).then(updateUI);};
 
-                        const removeBtn = document.createElement('button');
-                        removeBtn.innerHTML = icons.remove + "Remover";
-                        removeBtn.className = "remove-btn";
-                        removeBtn.onclick = () => { if (confirm(`Tem a certeza que deseja remover a conta ${acc.username}?`)) { fetch(`/api/remove-account/${acc.username}`, { method: 'DELETE' }).finally(() => setTimeout(updateUI, 500)); } };
-                        
-                        actionsCell.append(primaryBtn, guardBtn, manageBtn, settingsBtn, removeBtn);
+                        actions.append(btnStart, btnGuard, btnGames, btnSettings, btnDel);
                         accountsTableBody.appendChild(row);
                     }
                     selectAllCheckbox.checked = selectAllState;
-                    updateBulkButtons(); 
-                } catch(e) { 
-                    console.error("Erro ao atualizar UI:", e);
-                    accountsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Erro ao carregar dados.</td></tr>`; 
-                }
+                    updateBulkButtons();
+                } catch(e){}
             }
 
-            // --- Lógica de Modais (sem alterações) ---
-            addAccountButton.addEventListener('click', async () => { 
-                const username = prompt("Nome de usuário Steam:"); 
-                if (!username) return; 
-                const password = prompt(`Senha para ${username}:`); 
-                if (!password) return; 
-                
-                const response = await fetch('/api/add-account', { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ username, password }) 
-                }); 
-                const result = await response.json(); 
-                showToast(result.message, response.ok ? 'info' : 'error'); 
-                updateUI(); 
-            });
-            let hideGamesModal = () => { 
-                gamesModal.style.display = 'none'; 
-                appIdsInput.value = ''; 
-                currentlyEditingGamesFor = null; 
-                gameSearchInput.value = '';
-                gameSearchResults.innerHTML = '';
+            function updateGameLimitText() {
+                const c = appIdsInput.value.split(',').filter(id => id.trim() !== '').length;
+                gameLimitInfo.textContent = `Jogos: ${c} / ${currentUserGameLimit}`;
+                gameLimitInfo.style.color = c > currentUserGameLimit ? '#ff6B6B' : '#00ffff';
             }
-            closeGamesModalButton.addEventListener('click', hideGamesModal);
-            window.addEventListener('click', (event) => { if (event.target == gamesModal) hideGamesModal(); });
-            saveGamesButton.addEventListener('click', async () => { 
-                if (!currentlyEditingGamesFor) return; 
-                const gamesArray = appIdsInput.value.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id) && id > 0); 
-                
-                const response = await fetch(`/api/set-games/${currentlyEditingGamesFor}`, { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify({ games: gamesArray }) 
-                });
-                const data = await response.json();
-                showToast(data.message, response.ok ? 'info' : 'error'); 
-                if (response.ok) hideGamesModal(); 
+            appIdsInput.addEventListener('input', updateGameLimitText);
+
+            addAccountButton.addEventListener('click', async () => {
+                const u = prompt("User Steam:"); if(!u)return;
+                const p = prompt("Senha:"); if(!p)return;
+                const res = await fetch('/api/add-account', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:u,password:p})});
+                const d = await res.json(); showToast(d.message, res.ok?'info':'error'); updateUI();
             });
-            let searchTimeout;
-            gameSearchInput.addEventListener('input', () => {
-                clearTimeout(searchTimeout);
-                const query = gameSearchInput.value;
-                if (query.length < 3) {
-                    gameSearchResults.innerHTML = '';
-                    return;
-                }
-                searchTimeout = setTimeout(async () => {
-                    try {
-                        const response = await fetch(`/api/search-game?q=${encodeURIComponent(query)}`);
-                        const games = await response.json();
-                        gameSearchResults.innerHTML = '';
-                        games.forEach(game => {
-                            const gameDiv = document.createElement('div');
-                            gameDiv.className = 'search-result-item';
-                            gameDiv.textContent = `${game.name} (${game.appid})`;
-                            gameDiv.onclick = () => {
-                                const currentIds = appIdsInput.value.split(',').map(s => s.trim()).filter(s => s);
-                                if (!currentIds.includes(String(game.appid))) {
-                                    currentIds.push(game.appid);
-                                    appIdsInput.value = currentIds.join(', ');
-                                }
-                                gameSearchInput.value = '';
-                                gameSearchResults.innerHTML = '';
-                            };
-                            gameSearchResults.appendChild(gameDiv);
-                        });
-                    } catch(e) { console.error("Erro ao buscar jogos", e); }
-                }, 300);
-            });
-            let hideSettingsModal = () => { 
-                settingsModal.style.display = 'none'; 
-                currentlyEditingSettingsFor = null; 
-                newPasswordInput.value = ''; 
-            }
+
+            const hideGamesModal = () => { gamesModal.style.display='none'; };
+            document.getElementById('closeGamesModalButton').onclick = hideGamesModal;
+            saveGamesButton.onclick = async () => {
+                const games = appIdsInput.value.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
+                const res = await fetch(`/api/set-games/${currentlyEditingGamesFor}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({games})});
+                const d = await res.json(); showToast(d.message, res.ok?'info':'error');
+                if(res.ok) hideGamesModal();
+            };
+
+            const hideSettingsModal = () => { settingsModal.style.display = 'none'; currentlyEditingSettingsFor = null; }
             closeSettingsModalButton.addEventListener('click', hideSettingsModal);
-            window.addEventListener('click', (event) => { if (event.target == settingsModal) hideSettingsModal(); });
+            window.addEventListener('click', (e) => { if (e.target == settingsModal) hideSettingsModal(); });
             saveSettingsButton.addEventListener('click', () => {
                 if (!currentlyEditingSettingsFor) return;
-                const newSettings = {
+                const s = {
                     customInGameTitle: document.getElementById('customTitleInput').value,
                     customAwayMessage: document.getElementById('customAwayMessageInput').value,
                     appearOffline: document.getElementById('appearOfflineToggle').checked,
@@ -519,208 +368,99 @@
                     autoRelogin: document.getElementById('autoReloginToggle').checked,
                     sharedSecret: document.getElementById('sharedSecretInput').value.trim()
                 };
-                const newPassword = newPasswordInput.value.trim();
-                const payload = { settings: newSettings };
-                if (newPassword) {
-                    payload.newPassword = newPassword;
-                }
-                fetch(`/api/save-settings/${currentlyEditingSettingsFor}`, { 
-                    method: 'POST', 
-                    headers: { 'Content-Type': 'application/json' }, 
-                    body: JSON.stringify(payload) 
-                }).then(res => res.json()).then(data => { 
-                    showToast(data.message, res.ok ? 'info' : 'error'); 
-                    if (res.ok) hideSettingsModal(); 
-                });
+                const p = document.getElementById('newPasswordInput').value.trim();
+                const payload = { settings: s }; if (p) payload.newPassword = p;
+                fetch(`/api/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(res => res.json()).then(data => { showToast(data.message, data.ok !== false ? 'info' : 'error'); if (data.ok !== false) hideSettingsModal(); });
             });
-            
-            // --- Lógica de Ações em Massa (sem alterações) ---
+
+            // Search Game logic...
+            let searchTimeout;
+            gameSearchInput.addEventListener('input', () => {
+                clearTimeout(searchTimeout);
+                if(gameSearchInput.value.length<3) { gameSearchResults.innerHTML=''; return; }
+                searchTimeout = setTimeout(async()=>{
+                    const res = await fetch(`/api/search-game?q=${gameSearchInput.value}`);
+                    const data = await res.json();
+                    gameSearchResults.innerHTML='';
+                    data.forEach(g=>{
+                        const d=document.createElement('div'); d.className='search-result-item'; d.textContent=`${g.name} (${g.appid})`;
+                        d.onclick=()=>{ 
+                            const ids=appIdsInput.value.split(',').map(s=>s.trim()).filter(s=>s);
+                            if(!ids.includes(String(g.appid))) { ids.push(g.appid); appIdsInput.value=ids.join(', '); updateGameLimitText(); }
+                            gameSearchInput.value=''; gameSearchResults.innerHTML='';
+                        };
+                        gameSearchResults.appendChild(d);
+                    })
+                },300);
+            });
+
             function updateBulkButtons() {
                 const selected = document.querySelectorAll('.account-checkbox:checked').length;
                 bulkStartButton.disabled = selected === 0;
                 bulkStopButton.disabled = selected === 0;
                 bulkRemoveButton.disabled = selected === 0;
             }
-            selectAllCheckbox.addEventListener('change', () => {
-                document.querySelectorAll('.account-checkbox').forEach(cb => cb.checked = selectAllCheckbox.checked);
-                updateBulkButtons();
-            });
-            accountsTableBody.addEventListener('change', (e) => {
-                if (e.target.classList.contains('account-checkbox')) {
-                    const totalCheckboxes = document.querySelectorAll('.account-checkbox').length;
-                    const checkedCheckboxes = document.querySelectorAll('.account-checkbox:checked').length;
-                    selectAllCheckbox.checked = totalCheckboxes > 0 && totalCheckboxes === checkedCheckboxes;
-                    updateBulkButtons();
-                }
-            });
-            function getSelectedUsernames() {
-                return Array.from(document.querySelectorAll('.account-checkbox:checked')).map(cb => cb.dataset.username);
-            }
-            bulkStartButton.addEventListener('click', () => {
-                const usernames = getSelectedUsernames();
-                if (usernames.length === 0) return;
-                fetch('/api/bulk-start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames }) })
-                    .then(res => res.json()).then(data => { showToast(data.message); setTimeout(updateUI, 1000); });
-            });
-            bulkStopButton.addEventListener('click', () => {
-                const usernames = getSelectedUsernames();
-                if (usernames.length === 0) return;
-                fetch('/api/bulk-stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames }) })
-                    .then(res => res.json()).then(data => { showToast(data.message); setTimeout(updateUI, 1000); });
-            });
-            bulkRemoveButton.addEventListener('click', () => {
-                const usernames = getSelectedUsernames();
-                if (usernames.length === 0) return;
-                if (confirm(`Tem certeza que deseja remover ${usernames.length} contas selecionadas?`)) {
-                    fetch('/api/bulk-remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usernames }) })
-                        .then(res => res.json()).then(data => { showToast(data.message); updateUI(); });
-                }
-            });
+            selectAllCheckbox.addEventListener('change', () => { document.querySelectorAll('.account-checkbox').forEach(cb => cb.checked = selectAllCheckbox.checked); updateBulkButtons(); });
+            accountsTableBody.addEventListener('change', (e) => { if (e.target.classList.contains('account-checkbox')) updateBulkButtons(); });
+            const getSel = () => Array.from(document.querySelectorAll('.account-checkbox:checked')).map(cb => cb.dataset.username);
+            bulkStartButton.onclick = () => fetch('/api/bulk-start', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usernames:getSel()})}).then(r=>r.json()).then(d=>{showToast(d.message);setTimeout(updateUI,1000)});
+            bulkStopButton.onclick = () => fetch('/api/bulk-stop', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usernames:getSel()})}).then(r=>r.json()).then(d=>{showToast(d.message);setTimeout(updateUI,1000)});
+            bulkRemoveButton.onclick = () => { if(confirm('Remover?')) fetch('/api/bulk-remove', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usernames:getSel()})}).then(r=>r.json()).then(d=>{showToast(d.message);updateUI()}); };
 
-            // --- Lógica do Modal de Licença (sem alterações) ---
-            const hideLicenseModal = () => {
-                licenseModal.style.display = 'none';
-                licenseKeyInput.value = '';
-            }
-            activateLicenseButton.addEventListener('click', (e) => {
-                e.preventDefault(); 
-                licenseModal.style.display = 'block';
-            });
-            closeLicenseModalButton.addEventListener('click', hideLicenseModal);
-            window.addEventListener('click', (event) => { 
-                if (event.target == licenseModal) hideLicenseModal();
-            });
-            saveLicenseButton.addEventListener('click', async () => {
-                const licenseKey = licenseKeyInput.value.trim();
-                if (!licenseKey) {
-                    showToast("Por favor, insira uma chave.", 'error');
-                    return;
-                }
-                
+            // Modais Extras
+            const hideLicenseModal = () => { licenseModal.style.display = 'none'; licenseKeyInput.value = ''; }
+            activateLicenseButton.onclick = (e) => { e.preventDefault(); licenseModal.style.display = 'block'; };
+            closeLicenseModalButton.onclick = hideLicenseModal;
+            saveLicenseButton.onclick = async () => {
+                const key = licenseKeyInput.value.trim();
+                if(!key) return showToast('Insira a chave.', 'error');
+                const res = await fetch('/api/activate-license', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({licenseKey:key})});
+                const d = await res.json(); showToast(d.message, res.ok?'info':'error');
+                if(res.ok) { hideLicenseModal(); fetchUserInfo(); }
+            };
+
+            const hidePasswordModal = () => { passwordModal.style.display = 'none'; document.getElementById('currentPasswordInput').value = ''; document.getElementById('newPasswordInputModal').value = ''; document.getElementById('confirmPasswordInput').value = ''; }
+            changePasswordButton.onclick = (e) => { e.preventDefault(); passwordModal.style.display = 'block'; };
+            closePasswordModalButton.onclick = hidePasswordModal;
+            savePasswordButton.onclick = async () => {
+                const cur = document.getElementById('currentPasswordInput').value;
+                const newP = document.getElementById('newPasswordInputModal').value;
+                const conf = document.getElementById('confirmPasswordInput').value;
+                const res = await fetch('/api/change-password', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({currentPassword:cur, newPassword:newP, confirmPassword:conf})});
+                const d = await res.json(); showToast(d.message, res.ok?'info':'error');
+                if(res.ok) hidePasswordModal();
+            };
+
+            renewFreeButton.onclick = async () => {
+                if(!confirm('Renovar?')) return;
+                const res = await fetch('/api/renew-free-time', {method:'POST'});
+                const d = await res.json(); showToast(d.message, res.ok?'info':'error');
+                if(res.ok) fetchUserInfo();
+            };
+
+            const hideMyKeysModal = () => { myKeysModal.style.display = 'none'; myKeysList.innerHTML = 'A carregar...'; }
+            myKeysButton.onclick = async (e) => {
+                e.preventDefault(); myKeysModal.style.display = 'block';
                 try {
-                    const response = await fetch('/api/activate-license', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ licenseKey })
-                    });
-                    const result = await response.json();
-                    
-                    showToast(result.message, response.ok ? 'info' : 'error');
-                    
-                    if (response.ok) {
-                        hideLicenseModal();
-                        fetchUserInfo(); 
+                    const res = await fetch('/api/my-keys'); const keys = await res.json();
+                    if(keys.length === 0) myKeysList.innerHTML = '<p>Sem chaves.</p>';
+                    else {
+                        myKeysList.innerHTML = '';
+                        keys.forEach(k => {
+                            const d = document.createElement('div'); d.className = 'my-key-item';
+                            d.innerHTML = `<strong>${k.plan}</strong><span>${k.durationDays ? k.durationDays + ' dias' : 'Vitalícia'}</span><input type="text" value="${k.key}" readonly>`;
+                            myKeysList.appendChild(d);
+                        });
                     }
-                } catch (e) {
-                    showToast("Erro ao conectar ao servidor.", 'error');
-                }
-            });
+                } catch(e) { myKeysList.innerHTML = '<p>Erro.</p>'; }
+            };
+            closeMyKeysModalButton.onclick = hideMyKeysModal;
+            window.onclick = (e) => { if ([gamesModal, settingsModal, licenseModal, passwordModal, myKeysModal].includes(e.target)) e.target.style.display='none'; };
 
-            // --- Lógica: Modal Mudar Senha (sem alterações) ---
-            const hidePasswordModal = () => {
-                passwordModal.style.display = 'none';
-                document.getElementById('currentPasswordInput').value = '';
-                document.getElementById('newPasswordInputModal').value = '';
-                document.getElementById('confirmPasswordInput').value = '';
-            }
-            changePasswordButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                passwordModal.style.display = 'block';
-            });
-            closePasswordModalButton.addEventListener('click', hidePasswordModal);
-            window.addEventListener('click', (event) => { 
-                if (event.target == passwordModal) hidePasswordModal();
-            });
-            savePasswordButton.addEventListener('click', async () => {
-                const currentPassword = document.getElementById('currentPasswordInput').value;
-                const newPassword = document.getElementById('newPasswordInputModal').value;
-                const confirmPassword = document.getElementById('confirmPasswordInput').value;
-
-                try {
-                    const response = await fetch('/api/change-password', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ currentPassword, newPassword, confirmPassword })
-                    });
-                    const result = await response.json();
-                    
-                    showToast(result.message, response.ok ? 'info' : 'error');
-                    
-                    if (response.ok) {
-                        hidePasswordModal();
-                    }
-                } catch (e) {
-                    showToast("Erro ao conectar ao servidor.", 'error');
-                }
-            });
-
-            // --- Lógica: Renovar Tempo Grátis (sem alterações) ---
-            renewFreeButton.addEventListener('click', async () => {
-                if (!confirm("Tem certeza que deseja renovar suas 50 horas grátis? Você só pode fazer isso uma vez por dia.")) {
-                    return;
-                }
-                
-                try {
-                    const response = await fetch('/api/renew-free-time', {
-                        method: 'POST'
-                    });
-                    const result = await response.json();
-                    
-                    showToast(result.message, response.ok ? 'info' : 'error');
-                    
-                    if (response.ok) {
-                        fetchUserInfo(); 
-                    }
-                } catch (e) {
-                    showToast("Erro ao conectar ao servidor.", 'error');
-                }
-            });
-
-            // --- *** NOVA LÓGICA: Modal Minhas Chaves (Passo 10) *** ---
-            const hideMyKeysModal = () => {
-                myKeysModal.style.display = 'none';
-                myKeysList.innerHTML = 'A carregar...';
-            }
-            myKeysButton.addEventListener('click', async (e) => {
-                e.preventDefault();
-                myKeysModal.style.display = 'block';
-                // Busca as chaves
-                try {
-                    const response = await fetch('/api/my-keys');
-                    const keys = await response.json();
-                    
-                    if (keys.length === 0) {
-                        myKeysList.innerHTML = '<p>Você não tem nenhuma chave atribuída no momento.</p>';
-                        return;
-                    }
-
-                    myKeysList.innerHTML = ''; // Limpa o "A carregar..."
-                    keys.forEach(key => {
-                        const keyElement = document.createElement('div');
-                        keyElement.className = 'my-key-item';
-                        keyElement.innerHTML = `
-                            <strong>Plano: ${key.plan}</strong>
-                            <span>Duração: ${key.durationDays ? key.durationDays + ' dias' : 'Vitalícia'}</span>
-                            <input type="text" value="${key.key}" readonly>
-                        `;
-                        myKeysList.appendChild(keyElement);
-                    });
-
-                } catch (e) {
-                    myKeysList.innerHTML = '<p style="color: var(--secondary-color);">Erro ao buscar suas chaves.</p>';
-                }
-            });
-            closeMyKeysModalButton.addEventListener('click', hideMyKeysModal);
-            window.addEventListener('click', (event) => { 
-                if (event.target == myKeysModal) hideMyKeysModal();
-            });
-
-
-            // --- Inicialização ---
-            fetchUserInfo(); 
-            updateUI(); 
-            setInterval(updateUI, 1000); 
-            setInterval(fetchUserInfo, 60000); 
+            fetchUserInfo();
+            updateUI();
+            setInterval(updateUI, 1000);
+            setInterval(fetchUserInfo, 60000);
         });
     </script>
 </body>

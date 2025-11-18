@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkout - STF Boost</title>
+    <link rel="icon" type="image/png" href="/logo.png?v=1.1">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; color: #333; }
+        .checkout-container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+        .card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        h1 { font-weight: 700; color: #1a202c; }
+        h2 { font-weight: 600; color: #2d3748; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        select, input[type="text"] { width: 100%; padding: 10px; border: 1px solid #cbd5e0; border-radius: 6px; background-color: #fff; color: #2d3748; margin-top: 5px; }
+        .info-box { background-color: #ebf8ff; border: 1px solid #bee3f8; color: #2c5282; padding: 15px; border-radius: 6px; font-size: 0.9em; margin-top: 10px; }
+        .summary-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
+        .total-row { display: flex; justify-content: space-between; font-size: 1.25em; font-weight: 700; margin-top: 20px; padding-top: 20px; border-top: 2px solid #edf2f7; }
+        .pay-btn { background-color: #009ee3; color: white; font-weight: 600; width: 100%; padding: 15px; border-radius: 6px; transition: background 0.2s; margin-top: 20px; }
+        .pay-btn:hover { background-color: #007eb5; }
+        .pay-btn:disabled { background-color: #cbd5e0; cursor: not-allowed; }
+        .checkbox-wrapper { display: flex; align-items: center; gap: 10px; margin-top: 20px; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+    <header class="bg-white border-b border-gray-200 py-4">
+        <div class="container mx-auto px-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <img src="/logo.png" alt="Logo" class="w-8 h-8">
+                <span class="text-xl font-bold text-gray-800">STF Boost Checkout</span>
+            </div>
+            <a href="/" class="text-sm text-gray-500 hover:text-blue-600">Voltar à Loja</a>
+        </div>
+    </header>
+
+    <div class="checkout-container">
+        <h1 class="text-3xl mb-2 text-center" id="pageTitle">Finalizar Compra</h1>
+        <p class="text-center text-gray-500 mb-8">1. Detalhes da Compra / 2. Pagamento Seguro</p>
+
+        <div class="grid md:grid-cols-3 gap-8">
+            <div class="md:col-span-2 space-y-6">
+                <div class="card">
+                    <h2>Detalhes do Pedido</h2>
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-600">Método de Entrega</label>
+                        <select id="deliveryMethod">
+                            <option value="direct">Direct - Ativação Automática na Conta</option>
+                            <option value="email">Email - Enviar Chave de Licença</option>
+                        </select>
+                        <div id="deliveryInfo" class="info-box">
+                            O plano será ativado na conta <strong><span id="usernameDisplay">...</span></strong> imediatamente após o pagamento.
+                        </div>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-600">Conta Logada</label>
+                        <input type="text" id="accountInput" disabled class="bg-gray-100 cursor-not-allowed font-mono" value="Carregando...">
+                    </div>
+                </div>
+            </div>
+            <div class="md:col-span-1">
+                <div class="card sticky top-4">
+                    <h2>Resumo</h2>
+                    <div class="summary-row">
+                        <span id="planNameSummary" class="font-semibold">...</span>
+                        <span id="planPriceSummary">...</span>
+                    </div>
+                    <div class="total-row">
+                        <span>Total</span>
+                        <span id="totalPrice" class="text-blue-600">...</span>
+                    </div>
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="termsCheckbox" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                        <label for="termsCheckbox" class="text-gray-600 select-none">
+                            Li e aceito os <a href="/terms" target="_blank" class="text-blue-500 hover:underline">Termos de Serviço</a>.
+                        </label>
+                    </div>
+                    <button id="payButton" disabled class="pay-btn">Pagar com Mercado Pago</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const planId = urlParams.get('plan');
+            if (!planId) { window.location.href = '/'; return; }
+
+            const usernameDisplay = document.getElementById('usernameDisplay');
+            const accountInput = document.getElementById('accountInput');
+            const payBtn = document.getElementById('payButton');
+            const termsCheckbox = document.getElementById('termsCheckbox');
+
+            try {
+                // 1. Auth
+                const authRes = await fetch('/api/auth-status');
+                const authData = await authRes.json();
+                if (!authData.loggedIn || !authData.username) {
+                    window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
+                    return;
+                }
+                usernameDisplay.textContent = authData.username;
+                accountInput.value = authData.username;
+
+                // 2. Plan
+                const plansRes = await fetch('/api/plans');
+                const plans = await plansRes.json();
+                const plan = plans.find(p => p.id === planId);
+
+                if (!plan) { alert('Plano inválido.'); window.location.href = '/'; return; }
+
+                document.getElementById('pageTitle').textContent = `Comprar Plano ${plan.name}`;
+                document.getElementById('planNameSummary').textContent = `1x ${plan.name}`;
+                const price = `R$ ${plan.price.toFixed(2).replace('.', ',')}`;
+                document.getElementById('planPriceSummary').textContent = price;
+                document.getElementById('totalPrice').textContent = price;
+
+                // 3. Pay
+                termsCheckbox.addEventListener('change', () => {
+                    payBtn.disabled = !termsCheckbox.checked;
+                    payBtn.style.opacity = termsCheckbox.checked ? "1" : "0.7";
+                });
+
+                payBtn.onclick = async () => {
+                    payBtn.disabled = true;
+                    payBtn.textContent = 'Processando...';
+                    try {
+                        const res = await fetch('/api/create-checkout', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ planId: plan.id })
+                        });
+                        const data = await res.json();
+                        if (res.ok && data.url) window.location.href = data.url;
+                        else { alert('Erro: ' + (data.message || 'Erro no MP')); payBtn.disabled = false; }
+                    } catch (e) { alert('Erro de conexão.'); payBtn.disabled = false; }
+                };
+
+            } catch (e) { console.error(e); }
+        });
+    </script>
+</body>
+</html>
