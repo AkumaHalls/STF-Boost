@@ -3,196 +3,291 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>STF Boost - Checkout</title>
+    <title>Checkout - STF Boost</title>
     <link rel="icon" type="image/png" href="/logo.png?v=1.1">
-    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="/style.css?v=2.1">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        .checkout-container {
-            max-width: 1000px;
-            margin: 50px auto;
-            padding: 20px;
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa; /* Fundo claro profissional */
+            color: #333;
         }
-        .checkout-card {
-            background-color: rgba(10, 10, 20, 0.8);
-            border: 1px solid var(--primary-color);
+        .checkout-container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        .card {
+            background: white;
+            border: 1px solid #e5e7eb;
             border-radius: 8px;
             padding: 30px;
-            box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-        .summary-box {
-            background-color: rgba(255, 255, 255, 0.05);
-            padding: 20px;
-            border-radius: 4px;
-            margin-top: 20px;
+        h1 { font-weight: 700; color: #1a202c; }
+        h2 { font-weight: 600; color: #2d3748; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
+        
+        select, input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            background-color: #fff;
+            color: #2d3748;
+            margin-top: 5px;
+        }
+        select:focus, input:focus { outline: none; border-color: #3182ce; box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.2); }
+        
+        .info-box {
+            background-color: #ebf8ff;
+            border: 1px solid #bee3f8;
+            color: #2c5282;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
         }
         .total-row {
             display: flex;
             justify-content: space-between;
-            font-size: 1.2em;
-            margin-top: 15px;
-            border-top: 1px solid #444;
-            padding-top: 15px;
-            font-weight: bold;
-            color: var(--primary-color);
+            font-size: 1.25em;
+            font-weight: 700;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #edf2f7;
         }
+        
         .pay-btn {
-            background-color: #009ee3; /* Cor do Mercado Pago */
-            border: none;
+            background-color: #009ee3; /* Azul Mercado Pago */
             color: white;
+            font-weight: 600;
             width: 100%;
             padding: 15px;
-            font-size: 1.1em;
+            border-radius: 6px;
+            transition: background 0.2s;
             margin-top: 20px;
-            cursor: pointer;
-            border-radius: 4px;
-            transition: background 0.3s;
         }
-        .pay-btn:hover {
-            background-color: #007eb5;
+        .pay-btn:hover { background-color: #007eb5; }
+        .pay-btn:disabled { background-color: #cbd5e0; cursor: not-allowed; }
+
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+            font-size: 0.9em;
         }
     </style>
 </head>
-<body class="bg-gray-900 text-white font-mono">
+<body>
 
-    <header class="container mx-auto p-4 flex justify-between items-center">
-        <div class="flex items-center gap-2">
-            <img src="/logo.png" alt="Logo" class="w-8 h-8">
-            <span class="text-xl">STF Boost Checkout</span>
+    <header class="bg-white border-b border-gray-200 py-4">
+        <div class="container mx-auto px-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <img src="/logo.png" alt="Logo" class="w-8 h-8">
+                <span class="text-xl font-bold text-gray-800">STF Boost Checkout</span>
+            </div>
+            <a href="/" class="text-sm text-gray-500 hover:text-blue-600">Voltar à Loja</a>
         </div>
-        <a href="/" class="text-gray-400 hover:text-white">Voltar</a>
     </header>
 
     <div class="checkout-container">
-        <h1 class="text-3xl mb-8 text-center" id="planTitle">Finalizar Compra</h1>
+        <h1 class="text-3xl mb-2 text-center" id="pageTitle">Finalizar Compra</h1>
+        <p class="text-center text-gray-500 mb-8">1. Detalhes da Compra / 2. Pagamento Seguro</p>
 
-        <div class="grid md:grid-cols-2 gap-8">
-            <div class="checkout-card">
-                <h2 class="text-xl mb-4 text-cyan-400">Detalhes do Pedido</h2>
-                
-                <div class="mb-4">
-                    <label class="block text-sm text-gray-400 mb-1">M�todo de Entrega</label>
-                    <div class="p-3 bg-gray-800 rounded border border-gray-600">
-                        Direct - O plano ser� ativado na sua conta automaticamente.
+        <div class="grid md:grid-cols-3 gap-8">
+            
+            <div class="md:col-span-2 space-y-6">
+                <div class="card">
+                    <h2>Detalhes do Pedido</h2>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-600">Método de Entrega</label>
+                        <select id="deliveryMethod">
+                            <option value="direct">Direct - O plano será ativado na sua conta automaticamente.</option>
+                            <option value="email">Email - Enviar chave de licença para o seu email.</option>
+                        </select>
+                        <div id="deliveryInfo" class="info-box">
+                            A ativação direta é o método recomendado. O plano será aplicado à conta <strong><span id="usernameDisplay">...</span></strong> imediatamente após o pagamento.
+                        </div>
                     </div>
-                </div>
 
-                <div class="mb-4">
-                    <label class="block text-sm text-gray-400 mb-1">Pa�s</label>
-                    <select class="w-full p-3 bg-gray-800 rounded border border-gray-600 text-white">
-                        <option>Brasil - BR</option>
-                    </select>
-                </div>
-                
-                <div class="mb-4">
-                    <label class="block text-sm text-gray-400 mb-1">Usu�rio</label>
-                    <div id="userInfoDisplay" class="p-3 bg-gray-800 rounded border border-gray-600 text-gray-300">
-                        Carregando...
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-600">País</label>
+                        <select disabled class="bg-gray-100 cursor-not-allowed">
+                            <option>Brasil - BR</option>
+                        </select>
+                        <p class="text-xs text-gray-400 mt-1">Pagamentos em BRL (Real Brasileiro).</p>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-semibold text-gray-600">Conta Logada</label>
+                        <input type="text" id="accountInput" disabled class="bg-gray-100 cursor-not-allowed font-mono" value="Carregando...">
+                        <p class="text-xs text-gray-400 mt-1">Não é você? <a href="/logout" class="text-blue-500 hover:underline">Sair</a></p>
                     </div>
                 </div>
             </div>
 
-            <div class="checkout-card">
-                <h2 class="text-xl mb-4 text-cyan-400">Resumo</h2>
-                
-                <div class="summary-box">
-                    <div class="flex justify-between mb-2">
-                        <span id="planNameSummary">Carregando...</span>
+            <div class="md:col-span-1">
+                <div class="card sticky top-4">
+                    <h2>Resumo</h2>
+                    
+                    <div class="summary-row">
+                        <span id="planNameSummary" class="font-semibold">...</span>
                         <span id="planPriceSummary">...</span>
                     </div>
-                    <div class="text-xs text-gray-400 mb-4">
-                        Cobran�a �nica. Ativa��o imediata ap�s pagamento.
+                    <div class="text-xs text-gray-500 mt-2">
+                        <ul id="planFeaturesList" class="list-disc list-inside space-y-1">
+                            </ul>
                     </div>
-                    
-                    <div class="total-row">
-                        <span>Total (BRL)</span>
-                        <span id="totalPrice">R$ ...</span>
-                    </div>
-                </div>
 
-                <button id="payButton" class="pay-btn">
-                    Pagar com Mercado Pago
-                </button>
-                
-                <div class="text-center mt-4 text-xs text-gray-500">
-                    Pagamento seguro processado pelo Mercado Pago.<br>
-                    Aceitamos Pix, Cart�o de Cr�dito e Boleto.
+                    <div class="total-row">
+                        <span>Total</span>
+                        <span id="totalPrice" class="text-blue-600">...</span>
+                    </div>
+
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="termsCheckbox" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                        <label for="termsCheckbox" class="text-gray-600 select-none">
+                            Li e aceito os <a href="#" class="text-blue-500 hover:underline">Termos de Serviço</a>.
+                        </label>
+                    </div>
+
+                    <button id="payButton" disabled class="pay-btn">
+                        Continuar para Pagamento
+                    </button>
+                    
+                    <div class="mt-4 flex justify-center gap-2 opacity-50">
+                        <div class="h-6 w-10 bg-gray-200 rounded"></div>
+                        <div class="h-6 w-10 bg-gray-200 rounded"></div>
+                        <div class="h-6 w-10 bg-gray-200 rounded"></div>
+                    </div>
                 </div>
             </div>
+
         </div>
     </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
-            // Pega o ID do plano da URL (?plan=premium)
             const urlParams = new URLSearchParams(window.location.search);
             const planId = urlParams.get('plan');
             
-            if (!planId) {
-                alert('Plano n�o especificado.');
-                window.location.href = '/';
-                return;
-            }
+            if (!planId) { alert('Plano não encontrado.'); window.location.href = '/'; return; }
 
-            // Verifica se est� logado e pega info do plano
+            const usernameDisplay = document.getElementById('usernameDisplay');
+            const accountInput = document.getElementById('accountInput');
+            const deliveryMethod = document.getElementById('deliveryMethod');
+            const deliveryInfo = document.getElementById('deliveryInfo');
+            const payBtn = document.getElementById('payButton');
+            const termsCheckbox = document.getElementById('termsCheckbox');
+
+            // 1. Verifica Login e Carrega Dados
             try {
-                // 1. Auth Status
                 const authRes = await fetch('/api/auth-status');
                 const authData = await authRes.json();
+                
                 if (!authData.loggedIn) {
+                    // Salva a URL atual para voltar depois do login
                     window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
                     return;
                 }
-                document.getElementById('userInfoDisplay').textContent = authData.username;
+                
+                // Preenche dados do usuário
+                usernameDisplay.textContent = authData.username;
+                accountInput.value = authData.username;
 
-                // 2. Plan Info (pegamos da API p�blica de planos)
+                // 2. Carrega Detalhes do Plano
                 const plansRes = await fetch('/api/plans');
                 const plans = await plansRes.json();
                 const plan = plans.find(p => p.id === planId);
 
-                if (!plan) {
-                    alert('Plano inv�lido.');
-                    window.location.href = '/';
-                    return;
-                }
+                if (!plan) { alert('Plano inválido.'); window.location.href = '/'; return; }
 
-                // Preenche a UI
-                document.getElementById('planTitle').textContent = `Comprar Plano ${plan.name}`;
-                document.getElementById('planNameSummary').textContent = `1x Plano ${plan.name}`;
-                const price = `R$ ${plan.price.toFixed(2).replace('.', ',')}`;
-                document.getElementById('planPriceSummary').textContent = price;
-                document.getElementById('totalPrice').textContent = price;
+                // Preenche UI do Plano
+                document.getElementById('pageTitle').textContent = `Comprar Plano ${plan.name}`;
+                document.getElementById('planNameSummary').textContent = `1x ${plan.name}`;
+                const priceFormatted = `R$ ${plan.price.toFixed(2).replace('.', ',')}`;
+                document.getElementById('planPriceSummary').textContent = priceFormatted;
+                document.getElementById('totalPrice').textContent = priceFormatted;
+                
+                // Lista features pequenas no resumo
+                const featuresList = document.getElementById('planFeaturesList');
+                const featuresToShow = [
+                    `${plan.days > 0 ? plan.days + ' Dias' : 'Vitalício'}`,
+                    `${plan.accounts} Contas Steam`,
+                    `${plan.games} Jogos`
+                ];
+                featuresToShow.forEach(f => {
+                    featuresList.innerHTML += `<li>${f}</li>`;
+                });
 
-                // L�gica do Bot�o de Pagar
-                const payBtn = document.getElementById('payButton');
+                // Lógica de Método de Entrega
+                deliveryMethod.addEventListener('change', () => {
+                    if (deliveryMethod.value === 'direct') {
+                        deliveryInfo.innerHTML = `A ativação direta é o método recomendado. O plano será aplicado à conta <strong>${authData.username}</strong> imediatamente após o pagamento.`;
+                        deliveryInfo.style.backgroundColor = '#ebf8ff';
+                        deliveryInfo.style.borderColor = '#bee3f8';
+                        deliveryInfo.style.color = '#2c5282';
+                    } else {
+                        deliveryInfo.innerHTML = `Uma chave de licença (ex: PREMIUM-XXXX) será enviada para o seu email cadastrado. Você poderá ativá-la ou dá-la a um amigo.`;
+                        deliveryInfo.style.backgroundColor = '#f0fff4';
+                        deliveryInfo.style.borderColor = '#c6f6d5';
+                        deliveryInfo.style.color = '#276749';
+                    }
+                });
+
+                // Habilita botão se aceitar termos
+                termsCheckbox.addEventListener('change', () => {
+                    payBtn.disabled = !termsCheckbox.checked;
+                    if (termsCheckbox.checked) {
+                        payBtn.style.opacity = "1";
+                    } else {
+                        payBtn.style.opacity = "0.7";
+                    }
+                });
+
+                // Lógica de Pagamento
                 payBtn.onclick = async () => {
                     payBtn.disabled = true;
-                    payBtn.textContent = 'Gerando Pagamento...';
+                    payBtn.textContent = 'Processando...';
                     
                     try {
                         const res = await fetch('/api/create-checkout', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ planId: plan.id })
+                            body: JSON.stringify({ 
+                                planId: plan.id,
+                                deliveryMethod: deliveryMethod.value // Envia a escolha para o backend
+                            })
                         });
                         const data = await res.json();
                         
                         if (res.ok && data.url) {
-                            window.location.href = data.url; // Redireciona para o Mercado Pago
+                            window.location.href = data.url;
                         } else {
-                            alert('Erro ao criar pagamento: ' + (data.message || 'Erro desconhecido'));
+                            alert('Erro: ' + (data.message || 'Falha ao conectar com Mercado Pago.'));
                             payBtn.disabled = false;
                             payBtn.textContent = 'Tentar Novamente';
                         }
                     } catch (e) {
-                        alert('Erro de conex�o.');
+                        alert('Erro de conexão.');
                         payBtn.disabled = false;
+                        payBtn.textContent = 'Tentar Novamente';
                     }
                 };
 
             } catch (e) {
                 console.error(e);
+                alert('Erro ao carregar dados.');
             }
         });
     </script>
