@@ -112,7 +112,6 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            // --- Auth Check ---
             const authButtons = document.getElementById('header-auth-buttons');
             if (authButtons) {
                 fetch('/api/auth-status').then(res => res.json()).then(data => {
@@ -120,56 +119,33 @@
                 }).catch(console.error);
             }
 
-            // --- Carregar Planos Dinâmicos ---
             const plansContainer = document.getElementById('plansContainer');
             fetch('/api/plans')
                 .then(res => res.json())
                 .then(plans => {
                     plansContainer.innerHTML = '';
                     
+                    // 1. Renderiza Planos Padrão
                     plans.forEach(p => {
-                        let highlightClass = '';
-                        let badge = '';
-                        let titleColor = 'text-blue-400'; 
+                        if (p.id === 'custom') return; // Pula o custom aqui, renderiza depois se existir
 
-                        if (p.style === 'fire') {
-                            highlightClass = 'premium-highlight relative';
-                            badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10">MAIS POPULAR</span>';
-                            titleColor = 'text-blue-400 relative z-20';
-                        } else if (p.style === 'cosmic') {
-                            highlightClass = 'lifetime-highlight relative';
-                            badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">TEMPO LIMITADO</span>';
-                            titleColor = 'text-purple-400 relative z-20';
-                        } else if (p.style === 'halloween') {
-                            highlightClass = 'halloween-highlight relative';
-                            badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-orange-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">🎃 ESPECIAL</span>';
-                            titleColor = 'text-orange-400 relative z-20';
-                        } else if (p.style === 'christmas') {
-                            highlightClass = 'christmas-highlight relative';
-                            badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">🎄 NATAL</span>';
-                            titleColor = 'text-red-400 relative z-20';
-                        } else if (p.style === 'newyear') {
-                            highlightClass = 'newyear-highlight relative';
-                            badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-yellow-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">✨ ANO NOVO</span>';
-                            titleColor = 'text-yellow-400 relative z-20';
-                        }
+                        let highlightClass = '', badge = '', titleColor = 'text-blue-400';
+                        if (p.style === 'fire') { highlightClass = 'premium-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10">MAIS POPULAR</span>'; titleColor = 'text-blue-400 relative z-20'; }
+                        else if (p.style === 'cosmic') { highlightClass = 'lifetime-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">TEMPO LIMITADO</span>'; titleColor = 'text-purple-400 relative z-20'; }
+                        else if (p.style === 'halloween') { highlightClass = 'halloween-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-orange-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">🎃 ESPECIAL</span>'; titleColor = 'text-orange-400 relative z-20'; }
+                        else if (p.style === 'christmas') { highlightClass = 'christmas-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">🎄 NATAL</span>'; titleColor = 'text-red-400 relative z-20'; }
+                        else if (p.style === 'newyear') { highlightClass = 'newyear-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-yellow-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">✨ ANO NOVO</span>'; titleColor = 'text-yellow-400 relative z-20'; }
 
                         const priceDisplay = p.price === 0 ? 'R$ 0' : `R$ ${p.price.toFixed(2).replace('.',',')}`;
                         const periodDisplay = p.price === 0 ? '/para sempre' : (p.days > 0 ? '/mês' : 'Único');
                         const buttonText = p.price === 0 ? 'Começar de Graça' : (p.days === 0 ? 'Comprar Acesso' : 'Comprar');
-                        
-                        // *** AQUI ESTÁ A MUDANÇA DO PASSO 4 ***
-                        // Se for pago, manda para /checkout. Se for free, manda para /register.
                         const buttonAction = p.price === 0 ? `href="/register"` : `href="/checkout?plan=${p.id}"`;
-                        
                         const buttonHtml = p.price === 0 ? 
                             `<a ${buttonAction} class="mt-auto w-full text-center bg-gray-600 px-6 py-3 rounded-md font-semibold hover:bg-gray-500 transition-colors cursor-pointer">${buttonText}</a>` : 
                             `<a ${buttonAction} class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors cursor-pointer">${buttonText}</a>`;
                         
                         let featuresHtml = '';
-                        p.features.forEach(f => {
-                            featuresHtml += `<li class="flex items-center gap-3"><span class="text-green-400">✓</span> ${f}</li>`;
-                        });
+                        p.features.forEach(f => { featuresHtml += `<li class="flex items-center gap-3"><span class="text-green-400">✓</span> ${f}</li>`; });
 
                         const cardHtml = `
                             <div class="feature-card ${highlightClass}">
@@ -177,77 +153,53 @@
                                 <h3 class="text-2xl font-bold text-center mb-4 ${titleColor}">${p.name}</h3>
                                 <div class="text-5xl font-bold text-center my-4">${priceDisplay} <span class="text-lg font-normal">${periodDisplay}</span></div>
                                 ${p.days === 0 && p.price > 0 ? '<p class="text-center text-gray-400 mb-6 -mt-4">Pagamento Único</p>' : ''}
-                                <ul class="space-y-3 mb-8 text-sm flex-grow">
-                                    ${featuresHtml}
-                                </ul>
+                                <ul class="space-y-3 mb-8 text-sm flex-grow">${featuresHtml}</ul>
                                 ${buttonHtml}
                             </div>
                         `;
                         plansContainer.insertAdjacentHTML('beforeend', cardHtml);
                     });
 
-                    // Plano Personalizado (Mantém o modal manual por ser complexo)
-                    const customCardHtml = `
-                        <div class="feature-card border-2 border-dashed border-gray-600 relative">
-                            <h3 class="text-2xl font-bold text-center mb-2 text-white">Personalizado</h3>
-                            <p class="text-center text-xs text-gray-400 mb-4">Monte o seu plano ideal</p>
-                            <div class="text-4xl font-bold text-center my-4 text-cyan-400">R$ <span id="customPriceDisplay">15.00</span></div>
-                            <div class="space-y-4 mb-6 flex-grow">
-                                <div><div class="custom-label"><span>Dias</span><span id="daysVal" class="custom-val">30</span></div><input type="range" id="daysRange" min="7" max="365" value="30" class="custom-plan-slider"></div>
-                                <div><div class="custom-label"><span>Contas</span><span id="accountsVal" class="custom-val">1</span></div><input type="range" id="accountsRange" min="1" max="33" value="1" class="custom-plan-slider"></div>
-                                <div><div class="custom-label"><span>Jogos</span><span id="gamesVal" class="custom-val">10</span></div><input type="range" id="gamesRange" min="1" max="33" value="10" class="custom-plan-slider"></div>
+                    // 2. Renderiza Plano Personalizado (Se existir e estiver ativo)
+                    const customPlan = plans.find(p => p.id === 'custom');
+                    if (customPlan) {
+                        const customHtml = `
+                            <div class="feature-card border-2 border-dashed border-gray-600 relative">
+                                <h3 class="text-2xl font-bold text-center mb-2 text-white">Personalizado</h3>
+                                <p class="text-center text-xs text-gray-400 mb-4">Monte o seu plano ideal</p>
+                                <div class="text-4xl font-bold text-center my-4 text-cyan-400">R$ <span id="customPriceDisplay">15.00</span></div>
+                                <div class="space-y-4 mb-6 flex-grow">
+                                    <div><div class="custom-label"><span>Dias</span><span id="daysVal" class="custom-val">30</span></div><input type="range" id="daysRange" min="7" max="365" value="30" class="custom-plan-slider"></div>
+                                    <div><div class="custom-label"><span>Contas</span><span id="accountsVal" class="custom-val">1</span></div><input type="range" id="accountsRange" min="1" max="33" value="1" class="custom-plan-slider"></div>
+                                    <div><div class="custom-label"><span>Jogos</span><span id="gamesVal" class="custom-val">10</span></div><input type="range" id="gamesRange" min="1" max="33" value="10" class="custom-plan-slider"></div>
+                                </div>
+                                <a id="customBuyButton" href="#" class="mt-auto w-full text-center bg-cyan-600 px-6 py-3 rounded-md font-semibold hover:bg-cyan-700 transition-colors">Comprar Personalizado</a>
                             </div>
-                            <button id="customBuyButton" class="mt-auto w-full text-center bg-cyan-600 px-6 py-3 rounded-md font-semibold hover:bg-cyan-700 transition-colors">Comprar Personalizado</button>
-                        </div>
-                    `;
-                    plansContainer.insertAdjacentHTML('beforeend', customCardHtml);
-                    setupCustomPlanLogic();
-                    setupPurchaseModals(); // Apenas para o plano personalizado
-                });
-
-            function setupCustomPlanLogic() {
-                const daysRange = document.getElementById('daysRange');
-                const accountsRange = document.getElementById('accountsRange');
-                const gamesRange = document.getElementById('gamesRange');
-                const daysVal = document.getElementById('daysVal');
-                const accountsVal = document.getElementById('accountsVal');
-                const gamesVal = document.getElementById('gamesVal');
-                const customPriceDisplay = document.getElementById('customPriceDisplay');
-                
-                const BASE_FEE = 5.00; const COST_PER_DAY = 0.10; const COST_PER_ACCOUNT = 2.00; const COST_PER_GAME = 0.10;
-                
-                function calc() {
-                    const d = parseInt(daysRange.value), a = parseInt(accountsRange.value), g = parseInt(gamesRange.value);
-                    daysVal.textContent = d; accountsVal.textContent = a; gamesVal.textContent = g;
-                    let total = BASE_FEE + (d * COST_PER_DAY) + (a * COST_PER_ACCOUNT) + (g * COST_PER_GAME);
-                    customPriceDisplay.textContent = total.toFixed(2);
-                }
-                daysRange.addEventListener('input', calc); accountsRange.addEventListener('input', calc); gamesRange.addEventListener('input', calc);
-                calc();
-            }
-
-            function setupPurchaseModals() {
-                const purchaseModal = document.getElementById('purchaseModal');
-                const closePurchaseModalButton = document.getElementById('closePurchaseModalButton');
-                const purchaseTitle = document.getElementById('purchaseTitle');
-                const customPlanDetails = document.getElementById('customPlanDetails');
-                
-                // Apenas para o botão personalizado
-                document.body.addEventListener('click', (e) => {
-                    if (e.target.id === 'customBuyButton') {
-                        purchaseTitle.textContent = `Comprar Plano Personalizado`;
-                        customPlanDetails.style.display = 'block';
-                        customPlanDetails.innerHTML = `<strong>Detalhes:</strong><br>Dias: ${document.getElementById('daysRange').value}<br>Contas: ${document.getElementById('accountsRange').value}<br>Jogos: ${document.getElementById('gamesRange').value}<br><strong>Total: R$ ${document.getElementById('customPriceDisplay').textContent}</strong>`;
-                        purchaseModal.style.display = 'block';
+                        `;
+                        plansContainer.insertAdjacentHTML('beforeend', customHtml);
+                        setupCustomLogic();
                     }
                 });
 
-                const hide = () => { purchaseModal.style.display = 'none'; }
-                closePurchaseModalButton.addEventListener('click', hide);
-                window.addEventListener('click', (event) => { if (event.target == purchaseModal) hide(); });
+            function setupCustomLogic() {
+                const dR = document.getElementById('daysRange'), aR = document.getElementById('accountsRange'), gR = document.getElementById('gamesRange');
+                const dV = document.getElementById('daysVal'), aV = document.getElementById('accountsVal'), gV = document.getElementById('gamesVal');
+                const priceDisp = document.getElementById('customPriceDisplay');
+                const btn = document.getElementById('customBuyButton');
+                
+                const BASE=5, DAY=0.1, ACC=2, GAME=0.1;
+
+                function calc() {
+                    const d = parseInt(dR.value), a = parseInt(aR.value), g = parseInt(gR.value);
+                    dV.textContent = d; aV.textContent = a; gV.textContent = g;
+                    const total = BASE + (d * DAY) + (a * ACC) + (g * GAME);
+                    priceDisp.textContent = total.toFixed(2);
+                    btn.href = `/checkout?plan=custom&days=${d}&accounts=${a}&games=${g}`;
+                }
+                dR.addEventListener('input', calc); aR.addEventListener('input', calc); gR.addEventListener('input', calc);
+                calc();
             }
         });
     </script>
-
 </body>
 </html>
