@@ -14,22 +14,17 @@
         h1 { font-weight: 700; color: #1a202c; }
         h2 { font-weight: 600; color: #2d3748; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
         select, input[type="text"] { width: 100%; padding: 10px; border: 1px solid #cbd5e0; border-radius: 6px; background-color: #fff; color: #2d3748; margin-top: 5px; }
-        .info-box { background-color: #ebf8ff; border: 1px solid #bee3f8; color: #2c5282; padding: 15px; border-radius: 6px; font-size: 0.9em; margin-top: 10px; }
+        .info-box { padding: 15px; border-radius: 6px; font-size: 0.9em; margin-top: 10px; line-height: 1.5; }
+        /* Estilos Condicionais para Info Box */
+        .info-blue { background-color: #ebf8ff; border: 1px solid #bee3f8; color: #2c5282; }
+        .info-red { background-color: #fff5f5; border: 1px solid #fed7d7; color: #c53030; }
+        
         .summary-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
         .total-row { display: flex; justify-content: space-between; font-size: 1.25em; font-weight: 700; margin-top: 20px; padding-top: 20px; border-top: 2px solid #edf2f7; }
         .pay-btn { background-color: #009ee3; color: white; font-weight: 600; width: 100%; padding: 15px; border-radius: 6px; transition: background 0.2s; margin-top: 20px; }
         .pay-btn:hover { background-color: #007eb5; }
         .pay-btn:disabled { background-color: #cbd5e0; cursor: not-allowed; }
         .checkbox-wrapper { display: flex; align-items: center; gap: 10px; margin-top: 20px; font-size: 0.9em; }
-        /* Modal Manual */
-        .modal { display: none; position: fixed; z-index: 50; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
-        .modal-content { background-color: #1a202c; color: white; margin: 10% auto; padding: 25px; width: 90%; max-width: 500px; border-radius: 8px; border: 1px solid #00ffff; box-shadow: 0 0 25px rgba(0, 255, 255, 0.3); }
-        .modal-content h2 { color: #00ffff; border-bottom: 1px solid rgba(0,255,255,0.3); margin-bottom: 15px; font-size: 1.5em; }
-        .modal-content ol { padding-left: 20px; color: #cbd5e0; list-style-type: decimal; }
-        .modal-content li { margin-bottom: 10px; }
-        .remove-btn { background-color: transparent; border: 1px solid #4f5255; color: #4f5255; width: 100%; padding: 10px; border-radius: 4px; margin-top: 20px; cursor: pointer; transition: all 0.3s; }
-        .remove-btn:hover { background-color: #4f5255; color: white; }
-        /* Coupon */
         .coupon-wrapper { display: flex; gap: 10px; margin-top: 15px; }
         .coupon-btn { background-color: #4a5568; color: white; padding: 10px 15px; border-radius: 6px; cursor: pointer; }
         .coupon-btn:hover { background-color: #2d3748; }
@@ -57,11 +52,12 @@
                     <div class="mb-4">
                         <label class="block text-sm font-semibold text-gray-600">Método de Entrega</label>
                         <select id="deliveryMethod">
-                            <option value="automatic">Mercado Pago (Automático)</option>
-                            <option value="manual">Pix Manual</option>
+                            <option value="direct">Direct - Ativação Automática na Conta (Recomendado)</option>
+                            <option value="email">Email - Enviar Chave de Licença (Manual)</option>
                         </select>
-                        <div id="deliveryInfo" class="info-box">
-                            A ativação é automática e imediata após o pagamento via Mercado Pago.
+                        
+                        <div id="deliveryInfo" class="info-box info-blue">
+                            O plano será ativado na conta <strong><span id="usernameDisplay">...</span></strong> imediatamente após o pagamento.
                         </div>
                     </div>
                     <div class="mb-4">
@@ -75,7 +71,7 @@
                 <div class="card sticky top-4">
                     <h2>Resumo</h2>
                     <div class="summary-row">
-                        <span id="planNameSummary">...</span>
+                        <span id="planNameSummary" class="font-semibold">...</span>
                         <span id="planPriceSummary">...</span>
                     </div>
                     
@@ -91,7 +87,9 @@
                     </div>
                     <div class="checkbox-wrapper">
                         <input type="checkbox" id="termsCheckbox" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-                        <label for="termsCheckbox" class="text-gray-600 select-none">Li e aceito os <a href="/terms" target="_blank" class="text-blue-500 hover:underline">Termos</a>.</label>
+                        <label for="termsCheckbox" class="text-gray-600 select-none">
+                            Li e aceito os <a href="/terms" target="_blank" class="text-blue-500 hover:underline">Termos de Serviço</a>.
+                        </label>
                     </div>
                     <button id="payButton" disabled class="pay-btn">Pagar com Mercado Pago</button>
                 </div>
@@ -99,76 +97,86 @@
         </div>
     </div>
 
-    <div id="manualPaymentModal" class="modal">
-        <div class="modal-content">
-            <h2 class="text-2xl font-bold">Pagamento Manual</h2>
-            <p class="mb-4 text-gray-400">Valor a Pagar: <strong><span id="manualPriceDisplay"></span></strong></p>
-            <ol>
-                <li>Pague via Pix para a chave abaixo.</li>
-                <li class="bg-gray-800 p-2 rounded border border-gray-600 my-2"><code class="text-cyan-400 select-all">29e55f42-fea9-467a-b85d-8080f5cc7a0e</code></li>
-                <li>Envie o comprovante para o admin.</li>
-            </ol>
-            <button id="closeManualModal" class="remove-btn">Fechar</button>
-        </div>
-    </div>
-
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
             const planId = urlParams.get('plan');
+            
             let isCustom = (planId === 'custom');
-            let customConfig = isCustom ? {
-                days: parseInt(urlParams.get('days')),
-                accounts: parseInt(urlParams.get('accounts')),
-                games: parseInt(urlParams.get('games'))
-            } : {};
+            let customConfig = {};
+            if (isCustom) {
+                customConfig = {
+                    days: parseInt(urlParams.get('days')) || 30,
+                    accounts: parseInt(urlParams.get('accounts')) || 1,
+                    games: parseInt(urlParams.get('games')) || 10
+                };
+            }
 
             if (!planId) { window.location.href = '/'; return; }
 
+            const usernameDisplay = document.getElementById('usernameDisplay');
             const accountInput = document.getElementById('accountInput');
             const payBtn = document.getElementById('payButton');
             const termsCheckbox = document.getElementById('termsCheckbox');
             const deliveryMethod = document.getElementById('deliveryMethod');
+            const deliveryInfo = document.getElementById('deliveryInfo');
             const promoCodeInput = document.getElementById('promoCodeInput');
             const applyPromoBtn = document.getElementById('applyPromoBtn');
             const promoMessage = document.getElementById('promoMessage');
-            const manualModal = document.getElementById('manualPaymentModal');
             
             let currentPrice = 0;
             let appliedCouponCode = null;
 
             try {
+                // 1. Auth
                 const authRes = await fetch('/api/auth-status');
                 const authData = await authRes.json();
-                if (!authData.loggedIn) { window.location.href = '/login'; return; }
+                if (!authData.loggedIn || !authData.username) {
+                    window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
+                    return;
+                }
+                usernameDisplay.textContent = authData.username;
                 accountInput.value = authData.username;
 
-                let planName;
+                // 2. Plan Info
+                let planName, planPrice;
                 if (isCustom) {
                     const BASE=5, DAY=0.1, ACC=2, GAME=0.1;
-                    currentPrice = BASE + (customConfig.days * DAY) + (customConfig.accounts * ACC) + (customConfig.games * GAME);
+                    planPrice = BASE + (customConfig.days * DAY) + (customConfig.accounts * ACC) + (customConfig.games * GAME);
                     planName = "Personalizado";
                 } else {
                     const plansRes = await fetch('/api/plans');
                     const plans = await plansRes.json();
                     const plan = plans.find(p => p.id === planId);
-                    if (!plan) { alert('Inválido'); window.location.href = '/'; return; }
+                    if (!plan) { alert('Plano inválido.'); window.location.href = '/'; return; }
                     planName = plan.name;
-                    currentPrice = plan.price;
+                    planPrice = plan.price;
                 }
 
                 function updatePriceDisplay() {
                     const fmt = `R$ ${currentPrice.toFixed(2).replace('.', ',')}`;
                     document.getElementById('planPriceSummary').textContent = fmt;
                     document.getElementById('totalPrice').textContent = fmt;
-                    document.getElementById('manualPriceDisplay').textContent = fmt;
                 }
                 
                 document.getElementById('pageTitle').textContent = `Comprar ${planName}`;
                 document.getElementById('planNameSummary').textContent = `1x ${planName}`;
-                updatePriceDisplay();
+                const priceFormatted = `R$ ${planPrice.toFixed(2).replace('.', ',')}`;
+                document.getElementById('planPriceSummary').textContent = priceFormatted;
+                document.getElementById('totalPrice').textContent = priceFormatted;
+                
+                // 3. Delivery Logic
+                deliveryMethod.addEventListener('change', () => {
+                    if (deliveryMethod.value === 'direct') {
+                        deliveryInfo.innerHTML = `A ativação é automática e imediata após o pagamento via Mercado Pago. O plano será aplicado diretamente na conta <strong>${authData.username}</strong>.`;
+                        deliveryInfo.className = 'info-box info-blue';
+                    } else {
+                        deliveryInfo.innerHTML = `<strong>ATENÇÃO:</strong> Você receberá o plano na forma de uma <strong>Chave de Licença</strong> enviada por e-mail. <br>Este processo é manual e requer que um administrador aprove o pedido e gere a chave.`;
+                        deliveryInfo.className = 'info-box info-red';
+                    }
+                });
 
-                // CUPOM
+                // 4. Coupon
                 applyPromoBtn.onclick = async () => {
                     const code = promoCodeInput.value.trim();
                     if (!code) return;
@@ -192,32 +200,38 @@
                     }
                 };
 
-                // PAGAMENTO
-                termsCheckbox.addEventListener('change', () => { payBtn.disabled = !termsCheckbox.checked; });
-                deliveryMethod.addEventListener('change', () => {
-                    if (deliveryMethod.value === 'manual') payBtn.textContent = "Ver Dados de Pagamento";
-                    else payBtn.textContent = "Pagar com Mercado Pago";
+                // 5. Payment
+                termsCheckbox.addEventListener('change', () => {
+                    payBtn.disabled = !termsCheckbox.checked;
+                    payBtn.style.opacity = termsCheckbox.checked ? "1" : "0.7";
                 });
 
                 payBtn.onclick = async () => {
-                    if (deliveryMethod.value === 'manual') {
-                        manualModal.style.display = 'block';
-                    } else {
-                        payBtn.disabled = true; payBtn.textContent = 'Processando...';
-                        try {
-                            const body = { planId: planId, couponCode: appliedCouponCode };
-                            if (isCustom) body.customConfig = customConfig;
-                            const res = await fetch('/api/create-checkout', {
-                                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(body)
-                            });
-                            const data = await res.json();
-                            if (res.ok && data.url) window.location.href = data.url;
-                            else { alert('Erro no MP'); payBtn.disabled = false; }
-                        } catch (e) { alert('Erro de conexão.'); payBtn.disabled = false; }
+                    payBtn.disabled = true;
+                    payBtn.textContent = 'Processando...';
+                    try {
+                        const body = { planId: planId, couponCode: appliedCouponCode, deliveryMethod: deliveryMethod.value };
+                        if (isCustom) body.customConfig = customConfig;
+                        
+                        const res = await fetch('/api/create-checkout', {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(body)
+                        });
+                        const data = await res.json();
+                        
+                        if (res.ok && data.url) {
+                            window.location.href = data.url;
+                        } else {
+                            alert('Erro: ' + (data.message || 'Erro no MP'));
+                            payBtn.disabled = false;
+                            payBtn.textContent = "Tentar Novamente";
+                        }
+                    } catch (e) {
+                        alert('Erro de conexão.');
+                        payBtn.disabled = false;
+                        payBtn.textContent = "Tentar Novamente";
                     }
                 };
-                document.getElementById('closeManualModal').onclick = () => manualModal.style.display = 'none';
 
             } catch (e) { console.error(e); }
         });
