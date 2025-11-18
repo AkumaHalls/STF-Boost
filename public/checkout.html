@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STF Boost - Checkout</title>
+    <link rel="icon" type="image/png" href="/logo.png?v=1.1">
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/style.css?v=2.1">
+    <style>
+        .checkout-container {
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .checkout-card {
+            background-color: rgba(10, 10, 20, 0.8);
+            border: 1px solid var(--primary-color);
+            border-radius: 8px;
+            padding: 30px;
+            box-shadow: 0 0 25px rgba(0, 255, 255, 0.2);
+        }
+        .summary-box {
+            background-color: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .total-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.2em;
+            margin-top: 15px;
+            border-top: 1px solid #444;
+            padding-top: 15px;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        .pay-btn {
+            background-color: #009ee3; /* Cor do Mercado Pago */
+            border: none;
+            color: white;
+            width: 100%;
+            padding: 15px;
+            font-size: 1.1em;
+            margin-top: 20px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background 0.3s;
+        }
+        .pay-btn:hover {
+            background-color: #007eb5;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white font-mono">
+
+    <header class="container mx-auto p-4 flex justify-between items-center">
+        <div class="flex items-center gap-2">
+            <img src="/logo.png" alt="Logo" class="w-8 h-8">
+            <span class="text-xl">STF Boost Checkout</span>
+        </div>
+        <a href="/" class="text-gray-400 hover:text-white">Voltar</a>
+    </header>
+
+    <div class="checkout-container">
+        <h1 class="text-3xl mb-8 text-center" id="planTitle">Finalizar Compra</h1>
+
+        <div class="grid md:grid-cols-2 gap-8">
+            <div class="checkout-card">
+                <h2 class="text-xl mb-4 text-cyan-400">Detalhes do Pedido</h2>
+                
+                <div class="mb-4">
+                    <label class="block text-sm text-gray-400 mb-1">Método de Entrega</label>
+                    <div class="p-3 bg-gray-800 rounded border border-gray-600">
+                        Direct - O plano será ativado na sua conta automaticamente.
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm text-gray-400 mb-1">País</label>
+                    <select class="w-full p-3 bg-gray-800 rounded border border-gray-600 text-white">
+                        <option>Brasil - BR</option>
+                    </select>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-sm text-gray-400 mb-1">Usuário</label>
+                    <div id="userInfoDisplay" class="p-3 bg-gray-800 rounded border border-gray-600 text-gray-300">
+                        Carregando...
+                    </div>
+                </div>
+            </div>
+
+            <div class="checkout-card">
+                <h2 class="text-xl mb-4 text-cyan-400">Resumo</h2>
+                
+                <div class="summary-box">
+                    <div class="flex justify-between mb-2">
+                        <span id="planNameSummary">Carregando...</span>
+                        <span id="planPriceSummary">...</span>
+                    </div>
+                    <div class="text-xs text-gray-400 mb-4">
+                        Cobrança única. Ativação imediata após pagamento.
+                    </div>
+                    
+                    <div class="total-row">
+                        <span>Total (BRL)</span>
+                        <span id="totalPrice">R$ ...</span>
+                    </div>
+                </div>
+
+                <button id="payButton" class="pay-btn">
+                    Pagar com Mercado Pago
+                </button>
+                
+                <div class="text-center mt-4 text-xs text-gray-500">
+                    Pagamento seguro processado pelo Mercado Pago.<br>
+                    Aceitamos Pix, Cartão de Crédito e Boleto.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Pega o ID do plano da URL (?plan=premium)
+            const urlParams = new URLSearchParams(window.location.search);
+            const planId = urlParams.get('plan');
+            
+            if (!planId) {
+                alert('Plano não especificado.');
+                window.location.href = '/';
+                return;
+            }
+
+            // Verifica se está logado e pega info do plano
+            try {
+                // 1. Auth Status
+                const authRes = await fetch('/api/auth-status');
+                const authData = await authRes.json();
+                if (!authData.loggedIn) {
+                    window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
+                    return;
+                }
+                document.getElementById('userInfoDisplay').textContent = authData.username;
+
+                // 2. Plan Info (pegamos da API pública de planos)
+                const plansRes = await fetch('/api/plans');
+                const plans = await plansRes.json();
+                const plan = plans.find(p => p.id === planId);
+
+                if (!plan) {
+                    alert('Plano inválido.');
+                    window.location.href = '/';
+                    return;
+                }
+
+                // Preenche a UI
+                document.getElementById('planTitle').textContent = `Comprar Plano ${plan.name}`;
+                document.getElementById('planNameSummary').textContent = `1x Plano ${plan.name}`;
+                const price = `R$ ${plan.price.toFixed(2).replace('.', ',')}`;
+                document.getElementById('planPriceSummary').textContent = price;
+                document.getElementById('totalPrice').textContent = price;
+
+                // Lógica do Botão de Pagar
+                const payBtn = document.getElementById('payButton');
+                payBtn.onclick = async () => {
+                    payBtn.disabled = true;
+                    payBtn.textContent = 'Gerando Pagamento...';
+                    
+                    try {
+                        const res = await fetch('/api/create-checkout', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ planId: plan.id })
+                        });
+                        const data = await res.json();
+                        
+                        if (res.ok && data.url) {
+                            window.location.href = data.url; // Redireciona para o Mercado Pago
+                        } else {
+                            alert('Erro ao criar pagamento: ' + (data.message || 'Erro desconhecido'));
+                            payBtn.disabled = false;
+                            payBtn.textContent = 'Tentar Novamente';
+                        }
+                    } catch (e) {
+                        alert('Erro de conexão.');
+                        payBtn.disabled = false;
+                    }
+                };
+
+            } catch (e) {
+                console.error(e);
+            }
+        });
+    </script>
+</body>
+</html>
