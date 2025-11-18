@@ -22,7 +22,7 @@ body {
 }
 
 /* ============================================= */
-/* 2. ANIMAÇÕES                                  */
+/* 2. ANIMAÇÕES GERAIS                           */
 /* ============================================= */
 
 /* Fundo Aurora */
@@ -57,7 +57,9 @@ body {
     100%{clip-path:polygon(0 60%,100% 60%,100% 65%,0 65%)}
 }
 
-/* --- ANIMAÇÕES DE PLANOS ESPECIAIS --- */
+/* ============================================= */
+/* 3. ANIMAÇÕES DE DESTAQUE (CARDS)              */
+/* ============================================= */
 
 /* Premium (Fogo) */
 @keyframes fire-glow {
@@ -75,7 +77,7 @@ body {
     100% { box-shadow: 0 0 10px #ff00ff, 0 0 20px #00ffff; border-color: #ff00ff; }
 }
 
-/* Halloween (Roxo/Laranja + Morcego) */
+/* Halloween (Roxo/Laranja) */
 @keyframes halloween-pulse {
     0% { box-shadow: 0 0 10px #ff6600; border-color: #800080; }
     50% { box-shadow: 0 0 25px #800080; border-color: #ff6600; }
@@ -89,19 +91,19 @@ body {
     100% { transform: translate(-20px, -5px) rotate(-10deg); opacity: 0; }
 }
 
-/* Natal (Verde/Vermelho + Neve) */
+/* Natal (Verde/Vermelho) */
 @keyframes christmas-pulse {
     0% { box-shadow: 0 0 10px #ff0000; border-color: #00ff00; }
     50% { box-shadow: 0 0 25px #00ff00; border-color: #ff0000; }
     100% { box-shadow: 0 0 10px #ff0000; border-color: #00ff00; }
 }
-@keyframes snow-fall {
+@keyframes snow-fall-card {
     0% { transform: translateY(-10px); opacity: 0; }
     20% { opacity: 1; }
     100% { transform: translateY(20px); opacity: 0; }
 }
 
-/* Ano Novo (Dourado + Brilho) */
+/* Ano Novo (Dourado/Brilho) */
 @keyframes newyear-pulse {
     0% { box-shadow: 0 0 10px #ffd700; border-color: #ffffff; }
     50% { box-shadow: 0 0 30px #ffffff; border-color: #ffd700; }
@@ -113,17 +115,68 @@ body {
     100% { transform: scale(1); opacity: 0; }
 }
 
+/* ============================================= */
+/* 4. EFEITOS DE PARTÍCULAS (DASHBOARD FULLSCREEN) */
+/* ============================================= */
+
+#effectsContainer {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; /* Permite clicar através */
+    z-index: 1;
+    overflow: hidden;
+}
+
+.particle {
+    position: absolute;
+    user-select: none;
+}
+
+/* Animação de Neve (Tela inteira) */
+@keyframes fall-linear {
+    0% { transform: translateY(-10vh) translateX(0px) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    100% { transform: translateY(110vh) translateX(20px) rotate(360deg); opacity: 0.5; }
+}
+.particle.snow {
+    color: white;
+    animation: fall-linear linear infinite;
+    text-shadow: 0 0 5px #00ffff;
+}
+
+/* Animação de Morcegos (Tela inteira) */
+@keyframes fly-diagonal {
+    0% { transform: translate(-10vw, 110vh) scale(0.5); opacity: 0; }
+    10% { opacity: 1; }
+    100% { transform: translate(110vw, -10vh) scale(1); opacity: 0; }
+}
+.particle.bat {
+    animation: fly-diagonal linear infinite;
+    filter: drop-shadow(0 0 5px #ff6600);
+}
+
+/* Animação de Confetes/Brilho (Tela inteira) */
+@keyframes pop-up-fade {
+    0% { transform: translateY(100vh) scale(0); opacity: 1; }
+    50% { transform: translateY(50vh) scale(1.5); opacity: 1; }
+    100% { transform: translateY(0vh) scale(1); opacity: 0; }
+}
+.particle.sparkle {
+    animation: pop-up-fade ease-out infinite;
+    text-shadow: 0 0 10px #ffd700;
+}
+
 
 /* ============================================= */
-/* 3. LAYOUTS DE PÁGINA                          */
+/* 5. LAYOUTS DE PÁGINA                          */
 /* ============================================= */
 
 /* Fundo Animado (Usado no Login e Dashboard) */
 body.panel-page, body.login-page {
-    padding: 0; /* Remove padding para layout full height */
+    padding: 0;
     height: 100vh;
-    overflow: hidden; /* Impede scroll no body principal */
-    
+    overflow: hidden;
     background-image: 
         radial-gradient(at 20% 20%, hsla(180, 100%, 50%, 0.2) 0px, transparent 50%),
         radial-gradient(at 80% 20%, hsla(300, 100%, 50%, 0.2) 0px, transparent 50%),
@@ -141,7 +194,7 @@ body.login-page {
 }
 
 /* ============================================= */
-/* 4. COMPONENTES UI (Botões, Inputs, Cards)     */
+/* 6. COMPONENTES UI (Botões, Inputs, Cards)     */
 /* ============================================= */
 
 /* Botões Genéricos */
@@ -238,14 +291,14 @@ button:disabled {
     flex-direction: column;
     transition: all 0.3s ease;
     box-shadow: 0 0 15px rgba(0, 255, 255, 0.1); 
-    position: relative; /* Necessário para os efeitos ::after */
+    position: relative; 
 }
 .feature-card:hover {
     box-shadow: 0 0 25px rgba(0, 255, 255, 0.3);
     transform: translateY(-5px);
 }
 
-/* Classes de Destaque (Aplicadas via JS) */
+/* Classes de Destaque nos Cards */
 .premium-highlight { border-width: 2px; animation: fire-glow 2s ease-in-out infinite; }
 .lifetime-highlight { border-width: 2px; animation: cosmic-glow 3s linear infinite; }
 
@@ -261,7 +314,7 @@ button:disabled {
     animation: christmas-pulse 3s ease-in-out infinite; 
 }
 .christmas-highlight::after {
-    content: "❄️"; position: absolute; top: 10px; right: 10px; font-size: 20px; animation: snow-fall 3s linear infinite;
+    content: "❄️"; position: absolute; top: 10px; right: 10px; font-size: 20px; animation: snow-fall-card 3s linear infinite;
 }
 .newyear-highlight { 
     border-width: 2px; 
@@ -286,7 +339,7 @@ button:disabled {
 
 
 /* ============================================= */
-/* 5. SIDEBAR E CONTEÚDO PRINCIPAL               */
+/* 7. SIDEBAR E CONTEÚDO PRINCIPAL               */
 /* ============================================= */
 
 .dashboard-layout {
@@ -294,7 +347,6 @@ button:disabled {
     height: 100vh;
 }
 
-/* Barra Lateral */
 .sidebar {
     width: 250px;
     background-color: rgba(10, 10, 20, 0.8);
@@ -304,7 +356,7 @@ button:disabled {
     display: flex;
     flex-direction: column;
     gap: 20px;
-    flex-shrink: 0; /* Impede encolher */
+    flex-shrink: 0; 
     overflow-y: auto;
 }
 
@@ -343,11 +395,10 @@ button:disabled {
 .sidebar-nav a.logout-btn { margin-top: 20px; color: #ff6B6B; }
 .sidebar-nav a.logout-btn:hover { background-color: rgba(255, 0, 255, 0.1); color: var(--secondary-color); }
 
-/* Conteúdo Principal */
 .main-content {
     flex-grow: 1; 
     padding: 20px;
-    overflow-y: auto; /* Scroll apenas aqui */
+    overflow-y: auto; 
     height: 100vh;
     box-sizing: border-box;
 }
@@ -357,7 +408,6 @@ button:disabled {
     height: auto; min-height: 100%;
 }
 
-/* Header dentro do painel */
 .control-panel header {
     display: flex; justify-content: space-between; align-items: center;
     border-bottom: 1px solid rgba(0, 255, 255, 0.3);
@@ -378,29 +428,61 @@ button:disabled {
 
 /* Tabela */
 .accounts-table table { width: 100%; border-collapse: collapse; }
-.accounts-table th, .accounts-table td { padding: 12px; text-align: left; border-bottom: 1px solid rgba(0, 255, 255, 0.2); vertical-align: middle; }
+.accounts-table th, .accounts-table td {
+    padding: 12px; text-align: left;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+    vertical-align: middle;
+}
 .accounts-table th:first-child, .accounts-table td:first-child { width: 20px; text-align: center; }
 .accounts-table th { color: var(--primary-color); text-transform: uppercase; }
 .actions-cell { display: flex; flex-wrap: wrap; gap: 5px; }
 
 /* ============================================= */
-/* 6. PAINEL ADMIN                               */
+/* 8. PAINEL ADMIN                               */
 /* ============================================= */
 .admin-container { display: flex; flex-direction: column; gap: 20px; }
-.admin-card { background-color: rgba(10, 10, 20, 0.7); border: 1px solid var(--primary-color); backdrop-filter: blur(5px); box-shadow: 0 0 25px rgba(0, 255, 255, 0.5); border-radius: 8px; padding: 20px; box-sizing: border-box; }
-.admin-card h2 { color: var(--primary-color); font-size: 1.5em; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid rgba(0, 255, 255, 0.3); padding-bottom: 10px; }
+.admin-card {
+    background-color: rgba(10, 10, 20, 0.7); 
+    border: 1px solid var(--primary-color); 
+    backdrop-filter: blur(5px); 
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.5); 
+    border-radius: 8px; 
+    padding: 20px; 
+    box-sizing: border-box; 
+}
+.admin-card h2 {
+    color: var(--primary-color); font-size: 1.5em;
+    margin-top: 0; margin-bottom: 15px;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.3); padding-bottom: 10px;
+}
 .admin-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .admin-form label { margin-left: 5px; }
-.admin-form select, .admin-form input { font-family: 'Share Tech Mono', monospace; background-color: var(--dark-bg); border: 1px solid var(--primary-color); color: #c7d5e0; padding: 8px; border-radius: 4px; font-size: 14px; }
+.admin-form select, .admin-form input {
+    font-family: 'Share Tech Mono', monospace; background-color: var(--dark-bg);
+    border: 1px solid var(--primary-color); color: #c7d5e0;
+    padding: 8px; border-radius: 4px; font-size: 14px;
+}
 .admin-form select { width: 150px; }
 .admin-form input { width: 100px; }
 .admin-form input[placeholder*="Ex: 30"] { width: 160px; }
-#generatedKeys { margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px dashed var(--primary-color); border-radius: 4px; max-height: 150px; overflow-y: auto; font-size: 12px; display: none; }
+
+#generatedKeys {
+    margin-top: 15px; padding: 10px;
+    background: rgba(0,0,0,0.3);
+    border: 1px dashed var(--primary-color);
+    border-radius: 4px;
+    max-height: 150px; overflow-y: auto;
+    font-size: 12px; display: none; 
+}
 #generatedKeys pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
 
 .admin-table-wrapper { width: 100%; overflow-x: auto; }
 .admin-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-.admin-table th, .admin-table td { padding: 10px; text-align: left; border-bottom: 1px solid rgba(0, 255, 255, 0.2); vertical-align: middle; white-space: nowrap; }
+.admin-table th, .admin-table td {
+    padding: 10px; text-align: left;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+    vertical-align: middle; white-space: nowrap; 
+}
 .admin-table th { color: var(--primary-color); }
 .admin-table .ban-btn { border-color: var(--secondary-color); color: var(--secondary-color); padding: 5px 10px; font-size: 12px; }
 .admin-table .ban-btn:hover { background-color: var(--secondary-color); color: var(--dark-bg); }
@@ -414,20 +496,24 @@ button:disabled {
 .admin-table .status-used { color: #888; }
 .admin-table .status-unused { color: #90ee90; font-weight: bold; }
 .admin-table .status-pending-admin { color: var(--pending-color); font-weight: bold; }
-.admin-table select { font-family: 'Share Tech Mono', monospace; background-color: var(--dark-bg); border: 1px solid var(--primary-color); color: #c7d5e0; padding: 5px; border-radius: 4px; font-size: 14px; }
+.admin-table select {
+    font-family: 'Share Tech Mono', monospace; background-color: var(--dark-bg);
+    border: 1px solid var(--primary-color); color: #c7d5e0;
+    padding: 5px; border-radius: 4px; font-size: 14px;
+}
 
 /* ============================================= */
-/* 7. MODAIS                                     */
+/* 9. MODAIS (Geral)                             */
 /* ============================================= */
-.modal { display: none; position: fixed; z-index: 10; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
+.modal { display: none; position: fixed; z-index: 60; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); backdrop-filter: blur(3px); }
 .modal-content { background-color: rgba(27, 40, 56, 0.9); border: 1px solid var(--primary-color); margin: 10% auto; padding: 20px; width: 80%; max-width: 500px; border-radius: 8px; box-shadow: 0 0 25px rgba(0, 255, 255, 0.5); }
 .modal-content h2 { color: var(--primary-color); margin-top: 0; }
 .modal-content p { margin-bottom: 10px; color: #c7d5e0; }
 .modal-content textarea, .modal-content input[type="text"], .modal-content input[type="password"] { width: 100%; padding: 10px; margin-top: 10px; margin-bottom: 15px; border-radius: 4px; border: 1px solid var(--primary-color); background-color: var(--dark-bg); color: #c7d5e0; box-sizing: border-box; resize: vertical; font-family: 'Share Tech Mono', monospace; }
 .modal-content input:disabled { background-color: #222; border-color: #4f5255; color: #888; cursor: not-allowed; }
 
-/* Modal de Compra */
-.modal-content ol { padding-left: 20px; color: #c7d5e0; }
+/* Modal de Compra Manual */
+.modal-content ol { padding-left: 20px; color: #c7d5e0; list-style: decimal; }
 .modal-content ol li { margin-bottom: 10px; }
 .modal-content ol li ul { padding-left: 20px; margin-top: 5px; }
 .modal-content ol li ul li { list-style-type: disc; margin-bottom: 5px; }
@@ -452,72 +538,26 @@ input:checked + .slider:before { transform: translateX(26px); }
 .switch input:disabled + .slider { background-color: #222; border: 1px solid #4f5255; cursor: not-allowed; }
 .switch input:disabled + .slider:before { background-color: #888; }
 
-/* Notificações */
+/* Notificações "Toast" */
 #toastContainer { position: fixed; top: 20px; right: 20px; z-index: 1000; }
 .toast { background-color: #1e3a51; border-left: 5px solid var(--primary-color); color: #fff; padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); opacity: 0; transition: all 0.4s ease-in-out; transform: translateX(110%); max-width: 300px; font-size: 14px; }
 .toast.show { opacity: 1; transform: translateX(0); }
 .toast.error { border-left-color: var(--secondary-color); }
 
 /* Lista de Chaves */
-.my-keys-list { margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.3); border: 1px dashed var(--primary-color); border-radius: 4px; max-height: 250px; overflow-y: auto; font-size: 14px; }
-.my-key-item { background-color: rgba(0, 255, 255, 0.05); border: 1px solid rgba(0, 255, 255, 0.2); border-radius: 4px; padding: 10px; margin-bottom: 10px; }
+.my-keys-list {
+    margin-top: 15px; padding: 10px;
+    background: rgba(0,0,0,0.3);
+    border: 1px dashed var(--primary-color);
+    border-radius: 4px;
+    max-height: 250px; overflow-y: auto; font-size: 14px;
+}
+.my-key-item {
+    background-color: rgba(0, 255, 255, 0.05);
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 10px; margin-bottom: 10px;
+}
 .my-key-item strong { color: var(--primary-color); display: block; margin-bottom: 5px; }
 .my-key-item span { color: var(--pending-color); font-size: 12px; display: block; margin-bottom: 10px; }
 .my-key-item input[type="text"] { width: 100%; background: #000; color: #fff; border: 1px solid var(--primary-color); padding: 5px; }
-
-
-
-/* ============================================= */
-/* 8. EFEITOS VISUAIS DE TEMA (DASHBOARD)        */
-/* ============================================= */
-
-/* Container que fica por cima do fundo mas atrás do conteúdo */
-#effectsContainer {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none; /* Permite clicar através dos efeitos */
-    z-index: 1; /* Fica acima do fundo, abaixo do painel */
-    overflow: hidden;
-}
-
-.particle {
-    position: absolute;
-    user-select: none;
-}
-
-/* Neve (Natal) */
-@keyframes fall-linear {
-    0% { transform: translateY(-10vh) translateX(0px) rotate(0deg); opacity: 0; }
-    10% { opacity: 1; }
-    100% { transform: translateY(110vh) translateX(20px) rotate(360deg); opacity: 0.5; }
-}
-.particle.snow {
-    color: white;
-    animation: fall-linear linear infinite;
-    text-shadow: 0 0 5px #00ffff;
-}
-
-/* Morcegos (Halloween) */
-@keyframes fly-diagonal {
-    0% { transform: translate(-10vw, 110vh) scale(0.5); opacity: 0; }
-    10% { opacity: 1; }
-    100% { transform: translate(110vw, -10vh) scale(1); opacity: 0; }
-}
-.particle.bat {
-    animation: fly-diagonal linear infinite;
-    filter: drop-shadow(0 0 5px #ff6600);
-}
-
-/* Confete/Brilho (Ano Novo) */
-@keyframes pop-up-fade {
-    0% { transform: translateY(100vh) scale(0); opacity: 1; }
-    50% { transform: translateY(50vh) scale(1.5); opacity: 1; }
-    100% { transform: translateY(0vh) scale(1); opacity: 0; }
-}
-.particle.sparkle {
-    animation: pop-up-fade ease-out infinite;
-    text-shadow: 0 0 10px #ffd700;
-}
