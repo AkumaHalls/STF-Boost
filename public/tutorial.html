@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guia de Uso - STF Boost</title>
+    <link rel="icon" type="image/png" href="/logo.png?v=1.1">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css?v=2.2">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        h1, h2, h3 { font-family: 'Share Tech Mono', monospace; color: var(--primary-color); }
+        .guide-section {
+            background: rgba(20, 20, 30, 0.8);
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+        .warning-box {
+            background: rgba(255, 215, 0, 0.1);
+            border-left: 4px solid #ffd700;
+            padding: 15px;
+            margin: 20px 0;
+            color: #e2e8f0;
+        }
+        .step-number {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background: var(--primary-color);
+            color: black;
+            text-align: center;
+            line-height: 30px;
+            border-radius: 50%;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .highlight { color: var(--secondary-color); font-weight: bold; }
+    </style>
+</head>
+<body class="panel-page" style="overflow-y: auto;">
+
+    <div class="max-w-4xl mx-auto p-6">
+        
+        <header class="flex justify-between items-center mb-10 border-b border-gray-700 pb-5">
+            <div class="flex items-center gap-3">
+                <img src="/logo.png" alt="Logo" class="w-10 h-10">
+                <h1 class="text-3xl">Guia de Uso & FAQ</h1>
+            </div>
+            <a href="/dashboard" class="text-cyan-400 hover:text-white transition-colors">Voltar ao Painel →</a>
+        </header>
+
+        <section class="guide-section border-yellow-500" style="border-color: var(--pending-color);">
+            <h2 class="text-2xl mb-4 text-yellow-400">⚠️ Importante: Steam Guard e Desconexões</h2>
+            <p class="mb-4">Para garantir que o seu boost rode 24/7 sem interrupções, você precisa entender como a Steam funciona:</p>
+            
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="bg-gray-800 p-4 rounded">
+                    <h3 class="text-xl mb-2 text-red-400">Método Manual (Padrão)</h3>
+                    <p class="text-sm text-gray-400 mb-2">Se você usa o Steam Guard do celular ou email normal.</p>
+                    <ul class="list-disc list-inside text-sm space-y-2">
+                        <li>A cada login, o sistema pedirá um código.</li>
+                        <li>Você deve clicar no botão <strong>[GUARD]</strong> no painel e digitar o código manualmente.</li>
+                        <li><strong>Problema:</strong> Se a nossa conexão cair (ou o servidor reiniciar), a conta para e fica esperando você digitar o código novamente. O boost <strong>NÃO</strong> volta sozinho.</li>
+                    </ul>
+                </div>
+
+                <div class="bg-gray-800 p-4 rounded border border-green-500">
+                    <h3 class="text-xl mb-2 text-green-400">Método Automático (Recomendado) ⭐</h3>
+                    <p class="text-sm text-gray-400 mb-2">Para automação total e reconexão automática.</p>
+                    <ul class="list-disc list-inside text-sm space-y-2">
+                        <li>Você fornece o seu <strong>Shared Secret</strong> nas configurações da conta.</li>
+                        <li>O nosso sistema gera os códigos Steam Guard automaticamente.</li>
+                        <li><strong>Vantagem:</strong> Se a conexão cair, o sistema reconecta sozinho instantaneamente. Boost infinito 24/7!</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="warning-box">
+                <strong>Dica:</strong> Se não souber pegar o Shared Secret, você pode <strong>desativar o Steam Guard</strong> temporariamente na sua conta Steam. Isso também permite a reconexão automática (embora seja menos seguro para a sua conta).
+            </div>
+        </section>
+
+        <section class="guide-section">
+            <h2 class="text-2xl mb-6">Como Configurar o Boost</h2>
+
+            <div class="space-y-8">
+                <div>
+                    <h3 class="text-xl mb-2"><span class="step-number">1</span> Adicionar Conta</h3>
+                    <p>Clique em <strong>+ Adicionar Conta</strong>. Insira seu usuário e senha da Steam. Fique tranquilo, seus dados são encriptados no nosso banco de dados.</p>
+                </div>
+
+                <div>
+                    <h3 class="text-xl mb-2"><span class="step-number">2</span> Definir Jogos</h3>
+                    <p>Antes de iniciar, clique no botão <strong>[JOGOS]</strong>. Insira os <strong>AppIDs</strong> dos jogos que quer farmar (ex: <code>730</code> para CS2, <code>570</code> para Dota 2). Separe por vírgula.</p>
+                    <p class="text-sm text-gray-500 mt-1">Nota: O número de jogos permitidos depende do seu Plano.</p>
+                </div>
+
+                <div>
+                    <h3 class="text-xl mb-2"><span class="step-number">3</span> Configurações e Shared Secret</h3>
+                    <p>Clique no botão <strong>[CONFIG.]</strong> para personalizar:</p>
+                    <ul class="list-disc list-inside ml-10 mt-2 text-gray-300">
+                        <li><strong>Título Customizado:</strong> Aparece "Em jogo não Steam: [Seu Texto]".</li>
+                        <li><strong>Aparecer Offline:</strong> Farma horas sem ninguém ver que você está online.</li>
+                        <li><strong>Shared Secret:</strong> Cole aqui o código do seu autenticador para ativar o modo 24/7 automático.</li>
+                    </ul>
+                </div>
+
+                <div>
+                    <h3 class="text-xl mb-2"><span class="step-number">4</span> Iniciar</h3>
+                    <p>Clique em <strong>[INICIAR]</strong>. Se pedir código, o status ficará amarelo ("Pendente: Steam Guard"). Clique no botão <strong>[GUARD]</strong> e digite o código que chegou no seu email/app.</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="guide-section">
+            <h2 class="text-2xl mb-4">Planos e Pagamentos</h2>
+            <p class="mb-4">Você pode fazer upgrade do seu plano a qualquer momento.</p>
+            <ul class="list-disc list-inside space-y-2">
+                <li><strong>Automático:</strong> Pague via Mercado Pago e o plano ativa na hora.</li>
+                <li><strong>Manual:</strong> Faça um Pix para o administrador e receba uma Chave de Licença.</li>
+                <li><strong>Ativar Chave:</strong> Se recebeu uma chave (sorteio ou compra manual), vá em "Ativar Licença" no menu lateral e cole o código.</li>
+            </ul>
+            <p class="mt-4 text-sm text-gray-400">Se o seu plano expirar, as contas param automaticamente e voltam para o limite do plano Gratuito.</p>
+        </section>
+
+    </div>
+
+</body>
+</html>
