@@ -7,7 +7,7 @@
     <link rel="icon" type="image/png" href="/logo.png?v=1.1">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <style>
+    <link rel="stylesheet" href="/style.css?v=2.2"> <style>
         body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; color: #333; }
         .checkout-container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
         .card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
@@ -15,10 +15,8 @@
         h2 { font-weight: 600; color: #2d3748; border-bottom: 1px solid #eee; padding-bottom: 10px; margin-bottom: 20px; }
         select, input[type="text"] { width: 100%; padding: 10px; border: 1px solid #cbd5e0; border-radius: 6px; background-color: #fff; color: #2d3748; margin-top: 5px; }
         .info-box { padding: 15px; border-radius: 6px; font-size: 0.9em; margin-top: 10px; line-height: 1.5; }
-        /* Estilos Condicionais para Info Box */
         .info-blue { background-color: #ebf8ff; border: 1px solid #bee3f8; color: #2c5282; }
         .info-red { background-color: #fff5f5; border: 1px solid #fed7d7; color: #c53030; }
-        
         .summary-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; }
         .total-row { display: flex; justify-content: space-between; font-size: 1.25em; font-weight: 700; margin-top: 20px; padding-top: 20px; border-top: 2px solid #edf2f7; }
         .pay-btn { background-color: #009ee3; color: white; font-weight: 600; width: 100%; padding: 15px; border-radius: 6px; transition: background 0.2s; margin-top: 20px; }
@@ -55,9 +53,8 @@
                             <option value="direct">Direct - Ativação Automática na Conta (Recomendado)</option>
                             <option value="email">Email - Enviar Chave de Licença (Manual)</option>
                         </select>
-                        
                         <div id="deliveryInfo" class="info-box info-blue">
-                            O plano será ativado na conta <strong><span id="usernameDisplay">...</span></strong> imediatamente após o pagamento.
+                            A ativação é automática e imediata após o pagamento. O plano será aplicado diretamente na conta <strong><span id="usernameDisplay">...</span></strong>.
                         </div>
                     </div>
                     <div class="mb-4">
@@ -74,6 +71,7 @@
                         <span id="planNameSummary" class="font-semibold">...</span>
                         <span id="planPriceSummary">...</span>
                     </div>
+                    <div class="text-xs text-gray-500 mt-2"><ul id="planFeaturesList" class="list-disc list-inside space-y-1"></ul></div>
                     
                     <div class="coupon-wrapper">
                         <input type="text" id="promoCodeInput" placeholder="Cupom de Desconto">
@@ -97,11 +95,28 @@
         </div>
     </div>
 
+    <div id="manualPaymentModal" class="modal">
+        <div class="modal-content">
+            <h2 class="text-2xl font-bold">Pagamento Manual</h2>
+            <p class="mb-4 text-gray-400">Para validar o seu pagamento, siga os passos:</p>
+            <ol>
+                <li>Realize o pagamento do valor exato (<strong><span id="manualPriceDisplay"></span></strong>) via Pix.</li>
+                <li class="bg-gray-800 p-2 rounded border border-gray-600 my-2">
+                    <span class="text-xs text-gray-500 block mb-1">Chave Pix (Mercado Pago):</span>
+                    <code class="text-cyan-400 select-all break-all">29e55f42-fea9-467a-b85d-8080f5cc7a0e</code>
+                </li>
+                <li>Envie o comprovante para o Administrador (via Discord ou Email).</li>
+                <li><strong>Aguarde a validação.</strong> Este processo não é imediato.</li>
+                <li>Após aprovado, você receberá uma Chave de Licença ou o plano será ativado diretamente.</li>
+            </ol>
+            <button id="closeManualModal" class="remove-btn">Fechar</button>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
             const planId = urlParams.get('plan');
-            
             let isCustom = (planId === 'custom');
             let customConfig = {};
             if (isCustom) {
@@ -123,115 +138,108 @@
             const promoCodeInput = document.getElementById('promoCodeInput');
             const applyPromoBtn = document.getElementById('applyPromoBtn');
             const promoMessage = document.getElementById('promoMessage');
-            
+            const manualModal = document.getElementById('manualPaymentModal');
+            const closeManualModal = document.getElementById('closeManualModal');
+            const manualPriceDisplay = document.getElementById('manualPriceDisplay');
+
             let currentPrice = 0;
             let appliedCouponCode = null;
 
             try {
-                // 1. Auth
                 const authRes = await fetch('/api/auth-status');
                 const authData = await authRes.json();
-                if (!authData.loggedIn || !authData.username) {
-                    window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href);
-                    return;
-                }
+                if (!authData.loggedIn) { window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href); return; }
                 usernameDisplay.textContent = authData.username;
                 accountInput.value = authData.username;
 
-                // 2. Plan Info
-                let planName, planPrice;
+                let planName, planPrice, features = [];
+
                 if (isCustom) {
                     const BASE=5, DAY=0.1, ACC=2, GAME=0.1;
-                    planPrice = BASE + (customConfig.days * DAY) + (customConfig.accounts * ACC) + (customConfig.games * GAME);
+                    currentPrice = BASE + (customConfig.days * DAY) + (customConfig.accounts * ACC) + (customConfig.games * GAME);
                     planName = "Personalizado";
+                    features = [`${customConfig.days} Dias`, `${customConfig.accounts} Contas`, `${customConfig.games} Jogos`];
                 } else {
                     const plansRes = await fetch('/api/plans');
                     const plans = await plansRes.json();
                     const plan = plans.find(p => p.id === planId);
                     if (!plan) { alert('Plano inválido.'); window.location.href = '/'; return; }
                     planName = plan.name;
-                    planPrice = plan.price;
+                    currentPrice = plan.price;
+                    features = [`${plan.days > 0 ? plan.days + ' Dias' : 'Vitalício'}`, `${plan.accounts} Contas`, `${plan.games} Jogos`];
                 }
 
                 function updatePriceDisplay() {
                     const fmt = `R$ ${currentPrice.toFixed(2).replace('.', ',')}`;
                     document.getElementById('planPriceSummary').textContent = fmt;
                     document.getElementById('totalPrice').textContent = fmt;
+                    manualPriceDisplay.textContent = fmt;
                 }
-                
+
                 document.getElementById('pageTitle').textContent = `Comprar ${planName}`;
                 document.getElementById('planNameSummary').textContent = `1x ${planName}`;
-                const priceFormatted = `R$ ${planPrice.toFixed(2).replace('.', ',')}`;
-                document.getElementById('planPriceSummary').textContent = priceFormatted;
-                document.getElementById('totalPrice').textContent = priceFormatted;
+                updatePriceDisplay();
                 
-                // 3. Delivery Logic
+                const featuresList = document.getElementById('planFeaturesList');
+                features.forEach(f => featuresList.innerHTML += `<li>${f}</li>`);
+
+                // Delivery Logic
                 deliveryMethod.addEventListener('change', () => {
                     if (deliveryMethod.value === 'direct') {
-                        deliveryInfo.innerHTML = `A ativação é automática e imediata após o pagamento via Mercado Pago. O plano será aplicado diretamente na conta <strong>${authData.username}</strong>.`;
+                        deliveryInfo.innerHTML = `A ativação é automática e imediata após o pagamento. O plano será aplicado diretamente na conta <strong>${authData.username}</strong>.`;
                         deliveryInfo.className = 'info-box info-blue';
+                        payBtn.textContent = "Pagar com Mercado Pago";
                     } else {
-                        deliveryInfo.innerHTML = `<strong>ATENÇÃO:</strong> Você receberá o plano na forma de uma <strong>Chave de Licença</strong> enviada por e-mail. <br>Este processo é manual e requer que um administrador aprove o pedido e gere a chave.`;
+                        deliveryInfo.innerHTML = `<strong>ATENÇÃO:</strong> Você receberá o plano na forma de uma <strong>Chave de Licença</strong> enviada por e-mail (verificação manual).`;
                         deliveryInfo.className = 'info-box info-red';
+                        payBtn.textContent = "Ver Dados de Pagamento";
                     }
                 });
 
-                // 4. Coupon
+                // Coupon Logic
                 applyPromoBtn.onclick = async () => {
                     const code = promoCodeInput.value.trim();
                     if (!code) return;
-                    const res = await fetch('/api/validate-coupon', {
-                        method: 'POST', headers: {'Content-Type':'application/json'},
-                        body: JSON.stringify({ code })
-                    });
+                    const res = await fetch('/api/validate-coupon', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ code }) });
                     const data = await res.json();
                     if (data.valid) {
                         const discountAmount = (currentPrice * data.discount) / 100;
-                        currentPrice = currentPrice - discountAmount;
+                        currentPrice = Math.max(0, currentPrice - discountAmount);
                         appliedCouponCode = code;
                         updatePriceDisplay();
                         promoMessage.textContent = `Desconto de ${data.discount}% aplicado!`;
                         promoMessage.className = "text-xs mt-1 text-green-600";
-                        applyPromoBtn.disabled = true;
-                        promoCodeInput.disabled = true;
+                        applyPromoBtn.disabled = true; promoCodeInput.disabled = true;
                     } else {
                         promoMessage.textContent = "Cupom inválido.";
                         promoMessage.className = "text-xs mt-1 text-red-600";
                     }
                 };
 
-                // 5. Payment
+                // Pay Logic
                 termsCheckbox.addEventListener('change', () => {
                     payBtn.disabled = !termsCheckbox.checked;
                     payBtn.style.opacity = termsCheckbox.checked ? "1" : "0.7";
                 });
 
                 payBtn.onclick = async () => {
-                    payBtn.disabled = true;
-                    payBtn.textContent = 'Processando...';
-                    try {
-                        const body = { planId: planId, couponCode: appliedCouponCode, deliveryMethod: deliveryMethod.value };
-                        if (isCustom) body.customConfig = customConfig;
-                        
-                        const res = await fetch('/api/create-checkout', {
-                            method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify(body)
-                        });
-                        const data = await res.json();
-                        
-                        if (res.ok && data.url) {
-                            window.location.href = data.url;
-                        } else {
-                            alert('Erro: ' + (data.message || 'Erro no MP'));
-                            payBtn.disabled = false;
-                            payBtn.textContent = "Tentar Novamente";
-                        }
-                    } catch (e) {
-                        alert('Erro de conexão.');
-                        payBtn.disabled = false;
-                        payBtn.textContent = "Tentar Novamente";
+                    if (deliveryMethod.value === 'manual') {
+                        manualModal.style.display = 'block';
+                    } else {
+                        payBtn.disabled = true; payBtn.textContent = 'Processando...';
+                        try {
+                            const body = { planId: planId, couponCode: appliedCouponCode, deliveryMethod: deliveryMethod.value };
+                            if (isCustom) body.customConfig = customConfig;
+                            const res = await fetch('/api/create-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                            const data = await res.json();
+                            if (res.ok && data.url) window.location.href = data.url;
+                            else { alert('Erro: ' + (data.message || 'Erro no MP')); payBtn.disabled = false; payBtn.textContent = "Tentar Novamente"; }
+                        } catch (e) { alert('Erro de conexão.'); payBtn.disabled = false; payBtn.textContent = "Tentar Novamente"; }
                     }
                 };
+
+                closeManualModal.onclick = () => manualModal.style.display = 'none';
+                window.onclick = (e) => { if (e.target == manualModal) manualModal.style.display = 'none'; }
 
             } catch (e) { console.error(e); }
         });
