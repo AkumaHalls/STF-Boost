@@ -16,13 +16,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const ADMIN_PASSWORD = process.env.SITE_PASSWORD; 
+const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN; 
 const SITE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-
-// --- WEBHOOKS DO DISCORD (SEGREGADOS) ---
-const DISCORD_WEBHOOK_SALES = process.env.DISCORD_WEBHOOK_SALES;   // 💰 Vendas
-const DISCORD_WEBHOOK_ALERTS = process.env.DISCORD_WEBHOOK_ALERTS; // 🚨 Erros/Guard
-const DISCORD_WEBHOOK_LOGS = process.env.DISCORD_WEBHOOK_LOGS;     // 🤖 Logs Gerais
 
 if (!MONGODB_URI || !ADMIN_PASSWORD) { 
     console.error("ERRO CRÍTICO: Variáveis de ambiente faltando!"); 
@@ -39,7 +35,7 @@ const ALGORITHM = 'aes-256-cbc';
 let appSecretKey; 
 let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timestamp: 0 }; 
 
-// --- ROUTERS ---
+// --- DEFINIÇÃO DOS ROUTERS ---
 const apiRouter = express.Router();
 const adminApiRouter = express.Router();
 
@@ -72,7 +68,7 @@ let plansCollection;
 let couponsCollection; 
 let liveAccounts = {};
 
-// --- FUNÇÕES CORE ---
+// --- FUNÇÕES CORE (DATABASE) ---
 async function connectToDB() { 
     try { 
         await mongoClient.connect(); 
@@ -90,16 +86,60 @@ async function connectToDB() {
         await licensesCollection.createIndex({ key: 1 }, { unique: true }); 
         await couponsCollection.createIndex({ code: 1 }, { unique: true }); 
     } catch (e) { 
-        console.error("[DB] Erro fatal:", e); 
-        sendDiscordNotification("❌ Falha Crítica", "Erro ao conectar ao DB. O servidor parou.", 15548997, "SYSTEM", "alert");
-        process.exit(1); 
+        console.error("[DB] Erro fatal:", e); process.exit(1); 
     } 
 }
 
+// --- FUNÇÕES CRON (Definidas antes de serem usadas no startServer) ---
+async function deductFreeTime() {
+    const updates = new Set();
+    for (const u in liveAccounts) { if (liveAccounts[u].status === 'Rodando') updates.add(liveAccounts[u].ownerUserID); }
+    if (updates.size === 0) return;
+    const ids = Array.from(updates).map(id => new ObjectId(id));
+    try {
+        await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -300000 } });
+        const expired = await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 } }).toArray();
+        expired.forEach(u => { 
+            for (const acc in liveAccounts) { 
+                if (liveAccounts[acc].ownerUserID === u._id.toString() && liveAccounts[acc].worker) { 
+                    try{ liveAccounts[acc].worker.kill(); }catch(e){} 
+                    liveAccounts[acc].status = "Tempo Esgotado"; 
+                } 
+            } 
+        });
+    } catch(e) { console.error("[CRON] Erro deductFreeTime:", e); }
+}
+
+async function checkExpiredPlans() {
+    const now = new Date();
+    try {
+        const expired = await usersCollection.find({ plan: { $ne: 'free' }, planExpiresAt: { $lt: now } }).toArray();
+        for (const u of expired) {
+            await usersCollection.updateOne({ _id: u._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: FREE_HOURS_MS } });
+            for (const acc in liveAccounts) { 
+                if (liveAccounts[acc].ownerUserID === u._id.toString()) { 
+                    try{ if(liveAccounts[acc].worker) liveAccounts[acc].worker.kill(); }catch(e){} 
+                    liveAccounts[acc].status = "Expirado"; 
+                } 
+            }
+            // Downgrade: Reseta jogos
+            const userSteamAccounts = await accountsCollection.find({ ownerUserID: u._id.toString() }).toArray();
+            if (userSteamAccounts.length > 0) {
+                const firstAccount = userSteamAccounts[0];
+                await accountsCollection.updateOne({ _id: firstAccount._id }, { $set: { games: [730] } });
+                if (userSteamAccounts.length > 1) {
+                    const accountsToDelete = userSteamAccounts.slice(1).map(acc => acc._id);
+                    await accountsCollection.deleteMany({ _id: { $in: accountsToDelete } });
+                    userSteamAccounts.slice(1).forEach(acc => { if (liveAccounts[acc.username]) delete liveAccounts[acc.username]; });
+                }
+            }
+        }
+    } catch(e) { console.error("[CRON] Erro checkExpiredPlans:", e); }
+}
+
 async function initializePlans() {
-    // (Lógica de planos igual)
     const defaultPlans = [
-        { id: 'free', name: 'Gratuito', price: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, features: ['50 Horas', '1 Conta', '1 Jogo'] },
+        { id: 'free', name: 'Gratuito', price: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, features: ['50 Horas (Renovável)', '1 Conta Steam', '1 Limite de Jogo'] },
         { id: 'basic', name: 'Basic', price: 7.90, days: 30, accounts: 2, games: 6, style: 'none', active: true, features: ['30 Dias', '2 Contas', '6 Jogos'] },
         { id: 'plus', name: 'Plus', price: 15.90, days: 30, accounts: 4, games: 12, style: 'none', active: true, features: ['30 Dias', '4 Contas', '12 Jogos'] },
         { id: 'premium', name: 'Premium', price: 27.90, days: 30, accounts: 6, games: 24, style: 'fire', active: true, features: ['30 Dias', '6 Contas', '24 Jogos'] },
@@ -108,7 +148,7 @@ async function initializePlans() {
         { id: 'halloween', name: 'Halloween Spooky', price: 19.90, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias', '8 Contas', '33 Jogos'] },
         { id: 'christmas', name: 'Natal Gift', price: 89.90, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] },
         { id: 'newyear', name: 'Ano Novo Era', price: 12.90, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
-        { id: 'custom', name: 'Personalizado', price: 15.00, days: 30, accounts: 1, games: 10, style: 'none', active: true, features: ['Monte o seu plano'] }
+        { id: 'custom', name: 'Personalizado', price: 15.00, days: 30, accounts: 1, games: 10, style: 'none', active: true, features: ['Monte o seu plano', 'Escolha dias, contas e jogos'] }
     ];
     for (const plan of defaultPlans) { await plansCollection.updateOne({ id: plan.id }, { $setOnInsert: plan }, { upsert: true }); }
     await refreshPlansCache();
@@ -118,7 +158,11 @@ async function refreshPlansCache() {
     try {
         const plans = await plansCollection.find({}).toArray();
         GLOBAL_PLANS = {};
-        plans.forEach(p => { GLOBAL_PLANS[p.id] = p; PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games }; });
+        plans.forEach(p => { 
+            GLOBAL_PLANS[p.id] = p; 
+            PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games }; 
+        });
+        console.log("[SYSTEM] Planos carregados.");
     } catch (e) {}
 }
 
@@ -134,19 +178,11 @@ async function initializeMasterKey() {
 const encrypt = (text) => { if (!appSecretKey) return null; const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
 const decrypt = (text) => { try { if (!appSecretKey || !text) return ""; const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { return ""; }};
 
-// --- NOTIFICAÇÕES INTELIGENTES ---
-function sendDiscordNotification(title, message, color, username, type = 'log') {
-    // Seletor de Webhook
-    let webhookUrl = DISCORD_WEBHOOK_LOGS; // Padrão: Logs
-    
-    if (type === 'sale') webhookUrl = DISCORD_WEBHOOK_SALES;
-    if (type === 'alert') webhookUrl = DISCORD_WEBHOOK_ALERTS;
-
-    if (!webhookUrl) return;
-
-    const payload = JSON.stringify({ embeds: [{ title: title || '\u200b', description: message || '\u200b', color: color, fields: [{ name: "Conta", value: `\`${username || 'N/A'}\``, inline: true }], footer: { text: "STF Boost System" }, timestamp: new Date().toISOString() }] });
+function sendDiscordNotification(title, message, color, username) {
+    if (!DISCORD_WEBHOOK_URL) return;
+    const payload = JSON.stringify({ embeds: [{ title: title || '\u200b', description: message || '\u200b', color: color, fields: [{ name: "Conta", value: `\`${username || 'N/A'}\``, inline: true }], footer: { text: "STF Boost Notifier" }, timestamp: new Date().toISOString() }] });
     try {
-        const req = https.request({ hostname: new URL(webhookUrl).hostname, path: new URL(webhookUrl).pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }}, () => {});
+        const req = https.request({ hostname: new URL(DISCORD_WEBHOOK_URL).hostname, path: new URL(DISCORD_WEBHOOK_URL).pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }}, () => {});
         req.on('error', (e) => {}); req.write(payload); req.end();
     } catch (e) {}
 }
@@ -155,42 +191,13 @@ async function getSteamAppList() {
     if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 1) return steamAppListCache.data;
     try {
         const response = await fetch('https://steamspy.com/api.php?request=all', { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (response.ok) { const jsonData = await response.json(); steamAppListCache = { data: Object.values(jsonData), timestamp: Date.now() }; return steamAppListCache.data; }
+        if (response.ok) {
+            const jsonData = await response.json();
+            steamAppListCache = { data: Object.values(jsonData), timestamp: Date.now() };
+            return steamAppListCache.data;
+        }
     } catch (e) {}
     return steamAppListCache.data;
-}
-
-// --- CRON JOBS ---
-async function deductFreeTime() {
-    const updates = new Set();
-    for (const u in liveAccounts) { if (liveAccounts[u].status === 'Rodando') updates.add(liveAccounts[u].ownerUserID); }
-    if (updates.size === 0) return;
-    const ids = Array.from(updates).map(id => new ObjectId(id));
-    try {
-        await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -300000 } });
-        const expired = await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 } }).toArray();
-        expired.forEach(u => { 
-            for (const acc in liveAccounts) { 
-                if (liveAccounts[acc].ownerUserID === u._id.toString() && liveAccounts[acc].worker) { 
-                    try{ liveAccounts[acc].worker.kill(); }catch(e){} 
-                    liveAccounts[acc].status = "Tempo Esgotado"; 
-                } 
-            }
-            sendDiscordNotification("⏳ Tempo Esgotado", "Plano Free expirou.", 15105570, u.username, "log");
-        });
-    } catch(e) {}
-}
-
-async function checkExpiredPlans() {
-    const now = new Date();
-    try {
-        const expired = await usersCollection.find({ plan: { $ne: 'free' }, planExpiresAt: { $lt: now } }).toArray();
-        for (const u of expired) {
-            await usersCollection.updateOne({ _id: u._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: FREE_HOURS_MS } });
-            // ... (Lógica de downgrade mantida) ...
-            sendDiscordNotification("📉 Plano Expirado", `Usuário ${u.username} voltou para Free.`, 15105570, u.username, "log");
-        }
-    } catch(e) {}
 }
 
 // --- WORKER ---
@@ -207,27 +214,20 @@ function startWorkerForAccount(accountData) {
 
     liveAccounts[username].startupTimeout = setTimeout(() => {
         if (liveAccounts[username]?.status === "Iniciando...") {
-            sendDiscordNotification("❄️ Conta Congelada", "Timeout na inicialização. Reiniciando...", 16776960, username, "alert");
+            sendDiscordNotification("❄️ Conta Congelada", "Timeout.", 16776960, username);
             try { worker.kill(); } catch(e) {}
         }
     }, 60000);
 
-    try { worker.send({ command: 'start', data: accountData }); } catch (error) {}
+    try { worker.send({ command: 'start', data: accountData }); } catch (error) { console.error(`[GESTOR] Falha start worker ${username}:`, error); }
 
-    worker.on('error', (err) => {
-        console.error(`[GESTOR] Erro worker ${username}:`, err);
-        sendDiscordNotification("💥 Erro Crítico Worker", err.message, 15548997, username, "alert");
-    });
-
+    worker.on('error', (err) => console.error(`[GESTOR] Erro worker ${username}:`, err));
     worker.on('message', (msg) => {
         if (!liveAccounts[username]) return;
         if (liveAccounts[username].startupTimeout) { clearTimeout(liveAccounts[username].startupTimeout); liveAccounts[username].startupTimeout = null; }
         if (msg.type === 'statusUpdate') {
             if (liveAccounts[username].status !== msg.payload.status) {
-                const s = msg.payload.status;
-                if (s === 'Rodando') sendDiscordNotification("✅ Conta Online", "A farmar horas com sucesso.", 5763719, username, "log");
-                else if (s.startsWith('Pendente')) sendDiscordNotification("🛡️ Steam Guard", "Aguardando código.", 16776960, username, "alert");
-                else if (s.startsWith('Erro')) sendDiscordNotification("❌ Erro na Conta", s, 15548997, username, "alert");
+                if (msg.payload.status === 'Rodando') sendDiscordNotification("✅ Conta Online", "Farmando.", 5763719, username);
             }
             Object.assign(liveAccounts[username], msg.payload);
         } else if (msg.type === 'sentryUpdate') {
@@ -235,30 +235,25 @@ function startWorkerForAccount(accountData) {
             accountsCollection.updateOne({ username, ownerUserID: liveAccounts[username].ownerUserID }, { $set: { sentryFileHash: msg.payload.sentryFileHash } });
         }
     });
-
     worker.on('exit', (code) => {
         if (liveAccounts[username]?.startupTimeout) clearTimeout(liveAccounts[username].startupTimeout);
         if (!liveAccounts[username]) return;
         const acc = liveAccounts[username];
-        
         if (!acc.manual_logout && acc.settings.autoRelogin) {
-             // Lógica de reinício (simplificada para log)
-             sendDiscordNotification("🔄 Worker Reiniciando", "Conta caiu, a reiniciar...", 3447003, username, "log");
-             // ... (reinicio real)
              usersCollection.findOne({ _id: new ObjectId(acc.ownerUserID) }).then(user => {
-                 if (user && !user.isBanned) {
-                     setTimeout(() => {
+                if (!user || user.isBanned || (user.plan === 'free' && user.freeHoursRemaining <= 0) || (user.planExpiresAt && user.planExpiresAt < new Date())) {
+                    acc.status = user?.isBanned ? "Banido" : "Tempo Esgotado"; acc.sessionStartTime = null;
+                } else {
+                    acc.status = "Reiniciando...";
+                    setTimeout(() => {
                         if (liveAccounts[username]) {
                             const decrypted = decrypt(acc.encryptedPassword);
                             if (decrypted) startWorkerForAccount({ ...acc, password: decrypted });
                         }
-                     }, 30000);
-                 }
+                    }, 30000);
+                }
              });
-        } else { 
-            acc.status = "Parado"; 
-            sendDiscordNotification("⏹️ Conta Parada", "Worker desligado manualmente.", 9807270, username, "log");
-        }
+        } else { acc.status = "Parado"; acc.sessionStartTime = null; }
     });
 }
 
@@ -291,7 +286,7 @@ const isAuthenticated = async (req, res, next) => {
 };
 const isAdminAuthenticated = (req, res, next) => { if (req.session.isAdmin) return next(); res.redirect('/admin/login?error=unauthorized'); };
 
-// --- ROTAS ---
+// --- ROTAS DE PÁGINAS ---
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/register', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'register.html')));
@@ -307,7 +302,7 @@ app.post('/admin/login', (req, res) => { req.body.password === ADMIN_PASSWORD ? 
 app.get('/admin/dashboard', isAdminAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html')));
 app.get('/admin/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
 
-// === API ===
+// === API PÚBLICA / AUTH ===
 apiRouter.get('/auth-status', async (req, res) => {
     if (req.session.userId) {
         if (!req.session.username) {
@@ -327,7 +322,6 @@ apiRouter.post('/register', async (req, res) => {
     try {
         const hash = await bcrypt.hash(password, 10);
         await usersCollection.insertOne({ username, email, password: hash, plan: 'free', freeHoursRemaining: FREE_HOURS_MS, isBanned: false, planExpiresAt: null, createdAt: new Date() });
-        sendDiscordNotification("👤 Novo Registo", `Usuário: ${username}`, 3447003, username, "log");
         res.status(201).json({ message: "Conta criada!" });
     } catch (e) { res.status(409).json({ message: "Usuário já existe." }); }
 });
@@ -349,7 +343,9 @@ apiRouter.post('/validate-coupon', async (req, res) => {
     } catch (e) { res.status(500).json({ valid: false }); }
 });
 
-// Rota protegida: Checkout
+// ==========================================
+// === API PROTEGIDA (USUÁRIO) ===
+// ==========================================
 apiRouter.use(isAuthenticated);
 apiRouter.post('/create-checkout', async (req, res) => {
     if (!mpClient) return res.status(500).json({ message: "Pagamento indisponível." });
@@ -358,6 +354,9 @@ apiRouter.post('/create-checkout', async (req, res) => {
     let price = 0; let title = ""; let metadata = {};
 
     if (planId === 'custom' && customConfig) {
+        const customPlanDB = GLOBAL_PLANS['custom'];
+        if (!customPlanDB || !customPlanDB.active) return res.status(400).json({ message: "Plano desativado." });
+
         const d = parseInt(customConfig.days) || 30; const a = parseInt(customConfig.accounts) || 1; const g = parseInt(customConfig.games) || 10;
         price = CUSTOM_PRICING.BASE + (d * CUSTOM_PRICING.DAY) + (a * CUSTOM_PRICING.ACCOUNT) + (g * CUSTOM_PRICING.GAME);
         title = `STF Boost - Personalizado (${d}d, ${a}c, ${g}j)`;
@@ -390,7 +389,6 @@ apiRouter.post('/create-checkout', async (req, res) => {
     } catch (e) { console.error("[MP] Erro:", e); res.status(500).json({ message: "Erro ao criar pagamento." }); }
 });
 
-// Webhook MP
 app.post('/api/mp-webhook', async (req, res) => {
     const { query } = req;
     if (query.topic === 'payment' || query.type === 'payment') {
@@ -400,11 +398,7 @@ app.post('/api/mp-webhook', async (req, res) => {
             if (payment.status === 'approved') {
                 const userId = payment.external_reference;
                 const meta = payment.metadata;
-                
                 if (userId) {
-                    // Notifica Venda!
-                    sendDiscordNotification("💰 Pagamento Aprovado!", `Plano: ${meta.plan_id}\nEntrega: ${meta.delivery_method}\nUser: ${userId}`, 5763719, "Sistema", "sale");
-                    
                     if (meta.coupon_code) await couponsCollection.updateOne({ code: meta.coupon_code }, { $inc: { usageCount: 1 } });
                     
                     if (meta.delivery_method !== 'email') {
@@ -421,7 +415,6 @@ app.post('/api/mp-webhook', async (req, res) => {
                             }
                         }
                         await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: updateData });
-                        sendDiscordNotification("✅ Plano Ativado", `O plano ${meta.plan_id} foi ativado automaticamente.`, 5763719, userId, "log");
                     }
                 }
             }
@@ -440,7 +433,7 @@ apiRouter.post('/save-settings/:username', async (req, res) => { const { usernam
 apiRouter.post('/set-games/:username', async (req, res) => { const { username } = req.params; const { games } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']; if (games.length > p.games) return res.status(403).json({ message: "Limite excedido." }); if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) { await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { games } }); liveAccounts[username].games = games; try { if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings: liveAccounts[username].settings, games } }); } catch(e){} res.json({ message: "OK" }); } else { res.status(404).json({ message: "Erro." }); } });
 apiRouter.post('/submit-guard/:username', (req, res) => { const acc = liveAccounts[req.params.username]; if (acc) { try { acc.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); res.json({ message: "OK" }); } catch(e){ res.status(500).json({ message: "Worker morto." }); } } else { res.status(404).json({ message: "Erro." }); } });
 apiRouter.get('/search-game', async (req, res) => { const q = (req.query.q || '').toLowerCase(); if(q.length<2) return res.json([]); const l = await getSteamAppList(); res.json(l.filter(a => a.name.toLowerCase().includes(q)).slice(0, 50)); });
-apiRouter.post('/activate-license', async (req, res) => { const { licenseKey } = req.body; const uid = req.session.userId; const key = await licensesCollection.findOne({ key: licenseKey }); if(!key || key.isUsed) return res.status(400).json({message: "Inválida"}); if(key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({message: "Não é sua"}); let exp=null; const duration = key.durationDays || (GLOBAL_PLANS[key.plan] ? GLOBAL_PLANS[key.plan].days : 30); if(duration > 0){ exp=new Date(); exp.setDate(exp.getDate()+duration); } await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: exp, freeHoursRemaining: 0, customLimits: null } }); await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } }); sendDiscordNotification("🔑 Chave Ativada", `User: ${uid} | Plano: ${key.plan}`, 3447003, "System", "log"); res.json({ message: "Ativado" }); });
+apiRouter.post('/activate-license', async (req, res) => { const { licenseKey } = req.body; const uid = req.session.userId; const key = await licensesCollection.findOne({ key: licenseKey }); if(!key || key.isUsed) return res.status(400).json({message: "Inválida"}); if(key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({message: "Não é sua"}); let exp=null; const duration = key.durationDays || (GLOBAL_PLANS[key.plan] ? GLOBAL_PLANS[key.plan].days : 30); if(duration > 0){ exp=new Date(); exp.setDate(exp.getDate()+duration); } await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: exp, freeHoursRemaining: 0, customLimits: null } }); await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } }); res.json({ message: "Ativado" }); });
 apiRouter.get('/my-keys', async (req, res) => { const k = await licensesCollection.find({ assignedTo: new ObjectId(req.session.userId), isUsed: false }).toArray(); res.json(k); });
 apiRouter.post('/renew-free-time', async (req, res) => { const uid = req.session.userId; await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { freeHoursRemaining: FREE_HOURS_MS, lastFreeRenew: new Date() } }); res.json({ message: "Renovado" }); });
 apiRouter.post('/change-password', async (req, res) => { const h = await bcrypt.hash(req.body.newPassword, 10); await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: h } }); res.json({ message: "Alterada" }); });
@@ -457,11 +450,11 @@ adminApiRouter.get('/all-plans', async (req, res) => res.json(await plansCollect
 adminApiRouter.get('/licenses', async (req, res) => res.json(await licensesCollection.find({}).sort({ createdAt: -1 }).toArray()));
 adminApiRouter.get('/coupons', async (req, res) => res.json(await couponsCollection.find({}).toArray()));
 adminApiRouter.post('/generate-keys', async (req, res) => { const { plan, quantity, durationDays } = req.body; const qty = parseInt(quantity) || 1; const keys = []; for(let i=0; i<qty; i++) { const key = `${plan.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`; await licensesCollection.insertOne({ key, plan, durationDays: parseInt(durationDays) || null, isUsed: false, createdAt: new Date() }); keys.push(key); } res.json({ keys, message: "Gerado." }); });
-adminApiRouter.post('/ban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId) { try{ if(liveAccounts[u].worker) liveAccounts[u].worker.kill(); }catch(e){} } } sendDiscordNotification("🔨 User Banido", `ID: ${req.body.userId}`, 15548997, "System", "alert"); res.json({ message: "Banido." }); });
+adminApiRouter.post('/ban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId) { try{ if(liveAccounts[u].worker) liveAccounts[u].worker.kill(); }catch(e){} } } res.json({ message: "Banido." }); });
 adminApiRouter.post('/unban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: false } }); res.json({ message: "Desbanido." }); });
 adminApiRouter.post('/delete-user', async (req, res) => { const uid = req.body.userId; await usersCollection.deleteOne({ _id: new ObjectId(uid) }); await accountsCollection.deleteMany({ ownerUserID: uid }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === uid) { try{ liveAccounts[u].worker.kill(); }catch(e){} delete liveAccounts[u]; } } res.json({ message: "Deletado." }); });
-adminApiRouter.post('/update-plan', async (req, res) => { const { userId, newPlan } = req.body; await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { plan: newPlan, planExpiresAt: null, customLimits: null } }); sendDiscordNotification("🔧 Plano Alterado (Admin)", `User: ${userId} -> ${newPlan}`, 5763719, "System", "sale"); res.json({ message: "Atualizado." }); });
-adminApiRouter.post('/assign-key', async (req, res) => { const { licenseId, username } = req.body; const user = await usersCollection.findOne({ username }); if (!user) return res.status(404).json({ message: "User não achado." }); await licensesCollection.updateOne({ _id: new ObjectId(licenseId) }, { $set: { assignedTo: user._id, assignedToUsername: user.username } }); sendDiscordNotification("🎁 Chave Atribuída", `Para: ${username}`, 5763719, "System", "sale"); res.json({ message: "Atribuído." }); });
+adminApiRouter.post('/update-plan', async (req, res) => { const { userId, newPlan } = req.body; await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { plan: newPlan, planExpiresAt: null, customLimits: null } }); res.json({ message: "Atualizado." }); });
+adminApiRouter.post('/assign-key', async (req, res) => { const { licenseId, username } = req.body; const user = await usersCollection.findOne({ username }); if (!user) return res.status(404).json({ message: "User não achado." }); await licensesCollection.updateOne({ _id: new ObjectId(licenseId) }, { $set: { assignedTo: user._id, assignedToUsername: user.username } }); res.json({ message: "Atribuído." }); });
 adminApiRouter.post('/delete-license', async (req, res) => { await licensesCollection.deleteOne({ _id: new ObjectId(req.body.licenseId) }); res.json({ message: "Deletado." }); });
 adminApiRouter.post('/update-plan-details', async (req, res) => { await plansCollection.updateOne({ id: req.body.id }, { $set: { ...req.body, price: parseFloat(req.body.price) } }, { upsert: true }); await refreshPlansCache(); res.json({ message: "OK" }); });
 adminApiRouter.post('/delete-plan', async (req, res) => { await plansCollection.deleteOne({ id: req.body.id }); await refreshPlansCache(); res.json({ message: "OK" }); });
@@ -477,6 +470,7 @@ async function startServer() {
         await initializePlans(); 
         await initializeMasterKey();
         await loadAccountsIntoMemory();
+        // Cron Jobs estão definidos, agora precisamos chamar
         setInterval(deductFreeTime, 300000);
         setInterval(checkExpiredPlans, 3600000);
         app.listen(PORT, () => console.log(`[SYSTEM] Online na porta ${PORT}`));
