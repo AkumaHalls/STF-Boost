@@ -155,7 +155,6 @@
                     if(coupons.length===0) couponsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">Sem cupons.</td></tr>';
                     coupons.forEach(c => {
                         const row = document.createElement('tr');
-                        // ATUALIZADO: Mostra usageCount
                         row.innerHTML = `<td><code style="color:var(--primary-color)">${c.code}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick='deleteCoupon("${c._id}")'>Excluir</button></td>`;
                         couponsTableBody.appendChild(row);
                     });
@@ -177,12 +176,21 @@
             };
 
             async function fetchUsers() { const res = await fetch('/api/admin/users'); const users = await res.json(); users.forEach(u => userMap.set(u._id, u.username)); renderUsers(users); }
+            
             function renderUsers(users) { 
                 usersTableBody.innerHTML = '';
                 users.forEach(u => {
                     const row = document.createElement('tr');
                     let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${p.name}</option>`);
-                    row.innerHTML = `<td>${u.username}</td><td><select class="plan-select" data-uid="${u._id}">${opts}</select></td><td>${u.isBanned?'Ban':'Ok'}</td><td class="actions-cell"><button class="ban-btn" data-uid="${u._id}">Ban/Unban</button></td>`;
+                    // Adicionado Botão de Excluir e melhoria visual do Status
+                    row.innerHTML = `
+                        <td>${u.username}</td>
+                        <td><select class="plan-select" data-uid="${u._id}">${opts}</select></td>
+                        <td class="${u.isBanned ? 'status-banned' : 'status-unused'}">${u.isBanned ? 'BANIDO' : 'Ativo'}</td>
+                        <td class="actions-cell">
+                            <button class="ban-btn" data-uid="${u._id}">${u.isBanned ? 'Desbanir' : 'Banir'}</button>
+                            <button class="delete-btn" data-uid="${u._id}" style="border-color: #ff6B6B; color: #ff6B6B; margin-left: 5px; font-size: 12px; padding: 5px 10px;">Excluir</button>
+                        </td>`;
                     usersTableBody.appendChild(row);
                 });
             }
@@ -203,17 +211,50 @@
             };
             
             usersTableBody.onclick = async (e) => {
+                // Ação de Banir/Desbanir
                 if(e.target.classList.contains('ban-btn')) {
                     const uid = e.target.dataset.uid;
-                    await fetch('/api/admin/ban-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
-                    fetchUsers();
+                    const isUnban = e.target.textContent === 'Desbanir';
+                    const endpoint = isUnban ? '/api/admin/unban-user' : '/api/admin/ban-user';
+                    
+                    try {
+                        const res = await fetch(endpoint, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
+                        const data = await res.json();
+                        if(res.ok) {
+                            showToast(data.message, 'info');
+                            fetchUsers();
+                        } else {
+                            showToast('Erro ao alterar status.', 'error');
+                        }
+                    } catch(err) { showToast('Erro de conexão.', 'error'); }
+                }
+                
+                // Ação de Excluir Usuário
+                if(e.target.classList.contains('delete-btn')) {
+                    const uid = e.target.dataset.uid;
+                    if(confirm('TEM CERTEZA? Isso apagará o usuário, todas as contas Steam associadas e encerrará os processos ativos. Esta ação é irreversível.')) {
+                        try {
+                            const res = await fetch('/api/admin/delete-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
+                            const data = await res.json();
+                            if(res.ok) {
+                                showToast(data.message, 'info');
+                                fetchUsers();
+                            } else {
+                                showToast('Erro ao excluir usuário.', 'error');
+                            }
+                        } catch(err) { showToast('Erro de conexão.', 'error'); }
+                    }
                 }
             };
+
             usersTableBody.onchange = async (e) => {
                 if(e.target.classList.contains('plan-select')) {
-                    await fetch('/api/admin/update-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:e.target.dataset.uid, newPlan:e.target.value})});
+                    const res = await fetch('/api/admin/update-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:e.target.dataset.uid, newPlan:e.target.value})});
+                    const data = await res.json();
+                    showToast(data.message, 'info');
                 }
             };
+
             licensesTableBody.onclick = async (e) => {
                 if(e.target.classList.contains('delete-key-btn')) {
                     await fetch('/api/admin/delete-license', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({licenseId:e.target.dataset.lid})});
