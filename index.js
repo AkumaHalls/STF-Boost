@@ -108,7 +108,6 @@ async function initializePlans() {
         { id: 'halloween', name: 'Halloween', price: 19.90, price_usd: 7.99, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias', '8 Contas', '33 Jogos'] },
         { id: 'christmas', name: 'Natal', price: 89.90, price_usd: 29.99, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] },
         { id: 'newyear', name: 'Ano Novo', price: 12.90, price_usd: 5.99, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
-        // Custom agora é um plano real na DB para poder ser desativado
         { id: 'custom', name: 'Personalizado', price: 15.00, price_usd: 5.00, days: 30, accounts: 1, games: 10, style: 'none', active: true, features: ['Personalizado'] }
     ];
 
@@ -117,7 +116,6 @@ async function initializePlans() {
         if (!existing) {
             await plansCollection.insertOne(plan);
         } else if (existing.price_usd === undefined) {
-            // Atualiza planos antigos com preço USD se faltar
             await plansCollection.updateOne({ id: plan.id }, { $set: { price_usd: plan.price_usd } });
         }
     }
@@ -152,7 +150,6 @@ const encrypt = (text) => { if (!appSecretKey) return null; const iv = crypto.ra
 const decrypt = (text) => { try { if (!appSecretKey || !text) return ""; const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { return ""; }};
 
 function sendDiscordNotification(title, message, color, username, type = 'log') {
-    // Mapeia variáveis ou usa padrão
     let webhookUrl = process.env.DISCORD_WEBHOOK_LOGS || DISCORD_WEBHOOK_URL; 
     if (type === 'sale') webhookUrl = process.env.DISCORD_WEBHOOK_SALES || webhookUrl;
     if (type === 'alert') webhookUrl = process.env.DISCORD_WEBHOOK_ALERTS || webhookUrl;
@@ -191,30 +188,94 @@ async function getSteamAppList() {
 function getCountryFromRequest(req) {
     if (req.query.test_country) return req.query.test_country.toUpperCase();
     if (req.body.test_country) return req.body.test_country.toUpperCase();
-    
     const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
     if (ip === '127.0.0.1' || ip === '::1') return 'BR'; 
-
     const geo = geoip.lookup(ip);
     return geo ? geo.country : 'US'; 
 }
 
-// --- CRON JOBS (Aqui, antes do uso) ---
+// --- FUNÇÃO CRÍTICA: ENFORCE LIMITS (Nova) ---
+// Garante que contas excedentes sejam paradas imediatamente ao mudar de plano
+async function enforceUserLimits(userId) {
+    try {
+        const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+        if (!user) return;
+
+        const plan = GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free'];
+        // Prioriza limites customizados, depois plano, depois free
+        const limitAccounts = user.customLimits ? user.customLimits.accounts : (plan ? plan.accounts : 1);
+        const limitGames = user.customLimits ? user.customLimits.games : (plan ? plan.games : 1);
+
+        // Identificar contas rodando
+        let runningAccounts = [];
+        for (const username in liveAccounts) {
+            if (liveAccounts[username].ownerUserID === userId.toString() && liveAccounts[username].status !== 'Parado') {
+                runningAccounts.push(liveAccounts[username]);
+            }
+        }
+
+        // 1. Verifica se o tempo free acabou (apenas para plano free)
+        if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
+            runningAccounts.forEach(acc => {
+                try { if (acc.worker) acc.worker.kill(); } catch(e) {}
+                acc.status = "Tempo Esgotado";
+                acc.worker = null; // Limpa referência
+            });
+            return; // Se parou tudo por tempo, não precisa checar limites
+        }
+
+        // 2. Verifica excesso de CONTAS (Ex: Tinha 2, agora limite é 1)
+        if (runningAccounts.length > limitAccounts) {
+            // Para o excesso. Não importa qual, para garantir a consistência.
+            // Se preferir, pode parar TODAS para forçar o usuário a escolher qual iniciar.
+            // Aqui vamos parar as excedentes (as últimas da lista)
+            const toStop = runningAccounts.slice(limitAccounts); 
+            toStop.forEach(acc => {
+                try { if (acc.worker) acc.worker.kill(); } catch(e) {}
+                acc.status = "Parado (Limite de Plano)";
+                acc.worker = null;
+            });
+        }
+
+        // 3. Verifica excesso de JOGOS nas contas que sobraram
+        // Se a conta roda 10 jogos e o novo plano permite 1, para a conta para evitar ban/erro.
+        const remainingRunning = runningAccounts.slice(0, limitAccounts);
+        remainingRunning.forEach(acc => {
+            if (acc.games.length > limitGames) {
+                 try { if (acc.worker) acc.worker.kill(); } catch(e) {}
+                 acc.status = "Parado (Limite Jogos)";
+                 acc.worker = null;
+            }
+        });
+
+    } catch (e) {
+        console.error(`[SYSTEM] Erro ao forçar limites para ${userId}:`, e);
+    }
+}
+
+// --- CRON JOBS ---
+// Ajustado para 1 minuto (60000ms) para maior precisão
 async function deductFreeTime() {
     const updates = new Set();
-    for (const u in liveAccounts) { if (liveAccounts[u].status === 'Rodando') updates.add(liveAccounts[u].ownerUserID); }
+    // Identifica usuários rodando
+    for (const u in liveAccounts) { 
+        if (liveAccounts[u].status === 'Rodando' || liveAccounts[u].status.startsWith('Iniciando') || liveAccounts[u].status.startsWith('Pendente')) {
+            updates.add(liveAccounts[u].ownerUserID); 
+        }
+    }
     if (updates.size === 0) return;
+    
     const ids = Array.from(updates).map(id => new ObjectId(id));
     try {
-        await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -300000 } });
+        // Desconta 1 minuto (60000ms)
+        await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -60000 } });
+        
+        // Verifica quem estourou o tempo
         const expired = await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 } }).toArray();
+        
         expired.forEach(u => { 
-            for (const acc in liveAccounts) { 
-                if (liveAccounts[acc].ownerUserID === u._id.toString() && liveAccounts[acc].worker) { 
-                    try{ liveAccounts[acc].worker.kill(); }catch(e){} 
-                    liveAccounts[acc].status = "Tempo Esgotado"; 
-                } 
-            } 
+            // Usa a função centralizada para parar
+            enforceUserLimits(u._id.toString());
         });
     } catch(e) { console.error("[CRON] Erro deductFreeTime:", e); }
 }
@@ -224,23 +285,27 @@ async function checkExpiredPlans() {
     try {
         const expired = await usersCollection.find({ plan: { $ne: 'free' }, planExpiresAt: { $lt: now } }).toArray();
         for (const u of expired) {
+            // Downgrade para free
             await usersCollection.updateOne({ _id: u._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: FREE_HOURS_MS } });
-            for (const acc in liveAccounts) { 
-                if (liveAccounts[acc].ownerUserID === u._id.toString()) { 
-                    try{ if(liveAccounts[acc].worker) liveAccounts[acc].worker.kill(); }catch(e){} 
-                    liveAccounts[acc].status = "Expirado"; 
-                } 
-            }
             
+            // Força verificação de limites (vai matar contas excedentes)
+            await enforceUserLimits(u._id.toString());
+            
+            // Limpa banco de dados (opcional, mantém apenas 1 conta no DB para limpar lixo)
             const userSteamAccounts = await accountsCollection.find({ ownerUserID: u._id.toString() }).toArray();
             if (userSteamAccounts.length > 0) {
                 const firstAccount = userSteamAccounts[0];
+                // Reseta jogos para padrão leve
                 await accountsCollection.updateOne({ _id: firstAccount._id }, { $set: { games: [730] } });
-                if (userSteamAccounts.length > 1) {
+                
+                // Remove contas excedentes do DB se quiser ser rígido (opcional, mas mantém o banco limpo)
+                // Se não quiser apagar do DB, remova este bloco 'if (userSteamAccounts.length > 1)'
+                /* if (userSteamAccounts.length > 1) {
                     const accountsToDelete = userSteamAccounts.slice(1).map(acc => acc._id);
                     await accountsCollection.deleteMany({ _id: { $in: accountsToDelete } });
                     userSteamAccounts.slice(1).forEach(acc => { if (liveAccounts[acc.username]) delete liveAccounts[acc.username]; });
                 }
+                */
             }
         }
     } catch(e) { console.error("[CRON] Erro checkExpiredPlans:", e); }
@@ -290,8 +355,13 @@ function startWorkerForAccount(accountData) {
         const acc = liveAccounts[username];
         if (!acc.manual_logout && acc.settings.autoRelogin) {
              usersCollection.findOne({ _id: new ObjectId(acc.ownerUserID) }).then(user => {
-                if (!user || user.isBanned || (user.plan === 'free' && user.freeHoursRemaining <= 0) || (user.planExpiresAt && user.planExpiresAt < new Date())) {
-                    acc.status = user?.isBanned ? "Banido" : "Tempo Esgotado"; acc.sessionStartTime = null;
+                // Verifica todas as condições de parada
+                const isFreeExpired = user.plan === 'free' && user.freeHoursRemaining <= 0;
+                const isPlanExpired = user.planExpiresAt && user.planExpiresAt < new Date();
+                
+                if (!user || user.isBanned || isFreeExpired || isPlanExpired) {
+                    acc.status = user?.isBanned ? "Banido" : (isFreeExpired ? "Tempo Esgotado" : "Expirado"); 
+                    acc.sessionStartTime = null;
                 } else {
                     acc.status = "Reiniciando...";
                     setTimeout(() => {
@@ -471,7 +541,7 @@ apiRouter.post('/create-checkout', async (req, res) => {
     } catch (e) { console.error("[PAYMENT] Erro:", e); res.status(500).json({ message: "Erro ao criar pagamento." }); }
 });
 
-apiRouter.get('/user-info', async (req, res) => { const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (!user) return res.status(404).json({ message: "Erro." }); let fh = 0; if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 3600000); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free']; res.json({ username: user.username, plan: user.plan, freeHoursRemaining: fh, planExpiresAt: user.planExpiresAt, gameLimit: p.games, accountLimit: p.accounts }); });
+apiRouter.get('/user-info', async (req, res) => { const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (!user) return res.status(404).json({ message: "Erro." }); let fh = 0; if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 60000); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS[user.plan] || PLAN_LIMITS['free']; res.json({ username: user.username, plan: user.plan, freeHoursRemaining: fh, planExpiresAt: user.planExpiresAt, gameLimit: p.games, accountLimit: p.accounts }); });
 apiRouter.get('/status', (req, res) => { const accs = {}; for(const u in liveAccounts) { if(liveAccounts[u].ownerUserID === req.session.userId) { const a = liveAccounts[u]; accs[u] = { username: a.username, status: a.status, games: a.games, settings: a.settings, uptime: a.sessionStartTime ? Date.now() - a.sessionStartTime : 0 }; } } res.json({ accounts: accs }); });
 apiRouter.post('/add-account', async (req, res) => { const { username, password } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); const count = await accountsCollection.countDocuments({ ownerUserID: uid }); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']; if (count >= p.accounts) return res.status(403).json({ message: `Limite atingido.` }); if (await accountsCollection.findOne({ username })) return res.status(400).json({ message: "Já existe." }); const ep = encrypt(password); await accountsCollection.insertOne({ username, password: ep, games: [730], settings: {}, ownerUserID: uid }); liveAccounts[username] = { username, encryptedPassword: ep, games: [730], settings: {}, status: 'Parado', ownerUserID: uid }; res.json({ message: "OK" }); });
 apiRouter.post('/start/:username', async (req, res) => { const u = req.params.username; const acc = liveAccounts[u]; if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({}); const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem tempo." }); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']; if (acc.games.length > p.games) return res.status(403).json({ message: "Limite jogos." }); try { const pass = decrypt(acc.encryptedPassword); if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "OK" }); } else { res.status(500).json({ message: "Erro senha." }); } } catch(e) { res.status(500).json({ message: "Erro interno." }); } });
@@ -481,7 +551,34 @@ apiRouter.post('/save-settings/:username', async (req, res) => { const { usernam
 apiRouter.post('/set-games/:username', async (req, res) => { const { username } = req.params; const { games } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']; if (games.length > p.games) return res.status(403).json({ message: "Limite excedido." }); if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) { await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { games } }); liveAccounts[username].games = games; try { if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings: liveAccounts[username].settings, games } }); } catch(e){} res.json({ message: "OK" }); } else { res.status(404).json({ message: "Erro." }); } });
 apiRouter.post('/submit-guard/:username', (req, res) => { const acc = liveAccounts[req.params.username]; if (acc) { try { acc.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); res.json({ message: "OK" }); } catch(e){ res.status(500).json({ message: "Worker morto." }); } } else { res.status(404).json({ message: "Erro." }); } });
 apiRouter.get('/search-game', async (req, res) => { const q = (req.query.q || '').toLowerCase(); if(q.length<2) return res.json([]); const l = await getSteamAppList(); res.json(l.filter(a => a.name.toLowerCase().includes(q)).slice(0, 50)); });
-apiRouter.post('/activate-license', async (req, res) => { const { licenseKey } = req.body; const uid = req.session.userId; const key = await licensesCollection.findOne({ key: licenseKey }); if(!key || key.isUsed) return res.status(400).json({message: "Inválida"}); if(key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({message: "Não é sua"}); let exp=null; const duration = key.durationDays || (GLOBAL_PLANS[key.plan] ? GLOBAL_PLANS[key.plan].days : 30); if(duration > 0){ exp=new Date(); exp.setDate(exp.getDate()+duration); } await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: exp, freeHoursRemaining: 0, customLimits: null } }); await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } }); sendDiscordNotification("🔑 Chave Ativada", `User: ${uid} | Plano: ${key.plan}`, 3447003, "System", "sale"); res.json({ message: "Ativado" }); });
+
+apiRouter.post('/activate-license', async (req, res) => { 
+    const { licenseKey } = req.body; 
+    const uid = req.session.userId; 
+    const key = await licensesCollection.findOne({ key: licenseKey }); 
+    if(!key || key.isUsed) return res.status(400).json({message: "Inválida"}); 
+    if(key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({message: "Não é sua"}); 
+    
+    let exp = null; 
+    // Correção: durationDays da chave tem prioridade
+    const duration = key.durationDays || (GLOBAL_PLANS[key.plan] ? GLOBAL_PLANS[key.plan].days : 30); 
+    
+    if(duration > 0){ 
+        exp = new Date(); 
+        exp.setDate(exp.getDate() + duration); 
+    } 
+    
+    await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: exp, freeHoursRemaining: 0, customLimits: null } }); 
+    await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } }); 
+    
+    sendDiscordNotification("🔑 Chave Ativada", `User: ${uid} | Plano: ${key.plan} | Dias: ${duration}`, 3447003, "System", "sale"); 
+    
+    // CORREÇÃO: Aplica novos limites imediatamente
+    await enforceUserLimits(uid);
+
+    res.json({ message: "Ativado" }); 
+});
+
 apiRouter.get('/my-keys', async (req, res) => { const k = await licensesCollection.find({ assignedTo: new ObjectId(req.session.userId), isUsed: false }).toArray(); res.json(k); });
 apiRouter.post('/renew-free-time', async (req, res) => { const uid = req.session.userId; await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { freeHoursRemaining: FREE_HOURS_MS, lastFreeRenew: new Date() } }); res.json({ message: "Renovado" }); });
 apiRouter.post('/change-password', async (req, res) => { const h = await bcrypt.hash(req.body.newPassword, 10); await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: h } }); res.json({ message: "Alterada" }); });
@@ -519,7 +616,6 @@ app.post('/api/mp-webhook', async (req, res) => {
                 const meta = payment.metadata;
                 
                 if (userId) {
-                    // Notifica Venda!
                     sendDiscordNotification("💰 Pagamento Aprovado!", `Plano: ${meta.plan_id}\nEntrega: ${meta.delivery_method}\nUser: ${userId}`, 5763719, "Sistema", "sale");
                     
                     if (meta.coupon_code) await couponsCollection.updateOne({ code: meta.coupon_code }, { $inc: { usageCount: 1 } });
@@ -539,6 +635,9 @@ app.post('/api/mp-webhook', async (req, res) => {
                         }
                         await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: updateData });
                         sendDiscordNotification("✅ Plano Ativado", `O plano ${meta.plan_id} foi ativado automaticamente.`, 5763719, userId, "log");
+                        
+                        // FORÇA LIMITES APÓS PAGAMENTO
+                        await enforceUserLimits(userId);
                     }
                 }
             }
@@ -578,6 +677,9 @@ app.post('/api/stripe-webhook', express.raw({type: 'application/json'}), async (
                 }
             }
             await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: updateData });
+            
+            // FORÇA LIMITES APÓS PAGAMENTO
+            await enforceUserLimits(userId);
         }
     }
     res.json({received: true});
@@ -591,15 +693,13 @@ async function startServer() {
         await initializePlans(); 
         await initializeMasterKey();
         await loadAccountsIntoMemory();
-        setInterval(deductFreeTime, 300000);
+        
+        // UPDATE: Verificação de tempo a cada 1 minuto (60000ms) em vez de 5
+        setInterval(deductFreeTime, 60000);
         setInterval(checkExpiredPlans, 3600000);
 
-        // --------------------------------------------------------------------------
-        // CORREÇÃO CRÍTICA: Inverter a ordem para que o painel de ADMIN não passe
-        // pelo middleware 'isAuthenticated' do usuário normal.
-        // --------------------------------------------------------------------------
-        app.use('/api/admin', adminApiRouter); // Admin primeiro
-        app.use('/api', apiRouter); // API normal depois
+        app.use('/api/admin', adminApiRouter);
+        app.use('/api', apiRouter);
 
         app.listen(PORT, () => console.log(`[SYSTEM] Online na porta ${PORT}`));
     } catch (e) { console.error("[SYSTEM] ERRO FATAL:", e); }
