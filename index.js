@@ -507,9 +507,6 @@ adminApiRouter.post('/delete-plan', async (req, res) => { await plansCollection.
 adminApiRouter.post('/create-coupon', async (req, res) => { const { code, discount } = req.body; await couponsCollection.insertOne({ code: code.toUpperCase(), discount: parseInt(discount), usageCount: 0 }); res.json({ message: "Criado." }); });
 adminApiRouter.post('/delete-coupon', async (req, res) => { await couponsCollection.deleteOne({ _id: new ObjectId(req.body.id) }); res.json({ message: "Deletado." }); });
 
-app.use('/api', apiRouter);
-app.use('/api/admin', adminApiRouter);
-
 // --- WEBHOOKS ---
 app.post('/api/mp-webhook', async (req, res) => {
     const { query } = req;
@@ -596,6 +593,14 @@ async function startServer() {
         await loadAccountsIntoMemory();
         setInterval(deductFreeTime, 300000);
         setInterval(checkExpiredPlans, 3600000);
+
+        // --------------------------------------------------------------------------
+        // CORREÇÃO CRÍTICA: Inverter a ordem para que o painel de ADMIN não passe
+        // pelo middleware 'isAuthenticated' do usuário normal.
+        // --------------------------------------------------------------------------
+        app.use('/api/admin', adminApiRouter); // Admin primeiro
+        app.use('/api', apiRouter); // API normal depois
+
         app.listen(PORT, () => console.log(`[SYSTEM] Online na porta ${PORT}`));
     } catch (e) { console.error("[SYSTEM] ERRO FATAL:", e); }
 }
