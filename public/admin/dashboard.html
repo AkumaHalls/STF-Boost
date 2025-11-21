@@ -182,7 +182,6 @@
                 users.forEach(u => {
                     const row = document.createElement('tr');
                     let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${p.name}</option>`);
-                    // Adicionado Botão de Excluir e melhoria visual do Status
                     row.innerHTML = `
                         <td>${u.username}</td>
                         <td><select class="plan-select" data-uid="${u._id}">${opts}</select></td>
@@ -205,13 +204,25 @@
                 });
             }
 
+            // CORREÇÃO APLICADA AQUI: Incluído durationDays no corpo da requisição
             document.getElementById('generateKeysButton').onclick = async () => {
-                await fetch('/api/admin/generate-keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:document.getElementById('planSelect').value, quantity:document.getElementById('quantityInput').value})});
+                const planVal = document.getElementById('planSelect').value;
+                const quantityVal = document.getElementById('quantityInput').value;
+                const durationVal = document.getElementById('durationInput').value; // Valor capturado
+
+                await fetch('/api/admin/generate-keys', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({
+                        plan: planVal, 
+                        quantity: quantityVal,
+                        durationDays: durationVal // Valor enviado
+                    })
+                });
                 fetchLicenses();
             };
             
             usersTableBody.onclick = async (e) => {
-                // Ação de Banir/Desbanir
                 if(e.target.classList.contains('ban-btn')) {
                     const uid = e.target.dataset.uid;
                     const isUnban = e.target.textContent === 'Desbanir';
@@ -229,7 +240,6 @@
                     } catch(err) { showToast('Erro de conexão.', 'error'); }
                 }
                 
-                // Ação de Excluir Usuário
                 if(e.target.classList.contains('delete-btn')) {
                     const uid = e.target.dataset.uid;
                     if(confirm('TEM CERTEZA? Isso apagará o usuário, todas as contas Steam associadas e encerrará os processos ativos. Esta ação é irreversível.')) {
