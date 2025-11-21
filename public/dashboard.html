@@ -164,7 +164,7 @@
             const sidebarUser = document.getElementById('sidebarUser');
             const sidebarPlan = document.getElementById('sidebarPlan');
             const sidebarExpiry = document.getElementById('sidebarExpiry');
-            const renewFreeButton = document.getElementById('renewFreeButton');
+            const renewFreeButton = document.getElementById('renewFreeButton'); // Seletor já existia
             
             let currentlyEditingGamesFor = null;
             let currentlyEditingSettingsFor = null;
@@ -175,12 +175,24 @@
             function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
             function formatUptime(ms) { if(!ms||ms<=0)return '00:00:00'; let s=Math.floor(ms/1000), d=Math.floor(s/86400); s%=86400; let h=Math.floor(s/3600).toString().padStart(2,'0'); s%=3600; let m=Math.floor(s/60).toString().padStart(2,'0'); s=(s%60).toString().padStart(2,'0'); return d>0?`${d}d, ${h}:${m}:${s}`:`${h}:${m}:${s}`; }
 
+            // CORREÇÃO APLICADA AQUI: Adicionado listener para o botão de renovar
+            if (renewFreeButton) {
+                renewFreeButton.onclick = async () => {
+                    try {
+                        const res = await fetch('/api/renew-free-time', {method: 'POST'});
+                        const data = await res.json();
+                        showToast(data.message, res.ok ? 'info' : 'error');
+                        if (res.ok) fetchUserInfo(); // Atualiza a interface
+                    } catch (e) { showToast('Erro de conexão.', 'error'); }
+                };
+            }
+
             // --- EFEITOS VISUAIS (Com proteção) ---
             let effectInterval;
             const effectsContainer = document.getElementById('effectsContainer');
 
             function applyThemeEffects(plan) {
-                if (!effectsContainer) return; // PROTEÇÃO CONTRA ERRO
+                if (!effectsContainer) return; 
                 effectsContainer.innerHTML = '';
                 if (effectInterval) clearInterval(effectInterval);
                 let symbol = '', className = '', intervalTime = 500;
@@ -216,11 +228,14 @@
 
                     const exp = document.getElementById('sidebarExpiry');
                     const btn = document.getElementById('renewFreeButton');
+                    
+                    // Reseta estado visual
                     if (btn) btn.style.display = 'none';
                     if (exp) exp.textContent = '';
 
                     if (data.plan === 'free') {
                         if(exp) exp.textContent = `Horas: ${data.freeHoursRemaining}`;
+                        // Lógica para mostrar o botão se acabou as horas
                         if (data.freeHoursRemaining <= 0 && btn) btn.style.display = 'inline-flex';
                     } else if (data.plan === 'lifetime') {
                         if(exp) exp.textContent = `Plano Vitalício`;
