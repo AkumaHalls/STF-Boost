@@ -242,9 +242,27 @@
                     } else if (data.planExpiresAt) {
                         const expiryDate = new Date(data.planExpiresAt);
                         const now = new Date();
-                        const diffDays = Math.ceil((expiryDate - now) / (86400000));
+                        const diffMs = expiryDate - now; // Diferença exata em milissegundos
                         const formattedDate = expiryDate.toLocaleDateString('pt-BR'); 
-                        if(exp) exp.textContent = diffDays > 0 ? `Expira em: ${formattedDate} (${diffDays} dias)` : `Expirado em: ${formattedDate}`;
+
+                        if (diffMs > 0) {
+                            // Cálculos de tempo restante
+                            const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                            const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                            const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+                            let timeString = "";
+                            // Lógica de exibição inteligente
+                            if (days > 0) {
+                                timeString = `${days}d, ${hours}h`; // Ex: 1d, 5h
+                            } else {
+                                timeString = `${hours}h, ${minutes}m`; // Ex: 5h, 30m
+                            }
+                            
+                            if(exp) exp.textContent = `Expira em: ${formattedDate} [Restam: ${timeString}]`;
+                        } else {
+                            if(exp) exp.textContent = `Expirado em: ${formattedDate}`;
+                        }
                     } else {
                         if(exp) exp.textContent = `Plano Ativo`;
                     }
