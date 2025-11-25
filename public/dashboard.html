@@ -286,13 +286,19 @@
                 } catch (e) { console.error("Erro fetchUserInfo:", e); }
             }
 
-            // --- Update UI (COM BARRA DE STATUS COLORIDA) ---
+            // --- Update UI (COM CORREÇÃO DO CHECKBOX) ---
             async function updateUI() {
                 try {
                     const res = await fetch('/api/status');
                     if (!res.ok) { if (res.status === 401) window.location.href = '/login?error=unauthorized'; return; }
                     const data = await res.json();
                     
+                    // 1. CAPTURA O ESTADO DOS CHECKBOXES *ANTES* DE LIMPAR A TABELA
+                    const selectAllState = document.getElementById('selectAllCheckbox') ? document.getElementById('selectAllCheckbox').checked : false;
+                    const checkedUsernames = new Set();
+                    document.querySelectorAll('.account-checkbox:checked').forEach(cb => checkedUsernames.add(cb.dataset.username));
+
+                    // 2. AGORA SIM, PODE LIMPAR A TABELA
                     const accountsTableBody = document.getElementById('accountsTableBody');
                     const summaryDiv = document.getElementById('dashboardSummary');
                     
@@ -308,10 +314,7 @@
                         return; 
                     }
                     
-                    const selectAllState = document.getElementById('selectAllCheckbox') ? document.getElementById('selectAllCheckbox').checked : false;
-                    const checkedUsernames = new Set();
-                    document.querySelectorAll('.account-checkbox:checked').forEach(cb => checkedUsernames.add(cb.dataset.username));
-
+                    // 3. RECONSTRÓI A TABELA E RESTAURA OS CHECKBOXES
                     for (const u in data.accounts) {
                         const acc = data.accounts[u];
                         
@@ -326,14 +329,15 @@
                         const row = document.createElement('tr');
                         const statusClass = acc.status === 'Rodando' ? 'status-running' : (acc.status === 'Parado' ? 'status-stopped' : 'status-pending');
                         
+                        // Verifica se deve marcar o checkbox
+                        const isChecked = checkedUsernames.has(acc.username) ? 'checked' : '';
+
                         row.innerHTML = `
-                            <td><input type="checkbox" class="account-checkbox" data-username="${acc.username}"></td>
+                            <td><input type="checkbox" class="account-checkbox" data-username="${acc.username}" ${isChecked}></td>
                             <td>${acc.username}</td>
                             <td class="${statusClass}">${acc.status}</td>
                             <td>${formatUptime(acc.uptime)}</td>
                             <td class="actions-cell"></td>`;
-                        
-                        if (checkedUsernames.has(acc.username)) row.querySelector('.account-checkbox').checked = true;
                         
                         const actions = row.querySelector('.actions-cell');
                         
