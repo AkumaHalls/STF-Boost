@@ -12,6 +12,11 @@
 </head>
 <body class="panel-page">
 
+    <div id="globalAlert" class="global-alert" style="display: none;">
+        <span id="globalAlertMessage"></span>
+        <button class="alert-close" onclick="closeGlobalAlert()">×</button>
+    </div>
+
     <div id="effectsContainer"></div>
 
     <div class="dashboard-layout" style="position: relative; z-index: 10;">
@@ -179,6 +184,29 @@
             function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
             function formatUptime(ms) { if(!ms||ms<=0)return '00:00:00'; let s=Math.floor(ms/1000), d=Math.floor(s/86400); s%=86400; let h=Math.floor(s/3600).toString().padStart(2,'0'); s%=3600; let m=Math.floor(s/60).toString().padStart(2,'0'); s=(s%60).toString().padStart(2,'0'); return d>0?`${d}d, ${h}:${m}:${s}`:`${h}:${m}:${s}`; }
 
+            // --- Lógica do Alerta Global ---
+            async function checkGlobalAlert() {
+                try {
+                    const res = await fetch('/api/global-alert');
+                    const data = await res.json();
+                    if (data && data.active) {
+                        const lastClosed = localStorage.getItem('globalAlertClosed');
+                        if (lastClosed !== data.updatedAt) {
+                            const el = document.getElementById('globalAlert');
+                            el.className = `global-alert alert-${data.type}`; 
+                            document.getElementById('globalAlertMessage').textContent = data.message;
+                            el.style.display = 'block';
+                            el.dataset.updatedAt = data.updatedAt;
+                        }
+                    }
+                } catch(e) {}
+            }
+            window.closeGlobalAlert = function() {
+                const el = document.getElementById('globalAlert');
+                el.style.display = 'none';
+                if(el.dataset.updatedAt) localStorage.setItem('globalAlertClosed', el.dataset.updatedAt);
+            };
+            
             // Listener para o botão de renovar
             if (renewFreeButton) {
                 renewFreeButton.onclick = async () => {
@@ -237,7 +265,6 @@
                     if (exp) exp.textContent = '';
 
                     if (data.plan === 'free') {
-                        // LÓGICA CORRIGIDA PARA O PLANO FREE (Formato Dias/Horas)
                         const totalMinutes = data.freeHoursRemaining;
                         const days = Math.floor(totalMinutes / (24 * 60));
                         const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
@@ -252,13 +279,11 @@
 
                         if(exp) exp.textContent = `Tempo Restante: ${timeString}`;
                         
-                        // Lógica do botão de renovar
                         if (data.freeHoursRemaining <= 0 && btn) btn.style.display = 'inline-flex';
 
                     } else if (data.plan === 'lifetime') {
                         if(exp) exp.textContent = `Plano Vitalício`;
                     } else if (data.planExpiresAt) {
-                        // LÓGICA PARA PLANOS PAGOS
                         const expiryDate = new Date(data.planExpiresAt);
                         const now = new Date();
                         const diffMs = expiryDate - now;
@@ -527,6 +552,7 @@
 
             fetchUserInfo();
             updateUI();
+            checkGlobalAlert(); // Verifica alerta ao carregar
             setInterval(updateUI, 1000);
             setInterval(fetchUserInfo, 60000);
         });
