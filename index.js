@@ -402,11 +402,10 @@ function startWorkerForAccount(accountData) {
     });
 }
 
-// --- CARREGAMENTO DE CONTAS (CORRIGIDO) ---
+// --- CARREGAMENTO DE CONTAS (CORRIGIDO E BLINDADO) ---
 async function loadAccountsIntoMemory() {
     const savedAccounts = await accountsCollection.find({}).toArray(); 
     
-    // 1. Inicializa todas na memória como Parado para aparecerem no painel
     savedAccounts.forEach((acc) => {
         liveAccounts[acc.username] = { 
             ...acc, 
@@ -421,36 +420,29 @@ async function loadAccountsIntoMemory() {
 
     console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas. Iniciando sequencia de auto-login...`);
 
-    // 2. Processa o auto-start com verificações de segurança
     savedAccounts.forEach((acc, index) => {
         if (acc.settings && acc.settings.autoRelogin) {
             setTimeout(async () => {
-                // Verifica se a conta ainda existe na memória
                 if (!liveAccounts[acc.username]) return;
 
                 try {
-                    // 1. Verifica estado do Usuário/Plano (inclui downgrade auto se expirou)
                     const user = await ensureUserPlanStatus(acc.ownerUserID);
                     
                     if (!user) return;
 
-                    // 2. Verificações de Bloqueio
                     if (user.isBanned) {
                         liveAccounts[acc.username].status = "Banido";
                         return;
                     }
 
-                    // 3. Verifica Tempo Free
                     if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
                         liveAccounts[acc.username].status = "Tempo Esgotado";
                         return;
                     }
 
-                    // 4. Verifica Limites do Plano (Contas Ativas)
                     const plan = GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free'];
                     const limitAccounts = user.customLimits ? user.customLimits.accounts : (plan ? plan.accounts : 1);
                     
-                    // Conta quantas deste user JÁ estão rodando ou iniciando
                     let runningCount = 0;
                     for (const u in liveAccounts) {
                         if (liveAccounts[u].ownerUserID === acc.ownerUserID && 
@@ -464,7 +456,6 @@ async function loadAccountsIntoMemory() {
                         return;
                     }
 
-                    // Se passou por tudo, inicia
                     const pass = decrypt(acc.password);
                     if (pass) {
                         startWorkerForAccount({ ...liveAccounts[acc.username], password: pass });
@@ -474,7 +465,7 @@ async function loadAccountsIntoMemory() {
                     console.error(`[AUTO-START] Erro ao iniciar ${acc.username}:`, e);
                 }
 
-            }, index * 15000); // Delay escalonado
+            }, index * 15000); 
         }
     });
 }
@@ -517,6 +508,14 @@ app.get('/admin/logout', (req, res) => req.session.destroy(() => res.redirect('/
 // === API ===
 const apiRouter = express.Router();
 const adminApiRouter = express.Router();
+
+// API Pública para ler o alerta (NOVO)
+apiRouter.get('/global-alert', async (req, res) => {
+    try {
+        const alert = await siteSettingsCollection.findOne({ _id: 'global_alert' });
+        res.json(alert || { active: false });
+    } catch (e) { res.status(500).json({}); }
+});
 
 apiRouter.get('/auth-status', async (req, res) => {
     if (req.session.userId) {
@@ -633,11 +632,8 @@ apiRouter.post('/create-checkout', async (req, res) => {
     } catch (e) { console.error("[PAYMENT] Erro:", e); res.status(500).json({ message: "Erro ao criar pagamento." }); }
 });
 
-// Rota de Informações do Usuário (COM VERIFICAÇÃO)
 apiRouter.get('/user-info', async (req, res) => { 
-    // Garante que o usuário esteja atualizado antes de enviar info
     const user = await ensureUserPlanStatus(req.session.userId); 
-    
     if (!user) return res.status(404).json({ message: "Erro." }); 
     let fh = 0; 
     if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 60000); 
@@ -647,17 +643,12 @@ apiRouter.get('/user-info', async (req, res) => {
 
 apiRouter.get('/status', (req, res) => { const accs = {}; for(const u in liveAccounts) { if(liveAccounts[u].ownerUserID === req.session.userId) { const a = liveAccounts[u]; accs[u] = { username: a.username, status: a.status, games: a.games, settings: a.settings, uptime: a.sessionStartTime ? Date.now() - a.sessionStartTime : 0 }; } } res.json({ accounts: accs }); });
 
-// Rota Adicionar Conta (COM VERIFICAÇÃO)
 apiRouter.post('/add-account', async (req, res) => { 
     const { username, password } = req.body; 
     const uid = req.session.userId; 
-    
-    // Verifica plano antes de permitir add
     const user = await ensureUserPlanStatus(uid); 
-    
     const count = await accountsCollection.countDocuments({ ownerUserID: uid }); 
     const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']; 
-    
     if (count >= p.accounts) return res.status(403).json({ message: `Limite atingido.` }); 
     if (await accountsCollection.findOne({ username })) return res.status(400).json({ message: "Já existe." }); 
     const ep = encrypt(password); 
@@ -666,29 +657,19 @@ apiRouter.post('/add-account', async (req, res) => {
     res.json({ message: "OK" }); 
 });
 
-// Rota Iniciar (COM VERIFICAÇÃO CRÍTICA)
 apiRouter.post('/start/:username', async (req, res) => { 
     const u = req.params.username; 
     const acc = liveAccounts[u]; 
     if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({}); 
-    
-    // VERIFICA SE O PLANO EXPIROU AGORA
     const user = await ensureUserPlanStatus(req.session.userId);
-    
     if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem tempo." }); 
-    
     const p = user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']; 
-    
-    // Verifica limite de jogos
     if (acc.games.length > p.games) return res.status(403).json({ message: "Limite jogos." }); 
-    
-    // Verifica limite de contas ativas (CRÍTICO)
     let activeCount = 0;
     for(const k in liveAccounts) {
         if(liveAccounts[k].ownerUserID === req.session.userId && liveAccounts[k].status !== 'Parado') activeCount++;
     }
     if (activeCount >= p.accounts) return res.status(403).json({ message: "Limite contas online." });
-
     try { 
         const pass = decrypt(acc.encryptedPassword); 
         if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "OK" }); } 
@@ -711,22 +692,13 @@ apiRouter.post('/activate-license', async (req, res) => {
     if(key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({message: "Não é sua"}); 
     
     let exp = null; 
-    // Correção: durationDays da chave tem prioridade
     const duration = key.durationDays || (GLOBAL_PLANS[key.plan] ? GLOBAL_PLANS[key.plan].days : 30); 
-    
-    if(duration > 0){ 
-        exp = new Date(); 
-        exp.setDate(exp.getDate() + duration); 
-    } 
+    if(duration > 0){ exp = new Date(); exp.setDate(exp.getDate() + duration); } 
     
     await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: exp, freeHoursRemaining: 0, customLimits: null } }); 
     await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } }); 
-    
     sendDiscordNotification("🔑 Chave Ativada", `User: ${uid} | Plano: ${key.plan} | Dias: ${duration}`, 3447003, "System", "sale"); 
-    
-    // CORREÇÃO: Aplica novos limites imediatamente
     await enforceUserLimits(uid);
-
     res.json({ message: "Ativado" }); 
 });
 
@@ -736,10 +708,7 @@ apiRouter.post('/change-password', async (req, res) => { const h = await bcrypt.
 apiRouter.post('/bulk-start', async (req, res) => { 
     const { usernames } = req.body; 
     const uid = req.session.userId; 
-    
-    // VERIFICAÇÃO EM LOTE
     const user = await ensureUserPlanStatus(uid);
-    
     if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." }); 
     const limit = (user.customLimits || GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free']).games; 
     let c = 0; 
@@ -765,6 +734,17 @@ adminApiRouter.post('/update-plan-details', async (req, res) => { const { id, na
 adminApiRouter.post('/delete-plan', async (req, res) => { await plansCollection.deleteOne({ id: req.body.id }); await refreshPlansCache(); res.json({ message: "OK" }); });
 adminApiRouter.post('/create-coupon', async (req, res) => { const { code, discount } = req.body; await couponsCollection.insertOne({ code: code.toUpperCase(), discount: parseInt(discount), usageCount: 0 }); res.json({ message: "Criado." }); });
 adminApiRouter.post('/delete-coupon', async (req, res) => { await couponsCollection.deleteOne({ _id: new ObjectId(req.body.id) }); res.json({ message: "Deletado." }); });
+
+// API Admin para atualizar o alerta (NOVO)
+adminApiRouter.post('/update-global-alert', async (req, res) => {
+    const { message, type, active } = req.body;
+    await siteSettingsCollection.updateOne(
+        { _id: 'global_alert' },
+        { $set: { message, type, active: active === 'true', updatedAt: new Date() } },
+        { upsert: true }
+    );
+    res.json({ message: "Alerta atualizado." });
+});
 
 // --- WEBHOOKS ---
 app.post('/api/mp-webhook', async (req, res) => {
