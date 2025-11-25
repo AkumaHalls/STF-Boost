@@ -377,14 +377,26 @@ function startWorkerForAccount(accountData) {
 }
 
 async function loadAccountsIntoMemory() {
-    const savedAccounts = await accountsCollection.find({ "settings.autoRelogin": true }).toArray(); 
+    const savedAccounts = await accountsCollection.find({}).toArray();
     savedAccounts.forEach((acc, index) => {
-        liveAccounts[acc.username] = { ...acc, encryptedPassword: acc.password, settings: { ...(acc.settings || {}) }, status: 'Parado', worker: null, sessionStartTime: null, manual_logout: false };
-        setTimeout(() => {
-            const pass = decrypt(acc.password);
-            if (pass) startWorkerForAccount({ ...liveAccounts[acc.username], password: pass });
-        }, index * 15000);
+        liveAccounts[acc.username] = { 
+            ...acc, 
+            encryptedPassword: acc.password, 
+            settings: { ...(acc.settings || {}) }, 
+            status: 'Parado', 
+            worker: null, 
+            sessionStartTime: null, 
+            manual_logout: false 
+        };
+
+        if (acc.settings && acc.settings.autoRelogin) {
+            setTimeout(() => {
+                const pass = decrypt(acc.password);
+                if (pass) startWorkerForAccount({ ...liveAccounts[acc.username], password: pass });
+            }, index * 15000);
+        }
     });
+    console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas do banco de dados.`);
 }
 
 // --- MIDDLEWARES ---
