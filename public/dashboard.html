@@ -59,6 +59,10 @@
                     </div>
                 </header>
                 
+                <div id="dashboardSummary" class="dashboard-summary">
+                    Carregando status...
+                </div>
+                
                 <div class="accounts-table">
                     <table>
                         <thead>
@@ -164,7 +168,7 @@
             const sidebarUser = document.getElementById('sidebarUser');
             const sidebarPlan = document.getElementById('sidebarPlan');
             const sidebarExpiry = document.getElementById('sidebarExpiry');
-            const renewFreeButton = document.getElementById('renewFreeButton'); // Seletor já existia
+            const renewFreeButton = document.getElementById('renewFreeButton');
             
             let currentlyEditingGamesFor = null;
             let currentlyEditingSettingsFor = null;
@@ -175,14 +179,14 @@
             function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
             function formatUptime(ms) { if(!ms||ms<=0)return '00:00:00'; let s=Math.floor(ms/1000), d=Math.floor(s/86400); s%=86400; let h=Math.floor(s/3600).toString().padStart(2,'0'); s%=3600; let m=Math.floor(s/60).toString().padStart(2,'0'); s=(s%60).toString().padStart(2,'0'); return d>0?`${d}d, ${h}:${m}:${s}`:`${h}:${m}:${s}`; }
 
-            // CORREÇÃO APLICADA AQUI: Adicionado listener para o botão de renovar
+            // Listener para o botão de renovar
             if (renewFreeButton) {
                 renewFreeButton.onclick = async () => {
                     try {
                         const res = await fetch('/api/renew-free-time', {method: 'POST'});
                         const data = await res.json();
                         showToast(data.message, res.ok ? 'info' : 'error');
-                        if (res.ok) fetchUserInfo(); // Atualiza a interface
+                        if (res.ok) fetchUserInfo(); 
                     } catch (e) { showToast('Erro de conexão.', 'error'); }
                 };
             }
@@ -211,7 +215,7 @@
                 }, intervalTime);
             }
 
-            // --- Fetch User Info ---
+            // --- Fetch User Info (COM CORREÇÃO DE DIAS/HORAS) ---
             async function fetchUserInfo() {
                 try {
                     const res = await fetch('/api/user-info');
@@ -229,20 +233,18 @@
                     const exp = document.getElementById('sidebarExpiry');
                     const btn = document.getElementById('renewFreeButton');
                     
-                    // Reseta estado visual
                     if (btn) btn.style.display = 'none';
                     if (exp) exp.textContent = '';
 
                     if (data.plan === 'free') {
                         if(exp) exp.textContent = `Horas: ${data.freeHoursRemaining}`;
-                        // Lógica para mostrar o botão se acabou as horas
                         if (data.freeHoursRemaining <= 0 && btn) btn.style.display = 'inline-flex';
                     } else if (data.plan === 'lifetime') {
                         if(exp) exp.textContent = `Plano Vitalício`;
                     } else if (data.planExpiresAt) {
                         const expiryDate = new Date(data.planExpiresAt);
                         const now = new Date();
-                        const diffMs = expiryDate - now; // Diferença exata em milissegundos
+                        const diffMs = expiryDate - now; // Diferença exata
                         const formattedDate = expiryDate.toLocaleDateString('pt-BR'); 
 
                         if (diffMs > 0) {
@@ -252,11 +254,10 @@
                             const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
 
                             let timeString = "";
-                            // Lógica de exibição inteligente
                             if (days > 0) {
-                                timeString = `${days}d, ${hours}h`; // Ex: 1d, 5h
+                                timeString = `${days}d, ${hours}h`; 
                             } else {
-                                timeString = `${hours}h, ${minutes}m`; // Ex: 5h, 30m
+                                timeString = `${hours}h, ${minutes}m`;
                             }
                             
                             if(exp) exp.textContent = `Expira em: ${formattedDate} [Restam: ${timeString}]`;
@@ -269,33 +270,78 @@
                 } catch (e) { console.error("Erro fetchUserInfo:", e); }
             }
 
+            // --- Update UI (COM BARRA DE STATUS COLORIDA) ---
             async function updateUI() {
                 try {
                     const res = await fetch('/api/status');
                     if (!res.ok) { if (res.status === 401) window.location.href = '/login?error=unauthorized'; return; }
                     const data = await res.json();
-                    accountsTableBody.innerHTML = '';
-                    if (Object.keys(data.accounts).length === 0) { accountsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Nenhuma conta adicionada.</td></tr>`; return; }
                     
-                    const selectAllState = selectAllCheckbox ? selectAllCheckbox.checked : false;
+                    const accountsTableBody = document.getElementById('accountsTableBody');
+                    const summaryDiv = document.getElementById('dashboardSummary');
+                    
+                    accountsTableBody.innerHTML = '';
+                    
+                    let runningCount = 0;
+                    let stoppedCount = 0;
+                    let attentionCount = 0;
+
+                    if (Object.keys(data.accounts).length === 0) { 
+                        accountsTableBody.innerHTML = `<tr><td colspan="5" style="text-align:center;">Nenhuma conta adicionada.</td></tr>`;
+                        if(summaryDiv) summaryDiv.innerHTML = '<div class="dashboard-summary">Nenhuma conta monitorada.</div>';
+                        return; 
+                    }
+                    
+                    const selectAllState = document.getElementById('selectAllCheckbox') ? document.getElementById('selectAllCheckbox').checked : false;
                     const checkedUsernames = new Set();
                     document.querySelectorAll('.account-checkbox:checked').forEach(cb => checkedUsernames.add(cb.dataset.username));
 
                     for (const u in data.accounts) {
                         const acc = data.accounts[u];
+                        
+                        if (acc.status === 'Rodando') {
+                            runningCount++;
+                        } else if (acc.status === 'Parado' || acc.status === 'Desconectado') {
+                            stoppedCount++;
+                        } else {
+                            attentionCount++;
+                        }
+
                         const row = document.createElement('tr');
-                        row.innerHTML = `<td><input type="checkbox" class="account-checkbox" data-username="${acc.username}"></td><td>${acc.username}</td><td class="${acc.status === 'Rodando' ? 'status-running' : 'status-stopped'}">${acc.status}</td><td>${formatUptime(acc.uptime)}</td><td class="actions-cell"></td>`;
+                        const statusClass = acc.status === 'Rodando' ? 'status-running' : (acc.status === 'Parado' ? 'status-stopped' : 'status-pending');
+                        
+                        row.innerHTML = `
+                            <td><input type="checkbox" class="account-checkbox" data-username="${acc.username}"></td>
+                            <td>${acc.username}</td>
+                            <td class="${statusClass}">${acc.status}</td>
+                            <td>${formatUptime(acc.uptime)}</td>
+                            <td class="actions-cell"></td>`;
+                        
                         if (checkedUsernames.has(acc.username)) row.querySelector('.account-checkbox').checked = true;
+                        
                         const actions = row.querySelector('.actions-cell');
                         
                         const btnStart = document.createElement('button');
-                        if(acc.status==='Rodando'){ btnStart.innerHTML=icons.stop+"Parar"; btnStart.className='stop-btn'; btnStart.onclick=()=>fetch(`/api/stop/${acc.username}`,{method:'POST'}).then(updateUI); }
-                        else { btnStart.innerHTML=icons.play+"Iniciar"; btnStart.className='start-btn'; btnStart.onclick=()=>fetch(`/api/start/${acc.username}`,{method:'POST'}).then(res=>res.json()).then(d=>{showToast(d.message, res.ok?'info':'error'); updateUI();}); }
+                        if(acc.status==='Rodando'){ 
+                            btnStart.innerHTML=icons.stop+"Parar"; btnStart.className='stop-btn'; 
+                            btnStart.onclick=()=>fetch(`/api/stop/${acc.username}`,{method:'POST'}).then(updateUI); 
+                        } else { 
+                            btnStart.innerHTML=icons.play+"Iniciar"; btnStart.className='start-btn'; 
+                            btnStart.onclick=()=>fetch(`/api/start/${acc.username}`,{method:'POST'}).then(res=>res.json()).then(d=>{showToast(d.message, res.ok?'info':'error'); updateUI();}); 
+                        }
                         
-                        const btnGuard = document.createElement('button'); btnGuard.innerHTML=icons.guard+"Guard"; if (acc.status === "Pendente: Steam Guard") btnGuard.classList.add('pulse-attention'); btnGuard.onclick=()=>{const c=prompt('Código:');if(c)fetch(`/api/submit-guard/${acc.username}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:c})});};
-                        const btnGames = document.createElement('button'); btnGames.innerHTML=icons.games+"Jogos"; btnGames.onclick=()=>{ currentlyEditingGamesFor=acc.username; appIdsInput.value=acc.games.join(', '); gamesModal.style.display='block'; updateGameLimitText(); };
+                        const btnGuard = document.createElement('button'); 
+                        btnGuard.innerHTML=icons.guard+"Guard"; 
+                        if (acc.status.includes("Guard")) btnGuard.classList.add('pulse-attention'); 
+                        btnGuard.onclick=()=>{const c=prompt('Código Steam Guard:');if(c)fetch(`/api/submit-guard/${acc.username}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:c})});};
                         
-                        const btnSettings = document.createElement('button'); btnSettings.innerHTML=icons.settings+"Config"; btnSettings.className="settings-btn";
+                        const btnGames = document.createElement('button'); 
+                        btnGames.innerHTML=icons.games+"Jogos"; 
+                        btnGames.onclick=()=>{ currentlyEditingGamesFor=acc.username; appIdsInput.value=acc.games.join(', '); gamesModal.style.display='block'; updateGameLimitText(); };
+                        
+                        const btnSettings = document.createElement('button'); 
+                        btnSettings.innerHTML=icons.settings+"Config"; 
+                        btnSettings.className="settings-btn";
                         btnSettings.onclick=()=>{ 
                             currentlyEditingSettingsFor=acc.username;
                             const s=acc.settings;
@@ -313,14 +359,30 @@
                             
                             settingsModal.style.display='block';
                         };
-                        const btnDel = document.createElement('button'); btnDel.innerHTML=icons.remove+"Remover"; btnDel.className="remove-btn"; btnDel.onclick=()=>{if(confirm('Remover?'))fetch(`/api/remove-account/${acc.username}`,{method:'DELETE'}).then(updateUI);};
+
+                        const btnDel = document.createElement('button'); 
+                        btnDel.innerHTML=icons.remove+"Remover"; 
+                        btnDel.className="remove-btn"; 
+                        btnDel.onclick=()=>{if(confirm('Remover?'))fetch(`/api/remove-account/${acc.username}`,{method:'DELETE'}).then(updateUI);};
 
                         actions.append(btnStart, btnGuard, btnGames, btnSettings, btnDel);
                         accountsTableBody.appendChild(row);
                     }
-                    if(selectAllCheckbox) selectAllCheckbox.checked = selectAllState;
+
+                    if (summaryDiv) {
+                        summaryDiv.innerHTML = `
+                            <div style="display: flex; gap: 20px;">
+                                <div style="color: #90ee90;">⚡ Farmando: <strong>${runningCount}</strong></div>
+                                <div style="color: #ff6B6B;">🛑 Parados: <strong>${stoppedCount}</strong></div>
+                                <div style="color: #ffd700;">⚠️ Atenção: <strong>${attentionCount}</strong></div>
+                            </div>
+                        `;
+                    }
+
+                    if(document.getElementById('selectAllCheckbox')) document.getElementById('selectAllCheckbox').checked = selectAllState;
                     updateBulkButtons();
-                } catch(e){}
+
+                } catch(e){ console.error(e); }
             }
 
             function updateGameLimitText() {
