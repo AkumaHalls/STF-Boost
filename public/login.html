@@ -10,8 +10,9 @@
     <link rel="stylesheet" href="/style.css?v=2.3">
     <style>
         .tech-font { font-family: 'Share Tech Mono', monospace; }
-        /* Ajuste para o alerta não quebrar o layout flex do login */
         .global-alert { position: absolute; top: 0; left: 0; width: 100%; }
+        /* Correção para garantir que o estilo do style.css não quebre o Tailwind */
+        .login-box input { margin-bottom: 0; } 
     </style>
 </head>
 <body class="panel-page login-page">
@@ -21,7 +22,8 @@
         <button class="alert-close" onclick="closeGlobalAlert()">×</button>
     </div>
 
-    <div class="login-box" style="margin-top: 60px;"> <div class="sidebar-logo" style="justify-content: center; padding-bottom: 20px; border-bottom: none;">
+    <div class="login-box" style="margin-top: 60px;"> 
+        <div class="sidebar-logo" style="justify-content: center; padding-bottom: 20px; border-bottom: none;">
             <img src="/logo.png" alt="Logo STF Steam Boost">
             <h1 class="glitch-title" data-text="STF Boost">STF Boost</h1>
         </div>
@@ -32,20 +34,23 @@
 
         <form id="loginForm" class="space-y-6">
             <div>
-                <label for="username" class="block text-sm font-medium text-gray-300 text-left">Usuário</label>
-                <input type="text" id="username" name="username" required>
+                <label for="username" class="block text-sm font-medium text-gray-300 text-left mb-1">Usuário</label>
+                <input type="text" id="username" name="username" required 
+                    class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
             </div>
             <div>
-                <label for="password" class="block text-sm font-medium text-gray-300 text-left">Senha</label>
-                <input type="password" id="password" name="password" required>
+                <label for="password" class="block text-sm font-medium text-gray-300 text-left mb-1">Senha</label>
+                <input type="password" id="password" name="password" required 
+                    class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono">
             </div>
             
-            <button type="submit" id="submitButton" class="tech-font">
+            <button type="submit" id="submitButton" 
+                class="w-full px-4 py-3 font-bold text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors tech-font uppercase tracking-wider shadow-lg shadow-blue-900/50">
                 Entrar
             </button>
         </form>
 
-        <p class="text-sm text-center text-gray-400 mt-4">
+        <p class="text-sm text-center text-gray-400 mt-6">
             Não tem uma conta? 
             <a href="/register" class="font-medium text-blue-400 hover:underline">Registre-se aqui</a>
         </p>
@@ -59,14 +64,13 @@
                 const data = await res.json();
                 
                 if (data && data.active) {
-                    // Verifica se o usuário já fechou ESTA versão do alerta (baseado na data de atualização)
                     const lastClosed = localStorage.getItem('globalAlertClosed');
                     if (lastClosed !== data.updatedAt) {
                         const el = document.getElementById('globalAlert');
-                        el.className = `global-alert alert-${data.type}`; // Adiciona a cor correta
+                        el.className = `global-alert alert-${data.type}`; 
                         document.getElementById('globalAlertMessage').textContent = data.message;
                         el.style.display = 'block';
-                        el.dataset.updatedAt = data.updatedAt; // Salva a data no elemento
+                        el.dataset.updatedAt = data.updatedAt; 
                     }
                 }
             } catch(e) { console.error("Erro ao carregar alerta:", e); }
@@ -75,7 +79,6 @@
         window.closeGlobalAlert = function() {
             const el = document.getElementById('globalAlert');
             el.style.display = 'none';
-            // Salva no navegador que este alerta foi lido
             if (el.dataset.updatedAt) {
                 localStorage.setItem('globalAlertClosed', el.dataset.updatedAt);
             }
@@ -83,7 +86,7 @@
 
         // --- LÓGICA DE LOGIN ---
         document.addEventListener('DOMContentLoaded', () => {
-            checkGlobalAlert(); // Chama o alerta ao carregar
+            checkGlobalAlert();
 
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('error') === 'unauthorized') {
@@ -100,7 +103,7 @@
                 const errorMessage = document.getElementById('errorMessage');
 
                 submitButton.disabled = true;
-                submitButton.textContent = 'Aguarde...';
+                submitButton.textContent = 'AGUARDE...';
                 errorMessage.style.display = 'none';
 
                 try {
@@ -118,7 +121,7 @@
                     errorMessage.textContent = error.message;
                     errorMessage.style.display = 'block';
                     submitButton.disabled = false;
-                    submitButton.textContent = 'Entrar';
+                    submitButton.textContent = 'ENTRAR';
                 }
             });
         });
