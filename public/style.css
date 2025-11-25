@@ -563,7 +563,7 @@ input:checked + .slider:before { transform: translateX(26px); }
 .my-key-item input[type="text"] { width: 100%; background: #000; color: #fff; border: 1px solid var(--primary-color); padding: 5px; }
 
 /* ============================================= */
-/* 10. ALERTA GLOBAL (NOVO)                      */
+/* 10. ALERTA GLOBAL                             */
 /* ============================================= */
 .global-alert {
     width: 100%;
@@ -608,3 +608,52 @@ input:checked + .slider:before { transform: translateX(26px); }
     box-shadow: none;
 }
 .alert-close:hover { opacity: 1; background: none; box-shadow: none; color: inherit; }
+
+/* ============================================= */
+/* 11. MODAL DE JOGOS (ABAS E LISTA)             */
+/* ============================================= */
+.tab-container {
+    display: flex;
+    border-bottom: 1px solid var(--primary-color);
+    margin-bottom: 15px;
+}
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    text-transform: uppercase;
+    transition: all 0.3s;
+}
+.tab-btn:hover { color: #fff; background: rgba(0,255,255,0.1); }
+.tab-btn.active {
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--primary-color);
+    box-shadow: none;
+    background: rgba(0,255,255,0.05);
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.game-list-container {
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 4px;
+    background: rgba(0,0,0,0.2);
+    padding: 5px;
+}
+.game-item {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.game-item:hover { background: rgba(0, 255, 255, 0.1); }
+.game-item input { margin-right: 10px; cursor: pointer; width: auto !important; }
+.game-item label { cursor: pointer; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
