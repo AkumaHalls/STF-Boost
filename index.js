@@ -105,7 +105,7 @@ async function initializePlans() {
         { id: 'ultimate', name: 'Ultimate', price: 54.90, price_usd: 14.99, days: 30, accounts: 10, games: 33, style: 'none', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
         { id: 'lifetime', name: 'Vitalício', price: 249.90, price_usd: 49.99, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, features: ['Vitalício', '10 Contas', '33 Jogos'] },
         { id: 'halloween', name: 'Halloween', price: 19.90, price_usd: 7.99, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias', '8 Contas', '33 Jogos'] },
-        { id: 'christmas', name: 'Natal', price: 89.90, price_usd: 29.99, days: 365, accounts: 10, games: 33, style: 'christmas', active true, features: ['1 Ano', '10 Contas', '33 Jogos'] },
+        { id: 'christmas', name: 'Natal', price: 89.90, price_usd: 29.99, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] }, // CORRIGIDO AQUI
         { id: 'newyear', name: 'Ano Novo', price: 12.90, price_usd: 5.99, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
         { id: 'custom', name: 'Personalizado', price: 15.00, price_usd: 5.00, days: 30, accounts: 1, games: 10, style: 'none', active: true, features: ['Personalizado'] }
     ];
