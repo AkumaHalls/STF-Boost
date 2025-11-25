@@ -33,6 +33,28 @@
             <div class="admin-container">
                 
                 <div class="admin-card">
+                    <h2>Notificação Global</h2>
+                    <div class="admin-form" style="flex-direction: column; align-items: stretch;">
+                        <textarea id="globalAlertMessage" rows="3" placeholder="Escreva o aviso aqui..." style="width: 100%; margin-bottom: 10px;"></textarea>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <label>Tipo:</label>
+                            <select id="globalAlertType">
+                                <option value="danger">Perigo (Vermelho)</option>
+                                <option value="warning">Alerta (Amarelo)</option>
+                                <option value="info">Info (Azul)</option>
+                                <option value="success">Sucesso (Verde)</option>
+                            </select>
+                            <label>Ativo:</label>
+                            <select id="globalAlertActive">
+                                <option value="true">Sim</option>
+                                <option value="false">Não</option>
+                            </select>
+                            <button id="saveGlobalAlertButton" class="assign-key-btn" style="margin-left: auto;">Salvar e Publicar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="admin-card">
                     <h2>Gerador de Licenças</h2>
                     <div class="admin-form">
                         <label for="planSelect">Plano:</label>
@@ -131,8 +153,35 @@
             const planSelect = document.getElementById('planSelect');
             
             async function fetchAll() {
-                await fetchPlans(); await fetchUsers(); await fetchLicenses(); await fetchCoupons();
+                await fetchPlans(); await fetchUsers(); await fetchLicenses(); await fetchCoupons(); await fetchGlobalAlert();
             }
+
+            // --- Lógica do Alerta Global ---
+            async function fetchGlobalAlert() {
+                try {
+                    const res = await fetch('/api/global-alert');
+                    const data = await res.json();
+                    if(data) {
+                        document.getElementById('globalAlertMessage').value = data.message || '';
+                        document.getElementById('globalAlertType').value = data.type || 'info';
+                        document.getElementById('globalAlertActive').value = data.active ? 'true' : 'false';
+                    }
+                } catch(e){}
+            }
+
+            document.getElementById('saveGlobalAlertButton').onclick = async () => {
+                const message = document.getElementById('globalAlertMessage').value;
+                const type = document.getElementById('globalAlertType').value;
+                const active = document.getElementById('globalAlertActive').value;
+                
+                const res = await fetch('/api/admin/update-global-alert', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ message, type, active })
+                });
+                const data = await res.json();
+                showToast(data.message, 'info');
+            };
 
             async function fetchPlans() {
                 try {
@@ -208,7 +257,7 @@
             document.getElementById('generateKeysButton').onclick = async () => {
                 const planVal = document.getElementById('planSelect').value;
                 const quantityVal = document.getElementById('quantityInput').value;
-                const durationVal = document.getElementById('durationInput').value; // Valor capturado
+                const durationVal = document.getElementById('durationInput').value; 
 
                 await fetch('/api/admin/generate-keys', {
                     method:'POST',
@@ -216,7 +265,7 @@
                     body:JSON.stringify({
                         plan: planVal, 
                         quantity: quantityVal,
-                        durationDays: durationVal // Valor enviado
+                        durationDays: durationVal 
                     })
                 });
                 fetchLicenses();
