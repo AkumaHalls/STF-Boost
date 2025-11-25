@@ -17,13 +17,13 @@ let account = {
 function farmGames() {
     if (!account.client.steamID) return;
 
-    // 1. Prepara os jogos (Converte para Inteiro e Filtra)
+    // 1. Prepara os jogos
     let gamesToPlay = [];
 
     // Se tiver Título Customizado (Prioridade)
     if (account.settings.customInGameTitle) {
         gamesToPlay = [{
-            game_id: 15190, // ID genérico para permitir texto customizado
+            game_id: 15190, // ID genérico
             game_extra_info: account.settings.customInGameTitle
         }];
     } else {
@@ -59,39 +59,45 @@ function setupListeners() {
         // Inicia o Farm imediatamente
         farmGames();
 
-        // *** CORREÇÃO DO ERRO DE JOGOS (PLANO B) ***
-        // Busca jogos com verificação de segurança
-        account.client.getUserOwnedApps(account.client.steamID, (err, response) => {
-            if (err) {
-                console.error(`[${account.username}] Erro ao buscar jogos:`, err.message);
-                return;
-            }
-
-            // BLINDAGEM: Verifica o formato da resposta antes de usar .map()
-            let appsList = [];
-            if (Array.isArray(response)) {
-                appsList = response;
-            } else if (response && Array.isArray(response.games)) {
-                appsList = response.games;
-            } else if (response && Array.isArray(response.apps)) {
-                appsList = response.apps;
-            }
-
-            // Só processa se encontrou uma lista válida
-            if (appsList.length > 0) {
-                try {
-                    const owned = appsList.map(app => ({ appid: app.appid, name: app.name }));
-                    process.send({ type: 'ownedGamesUpdate', payload: { games: owned } });
-                } catch (mapErr) {
-                    console.error(`[${account.username}] Erro ao processar lista de jogos:`, mapErr);
+        // *** CORREÇÃO ROBUSTA PARA BUSCAR JOGOS ***
+        try {
+            account.client.getUserOwnedApps(account.client.steamID, (err, response) => {
+                if (err) {
+                    // Não vamos logar erro crítico aqui para não poluir o console, apenas ignoramos
+                    return;
                 }
-            }
-        });
 
-        // *** HEARTBEAT ***: Re-envia o comando de farm a cada 10 minutos para garantir que não caiu
+                let validApps = [];
+
+                // TENTA DESCOBRIR ONDE ESTÁ A LISTA DE JOGOS
+                if (Array.isArray(response)) {
+                    validApps = response;
+                } else if (response && Array.isArray(response.apps)) {
+                    validApps = response.apps;
+                } else if (response && Array.isArray(response.games)) {
+                    validApps = response.games;
+                } else if (response && response.response && Array.isArray(response.response.games)) {
+                    validApps = response.response.games;
+                }
+
+                // Só processa se encontrou uma lista válida
+                if (validApps.length > 0) {
+                    const owned = validApps.map(app => ({ 
+                        appid: app.appid, 
+                        name: app.name 
+                    }));
+                    // Envia para o index.js salvar
+                    process.send({ type: 'ownedGamesUpdate', payload: { games: owned } });
+                    console.log(`[${account.username}] LISTA: ${owned.length} jogos carregados.`);
+                }
+            });
+        } catch (e) {
+            console.error(`[${account.username}] Erro interno ao buscar jogos:`, e.message);
+        }
+
+        // *** HEARTBEAT ***
         if (account.farmInterval) clearInterval(account.farmInterval);
         account.farmInterval = setInterval(() => {
-            console.log(`[${account.username}] HEARTBEAT: Reforçando farm...`);
             farmGames();
         }, 10 * 60 * 1000); // 10 minutos
     });
@@ -114,12 +120,10 @@ function setupListeners() {
         }
     });
 
-    // === CONFLITO DE SESSÃO (Você abriu um jogo no PC) ===
+    // === CONFLITO DE SESSÃO ===
     account.client.on('playingState', (blocked, playingAppId) => {
         if (blocked) {
             console.log(`[${account.username}] CONFLITO: Usuário iniciou jogo em outro lugar. Pausando farm temporariamente.`);
-            // Não precisamos fazer nada, a Steam pausa o bot automaticamente.
-            // O nosso Heartbeat vai tentar retomar daqui a 10 minutos.
         }
     });
 
@@ -145,9 +149,8 @@ function setupListeners() {
     });
     
     account.client.on('friendRelationship', (steamID, relationship) => {
-        if (relationship === 2 && account.settings.autoAcceptFriends) { // 2 = RequestRecipient
+        if (relationship === 2 && account.settings.autoAcceptFriends) { 
             account.client.addFriend(steamID);
-            console.log(`[${account.username}] AMIGO: Pedido aceito automaticamente.`);
         }
     });
 }
