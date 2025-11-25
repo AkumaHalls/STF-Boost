@@ -17,32 +17,27 @@ let account = {
 function farmGames() {
     if (!account.client.steamID) return;
 
-    // 1. Prepara os jogos (Converte para Inteiro e Filtra)
     let gamesToPlay = [];
 
-    // Se tiver Título Customizado (Prioridade)
     if (account.settings.customInGameTitle) {
         gamesToPlay = [{
-            game_id: 15190, // ID genérico para permitir texto customizado
+            game_id: 15190, 
             game_extra_info: account.settings.customInGameTitle
         }];
     } else {
-        // Farm normal de AppIDs
         gamesToPlay = account.games.map(id => parseInt(id, 10)).filter(id => !isNaN(id) && id > 0);
     }
 
-    // 2. Define Status (Online/Offline)
     const personaState = account.settings.appearOffline ? SteamUser.EPersonaState.Invisible : SteamUser.EPersonaState.Online;
     
-    // 3. Envia comandos para a Steam
     try {
         account.client.setPersona(personaState);
         
         if (gamesToPlay.length > 0) {
             account.client.gamesPlayed(gamesToPlay);
-            console.log(`[${account.username}] FARM: A rodar ${gamesToPlay.length} jogos/título. (IDs: ${JSON.stringify(gamesToPlay)})`);
+            console.log(`[${account.username}] FARM: A rodar ${gamesToPlay.length} jogos/título.`);
         } else {
-            account.client.gamesPlayed([]); // Para o farm se a lista estiver vazia
+            account.client.gamesPlayed([]); 
             console.log(`[${account.username}] FARM: Lista vazia, ficando apenas Online.`);
         }
     } catch (e) {
@@ -56,18 +51,26 @@ function setupListeners() {
         console.log(`[${account.username}] LOGIN: Sucesso!`);
         process.send({ type: 'statusUpdate', payload: { status: "Rodando", sessionStartTime: Date.now() } });
 
-        // Inicia o Farm imediatamente
+        // 1. Inicia o Farm
         farmGames();
 
-        // *** HEARTBEAT ***: Re-envia o comando de farm a cada 10 minutos para garantir que não caiu
+        // 2. Busca jogos da conta para cache (PLANO B)
+        account.client.getUserOwnedApps(account.client.steamID, (err, apps) => {
+            if (!err && apps) {
+                // Mapeia para enviar apenas ID e Nome (reduz tamanho)
+                const owned = apps.map(app => ({ appid: app.appid, name: app.name }));
+                process.send({ type: 'ownedGamesUpdate', payload: { games: owned } });
+            }
+        });
+
+        // *** HEARTBEAT ***
         if (account.farmInterval) clearInterval(account.farmInterval);
         account.farmInterval = setInterval(() => {
-            console.log(`[${account.username}] HEARTBEAT: Reforçando farm...`);
             farmGames();
-        }, 10 * 60 * 1000); // 10 minutos
+        }, 10 * 60 * 1000); 
     });
 
-    // === STEAM GUARD NECESSÁRIO ===
+    // === STEAM GUARD ===
     account.client.on('steamGuard', (domain, callback) => {
         if (account.settings.sharedSecret) {
             try {
@@ -85,20 +88,17 @@ function setupListeners() {
         }
     });
 
-    // === CONFLITO DE SESSÃO (Você abriu um jogo no PC) ===
+    // === CONFLITO DE SESSÃO ===
     account.client.on('playingState', (blocked, playingAppId) => {
         if (blocked) {
-            console.log(`[${account.username}] CONFLITO: Usuário iniciou jogo em outro lugar. Pausando farm temporariamente.`);
-            // Não precisamos fazer nada, a Steam pausa o bot automaticamente.
-            // O nosso Heartbeat vai tentar retomar daqui a 10 minutos.
+            console.log(`[${account.username}] CONFLITO: Pausando farm temporariamente.`);
         }
     });
 
-    // === ERROS E DESCONEXÕES ===
+    // === ERROS ===
     account.client.on('error', (err) => {
         console.error(`[${account.username}] ERRO: ${err.message}`);
         process.send({ type: 'statusUpdate', payload: { status: `Erro: ${err.message}` } });
-        // Se for erro fatal, tenta relogar em 60s
         setTimeout(() => {
             if(!account.client.steamID) account.client.logOn({ accountName: account.username, password: account.password });
         }, 60000);
@@ -106,7 +106,6 @@ function setupListeners() {
 
     account.client.on('disconnected', (eresult, msg) => {
         console.log(`[${account.username}] DESCONECTADO: ${msg} (${eresult})`);
-        // Deixa o index.js decidir se reinicia o processo
         process.exit(0); 
     });
 
@@ -116,30 +115,22 @@ function setupListeners() {
     });
     
     account.client.on('friendRelationship', (steamID, relationship) => {
-        if (relationship === 2 && account.settings.autoAcceptFriends) { // 2 = RequestRecipient
+        if (relationship === 2 && account.settings.autoAcceptFriends) { 
             account.client.addFriend(steamID);
-            console.log(`[${account.username}] AMIGO: Pedido aceito automaticamente.`);
         }
     });
 }
 
-// === COMUNICAÇÃO COM O GESTOR (index.js) ===
+// === COMUNICAÇÃO COM O GESTOR ===
 process.on('message', (message) => {
     const { command, data } = message;
 
     if (command === 'start') {
         account = { ...account, ...data };
-        // Limpeza preventiva
         if (account.client.steamID) account.client.logOff();
-        
         setupListeners();
-
         const logonOptions = { accountName: account.username, password: account.password };
-        if (account.sentryFileHash) {
-            logonOptions.shaSentryfile = Buffer.from(account.sentryFileHash, 'base64');
-        }
-        
-        console.log(`[${account.username}] INICIANDO: Conectando à Steam...`);
+        if (account.sentryFileHash) logonOptions.shaSentryfile = Buffer.from(account.sentryFileHash, 'base64');
         account.client.logOn(logonOptions);
     }
 
@@ -149,9 +140,8 @@ process.on('message', (message) => {
     }
     
     if (command === 'updateSettings') {
-        console.log(`[${account.username}] UPDATE: Configurações recebidas.`);
         account.settings = data.settings;
         account.games = data.games;
-        farmGames(); // Reaplica o farm instantaneamente
+        farmGames();
     }
 });
