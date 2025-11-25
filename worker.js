@@ -42,7 +42,7 @@ function farmGames() {
             account.client.gamesPlayed(gamesToPlay);
             console.log(`[${account.username}] FARM: A rodar ${gamesToPlay.length} jogos/título.`);
         } else {
-            account.client.gamesPlayed([]); // Para o farm se a lista estiver vazia
+            account.client.gamesPlayed([]); 
             console.log(`[${account.username}] FARM: Lista vazia, ficando apenas Online.`);
         }
     } catch (e) {
@@ -59,17 +59,20 @@ function setupListeners() {
         // Inicia o Farm imediatamente
         farmGames();
 
-        // *** CORREÇÃO ROBUSTA PARA BUSCAR JOGOS ***
+        // *** BUSCA DE JOGOS (MODO DEBUG ATIVADO) ***
+        console.log(`[${account.username}] INFO: Solicitando lista de jogos à Steam...`);
+        
         try {
             account.client.getUserOwnedApps(account.client.steamID, (err, response) => {
+                // 1. Log de Erro da Steam
                 if (err) {
-                    // Não vamos logar erro crítico aqui para não poluir o console, apenas ignoramos
+                    console.error(`[${account.username}] ERRO API JOGOS: ${err.message}`);
                     return;
                 }
 
                 let validApps = [];
 
-                // TENTA DESCOBRIR ONDE ESTÁ A LISTA DE JOGOS
+                // 2. Tentativa de identificar o formato da resposta
                 if (Array.isArray(response)) {
                     validApps = response;
                 } else if (response && Array.isArray(response.apps)) {
@@ -80,7 +83,7 @@ function setupListeners() {
                     validApps = response.response.games;
                 }
 
-                // Só processa se encontrou uma lista válida
+                // 3. Log do Resultado
                 if (validApps.length > 0) {
                     const owned = validApps.map(app => ({ 
                         appid: app.appid, 
@@ -88,11 +91,14 @@ function setupListeners() {
                     }));
                     // Envia para o index.js salvar
                     process.send({ type: 'ownedGamesUpdate', payload: { games: owned } });
-                    console.log(`[${account.username}] LISTA: ${owned.length} jogos carregados.`);
+                    console.log(`[${account.username}] SUCESSO: ${owned.length} jogos obtidos e enviados para o painel.`);
+                } else {
+                    // Se chegou aqui, a resposta veio mas não achamos jogos. Vamos ver o que veio.
+                    console.warn(`[${account.username}] AVISO: Lista de jogos vazia. Resposta bruta:`, JSON.stringify(response).substring(0, 200) + "...");
                 }
             });
         } catch (e) {
-            console.error(`[${account.username}] Erro interno ao buscar jogos:`, e.message);
+            console.error(`[${account.username}] ERRO CRÍTICO AO BUSCAR JOGOS:`, e.message);
         }
 
         // *** HEARTBEAT ***
@@ -123,7 +129,7 @@ function setupListeners() {
     // === CONFLITO DE SESSÃO ===
     account.client.on('playingState', (blocked, playingAppId) => {
         if (blocked) {
-            console.log(`[${account.username}] CONFLITO: Usuário iniciou jogo em outro lugar. Pausando farm temporariamente.`);
+            console.log(`[${account.username}] CONFLITO: Usuário iniciou jogo em outro lugar.`);
         }
     });
 
@@ -131,7 +137,6 @@ function setupListeners() {
     account.client.on('error', (err) => {
         console.error(`[${account.username}] ERRO: ${err.message}`);
         process.send({ type: 'statusUpdate', payload: { status: `Erro: ${err.message}` } });
-        // Se for erro fatal, tenta relogar em 60s
         setTimeout(() => {
             if(!account.client.steamID) account.client.logOn({ accountName: account.username, password: account.password });
         }, 60000);
@@ -139,7 +144,6 @@ function setupListeners() {
 
     account.client.on('disconnected', (eresult, msg) => {
         console.log(`[${account.username}] DESCONECTADO: ${msg} (${eresult})`);
-        // Deixa o index.js decidir se reinicia o processo
         process.exit(0); 
     });
 
@@ -181,9 +185,8 @@ process.on('message', (message) => {
     }
     
     if (command === 'updateSettings') {
-        console.log(`[${account.username}] UPDATE: Configurações recebidas.`);
         account.settings = data.settings;
         account.games = data.games;
-        farmGames(); // Reaplica o farm instantaneamente
+        farmGames(); 
     }
 });
