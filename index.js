@@ -105,7 +105,7 @@ async function initializePlans() {
         { id: 'ultimate', name: 'Ultimate', price: 54.90, price_usd: 14.99, days: 30, accounts: 10, games: 33, style: 'none', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
         { id: 'lifetime', name: 'Vitalício', price: 249.90, price_usd: 49.99, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, features: ['Vitalício', '10 Contas', '33 Jogos'] },
         { id: 'halloween', name: 'Halloween', price: 19.90, price_usd: 7.99, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias', '8 Contas', '33 Jogos'] },
-        { id: 'christmas', name: 'Natal', price: 89.90, price_usd: 29.99, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] }, // CORRIGIDO AQUI
+        { id: 'christmas', name: 'Natal', price: 89.90, price_usd: 29.99, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] },
         { id: 'newyear', name: 'Ano Novo', price: 12.90, price_usd: 5.99, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
         { id: 'custom', name: 'Personalizado', price: 15.00, price_usd: 5.00, days: 30, accounts: 1, games: 10, style: 'none', active: true, features: ['Personalizado'] }
     ];
@@ -249,8 +249,7 @@ async function enforceUserLimits(userId) {
     }
 }
 
-// --- NOVO: FUNÇÃO DE VERIFICAÇÃO INSTANTÂNEA ---
-// Esta função é chamada em todas as rotas críticas para garantir que o plano seja rebaixado ANTES da ação.
+// --- FUNÇÃO DE VERIFICAÇÃO INSTANTÂNEA ---
 async function ensureUserPlanStatus(userId) {
     try {
         let user = await usersCollection.findOne({ _id: new ObjectId(userId) });
@@ -311,7 +310,7 @@ async function checkExpiredPlans() {
             // Downgrade para free
             await usersCollection.updateOne({ _id: u._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: FREE_HOURS_MS } });
             
-            // Força verificação de limites (vai matar contas excedentes)
+            // Força verificação de limites
             await enforceUserLimits(u._id.toString());
             
             // Limpa banco de dados (opcional: reseta jogos)
@@ -403,10 +402,12 @@ function startWorkerForAccount(accountData) {
     });
 }
 
+// --- CARREGAMENTO DE CONTAS (CORRIGIDO) ---
 async function loadAccountsIntoMemory() {
     const savedAccounts = await accountsCollection.find({}).toArray(); 
     
-    savedAccounts.forEach((acc, index) => {
+    // 1. Inicializa todas na memória como Parado para aparecerem no painel
+    savedAccounts.forEach((acc) => {
         liveAccounts[acc.username] = { 
             ...acc, 
             encryptedPassword: acc.password, 
@@ -416,15 +417,66 @@ async function loadAccountsIntoMemory() {
             sessionStartTime: null, 
             manual_logout: false 
         };
+    });
 
+    console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas. Iniciando sequencia de auto-login...`);
+
+    // 2. Processa o auto-start com verificações de segurança
+    savedAccounts.forEach((acc, index) => {
         if (acc.settings && acc.settings.autoRelogin) {
-            setTimeout(() => {
-                const pass = decrypt(acc.password);
-                if (pass) startWorkerForAccount({ ...liveAccounts[acc.username], password: pass });
-            }, index * 15000);
+            setTimeout(async () => {
+                // Verifica se a conta ainda existe na memória
+                if (!liveAccounts[acc.username]) return;
+
+                try {
+                    // 1. Verifica estado do Usuário/Plano (inclui downgrade auto se expirou)
+                    const user = await ensureUserPlanStatus(acc.ownerUserID);
+                    
+                    if (!user) return;
+
+                    // 2. Verificações de Bloqueio
+                    if (user.isBanned) {
+                        liveAccounts[acc.username].status = "Banido";
+                        return;
+                    }
+
+                    // 3. Verifica Tempo Free
+                    if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
+                        liveAccounts[acc.username].status = "Tempo Esgotado";
+                        return;
+                    }
+
+                    // 4. Verifica Limites do Plano (Contas Ativas)
+                    const plan = GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free'];
+                    const limitAccounts = user.customLimits ? user.customLimits.accounts : (plan ? plan.accounts : 1);
+                    
+                    // Conta quantas deste user JÁ estão rodando ou iniciando
+                    let runningCount = 0;
+                    for (const u in liveAccounts) {
+                        if (liveAccounts[u].ownerUserID === acc.ownerUserID && 
+                           (liveAccounts[u].status === 'Rodando' || liveAccounts[u].status.startsWith('Iniciando'))) {
+                            runningCount++;
+                        }
+                    }
+
+                    if (runningCount >= limitAccounts) {
+                        liveAccounts[acc.username].status = "Parado (Limite de Plano)";
+                        return;
+                    }
+
+                    // Se passou por tudo, inicia
+                    const pass = decrypt(acc.password);
+                    if (pass) {
+                        startWorkerForAccount({ ...liveAccounts[acc.username], password: pass });
+                    }
+
+                } catch (e) {
+                    console.error(`[AUTO-START] Erro ao iniciar ${acc.username}:`, e);
+                }
+
+            }, index * 15000); // Delay escalonado
         }
     });
-    console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas do banco de dados.`);
 }
 
 // --- MIDDLEWARES ---
