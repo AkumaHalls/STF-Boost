@@ -59,12 +59,17 @@ function setupListeners() {
         // Inicia o Farm imediatamente
         farmGames();
 
-        // *** BUSCA DE JOGOS (MODO DEBUG ATIVADO) ***
-        console.log(`[${account.username}] INFO: Solicitando lista de jogos à Steam...`);
+        // *** BUSCA DE JOGOS (COM SUPORTE A JOGOS FREE E AVISO DE PRIVACIDADE) ***
+        console.log(`[${account.username}] INFO: Solicitando biblioteca...`);
         
         try {
-            account.client.getUserOwnedApps(account.client.steamID, (err, response) => {
-                // 1. Log de Erro da Steam
+            // Adicionamos filtros para tentar pegar mais jogos
+            const filter = {
+                includePlayedFreeGames: true,
+                includeFreeSubGames: true
+            };
+
+            account.client.getUserOwnedApps(account.client.steamID, filter, (err, response) => {
                 if (err) {
                     console.error(`[${account.username}] ERRO API JOGOS: ${err.message}`);
                     return;
@@ -72,7 +77,7 @@ function setupListeners() {
 
                 let validApps = [];
 
-                // 2. Tentativa de identificar o formato da resposta
+                // Tratamento robusto da resposta
                 if (Array.isArray(response)) {
                     validApps = response;
                 } else if (response && Array.isArray(response.apps)) {
@@ -83,18 +88,17 @@ function setupListeners() {
                     validApps = response.response.games;
                 }
 
-                // 3. Log do Resultado
+                // Processamento
                 if (validApps.length > 0) {
                     const owned = validApps.map(app => ({ 
                         appid: app.appid, 
                         name: app.name 
                     }));
-                    // Envia para o index.js salvar
                     process.send({ type: 'ownedGamesUpdate', payload: { games: owned } });
-                    console.log(`[${account.username}] SUCESSO: ${owned.length} jogos obtidos e enviados para o painel.`);
+                    console.log(`[${account.username}] SUCESSO: ${owned.length} jogos carregados.`);
                 } else {
-                    // Se chegou aqui, a resposta veio mas não achamos jogos. Vamos ver o que veio.
-                    console.warn(`[${account.username}] AVISO: Lista de jogos vazia. Resposta bruta:`, JSON.stringify(response).substring(0, 200) + "...");
+                    // LOG ESPECÍFICO PARA O SEU PROBLEMA
+                    console.warn(`[${account.username}] ATENÇÃO: Steam retornou 0 jogos. VERIFIQUE SE A PRIVACIDADE 'DETALHES DOS JOGOS' ESTÁ PÚBLICA.`);
                 }
             });
         } catch (e) {
@@ -165,7 +169,6 @@ process.on('message', (message) => {
 
     if (command === 'start') {
         account = { ...account, ...data };
-        // Limpeza preventiva
         if (account.client.steamID) account.client.logOff();
         
         setupListeners();
