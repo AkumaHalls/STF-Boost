@@ -15,40 +15,39 @@ let account = {
 };
 
 // Controle de Anti-Spam e Reconexão
-const replyCooldowns = new Map(); // Armazena timestamp da última resposta por UserID
+const replyCooldowns = new Map(); 
 let retryCount = 0;
 const MAX_RETRIES = 10;
 
-// --- LIMPEZA DE RECURSOS (Evita Memory Leaks) ---
+// --- LIMPEZA DE RECURSOS ---
 function cleanup() {
     if (account.farmInterval) clearInterval(account.farmInterval);
     if (account.reloginTimeout) clearTimeout(account.reloginTimeout);
-    
     if (account.client) {
         account.client.removeAllListeners();
     }
-    
     account.steamGuardCallback = null;
 }
 
-// --- FUNÇÃO CENTRAL DE FARM ---
+// --- FUNÇÃO CENTRAL DE FARM (CORRIGIDA) ---
 function farmGames() {
     if (!account.client.steamID) return;
 
     let gamesToPlay = [];
 
-    // Prioridade: Título Customizado
+    // Prioridade: Título Customizado (CORREÇÃO APLICADA)
     if (account.settings.customInGameTitle && account.settings.customInGameTitle.trim().length > 0) {
-        gamesToPlay = [{
-            game_id: 15190, 
-            game_extra_info: account.settings.customInGameTitle
-        }];
+        // A biblioteca steam-user aceita a string diretamente para "Non-Steam Game"
+        // Isso força o status "Em jogo não Steam: [Seu Texto]"
+        gamesToPlay = [account.settings.customInGameTitle];
+        console.log(`[${account.username}] FARM: Modo Título Customizado: "${account.settings.customInGameTitle}"`);
     } else {
         // Farm de IDs (Limitado a 32 jogos pela Steam)
         gamesToPlay = account.games
             .map(id => parseInt(id, 10))
             .filter(id => !isNaN(id) && id > 0)
-            .slice(0, 32); // SEGURANÇA: Limite hardcap da Steam
+            .slice(0, 32); 
+        console.log(`[${account.username}] FARM: A rodar ${gamesToPlay.length} jogos.`);
     }
 
     const personaState = account.settings.appearOffline ? SteamUser.EPersonaState.Invisible : SteamUser.EPersonaState.Online;
@@ -56,9 +55,9 @@ function farmGames() {
     try {
         account.client.setPersona(personaState);
         
+        // Se o array tiver itens (seja string ou IDs), envia
         if (gamesToPlay.length > 0) {
             account.client.gamesPlayed(gamesToPlay);
-            console.log(`[${account.username}] FARM: A rodar ${gamesToPlay.length} jogos/título.`);
         } else {
             account.client.gamesPlayed([]); 
             console.log(`[${account.username}] FARM: Lista vazia, ficando apenas Online.`);
@@ -68,9 +67,9 @@ function farmGames() {
     }
 }
 
-// --- LÓGICA DE RECONEXÃO EXPONENCIAL ---
+// --- LÓGICA DE RECONEXÃO ---
 function scheduleReconnect() {
-    const delay = Math.min(10000 * Math.pow(2, retryCount), 300000); // Max 5 minutos
+    const delay = Math.min(10000 * Math.pow(2, retryCount), 300000); 
     console.log(`[${account.username}] Conexão perdida. Tentando reconectar em ${delay / 1000}s... (Tentativa ${retryCount + 1})`);
     
     account.reloginTimeout = setTimeout(() => {
@@ -89,7 +88,7 @@ function setupListeners() {
     // === LOGIN BEM SUCEDIDO ===
     account.client.on('loggedOn', () => {
         console.log(`[${account.username}] LOGIN: Sucesso!`);
-        retryCount = 0; // Reseta contador de tentativas
+        retryCount = 0; 
         process.send({ type: 'statusUpdate', payload: { status: "Rodando", sessionStartTime: Date.now() } });
 
         farmGames();
@@ -112,7 +111,7 @@ function setupListeners() {
                     process.send({ type: 'ownedGamesUpdate', payload: { games: owned } });
                     console.log(`[${account.username}] SUCESSO: ${owned.length} jogos carregados.`);
                 } else {
-                    console.warn(`[${account.username}] ATENÇÃO: 0 jogos encontrados. Verifique privacidade.`);
+                    console.warn(`[${account.username}] ATENÇÃO: 0 jogos encontrados. Verifique se o perfil é público.`);
                 }
             });
         } catch (e) {}
@@ -122,14 +121,13 @@ function setupListeners() {
         account.farmInterval = setInterval(() => { farmGames(); }, 10 * 60 * 1000);
     });
 
-    // === MENSAGEM AUTOMÁTICA (ANTI-SPAM) ===
+    // === MENSAGEM AUTOMÁTICA ===
     account.client.on('friendMessage', (steamID, message) => {
         if (account.settings.customAwayMessage && account.settings.customAwayMessage.trim().length > 0) {
             const sid = steamID.getSteamID64();
             const now = Date.now();
             const lastReply = replyCooldowns.get(sid) || 0;
 
-            // SEGURANÇA: Só responde a cada 5 minutos (300000 ms)
             if (now - lastReply > 300000) {
                 account.client.chatMessage(steamID, account.settings.customAwayMessage);
                 replyCooldowns.set(sid, now);
@@ -161,7 +159,7 @@ function setupListeners() {
         if (blocked) console.log(`[${account.username}] CONFLITO: Usuário iniciou jogo. Pausando.`);
     });
 
-    // === ERROS E DESCONEXÕES ===
+    // === ERROS ===
     account.client.on('error', (err) => {
         console.error(`[${account.username}] ERRO: ${err.message}`);
         process.send({ type: 'statusUpdate', payload: { status: `Erro: ${err.message}` } });
@@ -185,26 +183,23 @@ function setupListeners() {
     });
 }
 
-// === COMUNICAÇÃO SEGURA (IPC) ===
+// === COMUNICAÇÃO (IPC) ===
 process.on('message', (message) => {
     const { command, data } = message;
 
     if (command === 'start') {
-        // SEGURANÇA: Validação de entrada rigorosa
         if (!data || !data.username || !data.password) {
             console.error("Tentativa de iniciar worker com dados inválidos.");
             return;
         }
 
-        cleanup(); // Limpa listeners antigos antes de recomeçar
+        cleanup(); 
 
-        // Atribuição manual para evitar injeção de propriedades indesejadas
         account.username = String(data.username);
         account.password = String(data.password);
         account.settings = data.settings || {};
         account.sentryFileHash = data.sentryFileHash;
         
-        // Sanitização da lista de jogos
         account.games = Array.isArray(data.games) ? data.games : [];
 
         setupListeners();
