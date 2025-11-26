@@ -20,15 +20,18 @@ function farmGames() {
     // 1. Prepara os jogos
     let gamesToPlay = [];
 
-    // Se tiver Título Customizado (Prioridade)
-    if (account.settings.customInGameTitle) {
+    // Lógica de Prioridade: Se tiver Título Customizado, ignora os IDs dos jogos
+    // (A Steam não permite farmar IDs reais E mostrar texto customizado ao mesmo tempo)
+    if (account.settings.customInGameTitle && account.settings.customInGameTitle.trim().length > 0) {
         gamesToPlay = [{
-            game_id: 15190, // ID genérico
+            game_id: 15190, // ID genérico usado para Non-Steam Games
             game_extra_info: account.settings.customInGameTitle
         }];
+        console.log(`[${account.username}] FARM: Modo Título Customizado: "${account.settings.customInGameTitle}"`);
     } else {
         // Farm normal de AppIDs
         gamesToPlay = account.games.map(id => parseInt(id, 10)).filter(id => !isNaN(id) && id > 0);
+        console.log(`[${account.username}] FARM: Modo Jogos (Qtd: ${gamesToPlay.length})`);
     }
 
     // 2. Define Status (Online/Offline)
@@ -40,10 +43,9 @@ function farmGames() {
         
         if (gamesToPlay.length > 0) {
             account.client.gamesPlayed(gamesToPlay);
-            console.log(`[${account.username}] FARM: A rodar ${gamesToPlay.length} jogos/título.`);
         } else {
-            account.client.gamesPlayed([]); 
-            console.log(`[${account.username}] FARM: Lista vazia, ficando apenas Online.`);
+            account.client.gamesPlayed([]); // Fica apenas online sem jogar nada
+            console.log(`[${account.username}] FARM: Nenhum jogo ou título configurado.`);
         }
     } catch (e) {
         console.error(`[${account.username}] ERRO AO FARMAR:`, e.message);
@@ -63,53 +65,38 @@ function setupListeners() {
         console.log(`[${account.username}] INFO: Solicitando biblioteca...`);
         
         try {
-            // Adicionamos filtros para tentar pegar mais jogos
-            const filter = {
-                includePlayedFreeGames: true,
-                includeFreeSubGames: true
-            };
+            const filter = { includePlayedFreeGames: true, includeFreeSubGames: true };
 
             account.client.getUserOwnedApps(account.client.steamID, filter, (err, response) => {
-                if (err) {
-                    console.error(`[${account.username}] ERRO API JOGOS: ${err.message}`);
-                    return;
-                }
+                if (err) { return; } // Ignora erro silenciosamente no log para não poluir
 
                 let validApps = [];
+                if (Array.isArray(response)) validApps = response;
+                else if (response && Array.isArray(response.apps)) validApps = response.apps;
+                else if (response && Array.isArray(response.games)) validApps = response.games;
+                else if (response && response.response && Array.isArray(response.response.games)) validApps = response.response.games;
 
-                // Tratamento robusto da resposta
-                if (Array.isArray(response)) {
-                    validApps = response;
-                } else if (response && Array.isArray(response.apps)) {
-                    validApps = response.apps;
-                } else if (response && Array.isArray(response.games)) {
-                    validApps = response.games;
-                } else if (response && response.response && Array.isArray(response.response.games)) {
-                    validApps = response.response.games;
-                }
-
-                // Processamento
                 if (validApps.length > 0) {
-                    const owned = validApps.map(app => ({ 
-                        appid: app.appid, 
-                        name: app.name 
-                    }));
+                    const owned = validApps.map(app => ({ appid: app.appid, name: app.name }));
                     process.send({ type: 'ownedGamesUpdate', payload: { games: owned } });
                     console.log(`[${account.username}] SUCESSO: ${owned.length} jogos carregados.`);
-                } else {
-                    // LOG ESPECÍFICO PARA O SEU PROBLEMA
-                    console.warn(`[${account.username}] ATENÇÃO: Steam retornou 0 jogos. VERIFIQUE SE A PRIVACIDADE 'DETALHES DOS JOGOS' ESTÁ PÚBLICA.`);
                 }
             });
-        } catch (e) {
-            console.error(`[${account.username}] ERRO CRÍTICO AO BUSCAR JOGOS:`, e.message);
-        }
+        } catch (e) {}
 
         // *** HEARTBEAT ***
         if (account.farmInterval) clearInterval(account.farmInterval);
-        account.farmInterval = setInterval(() => {
-            farmGames();
-        }, 10 * 60 * 1000); // 10 minutos
+        account.farmInterval = setInterval(() => { farmGames(); }, 10 * 60 * 1000); 
+    });
+
+    // === NOVA FUNÇÃO: AUTO-RESPOSTA (MENSAGEM AUTOMÁTICA) ===
+    account.client.on('friendMessage', (steamID, message) => {
+        if (account.settings.customAwayMessage && account.settings.customAwayMessage.trim().length > 0) {
+            // Evita loop de resposta infinita ou responder a si mesmo
+            // Apenas responde se tiver uma mensagem configurada
+            account.client.chatMessage(steamID, account.settings.customAwayMessage);
+            console.log(`[${account.username}] CHAT: Auto-resposta enviada para ${steamID}.`);
+        }
     });
 
     // === STEAM GUARD NECESSÁRIO ===
@@ -188,8 +175,9 @@ process.on('message', (message) => {
     }
     
     if (command === 'updateSettings') {
+        console.log(`[${account.username}] UPDATE: Configurações recebidas.`);
         account.settings = data.settings;
         account.games = data.games;
-        farmGames(); 
+        farmGames(); // Reaplica o farm/título instantaneamente
     }
 });
