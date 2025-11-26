@@ -27,29 +27,28 @@ const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const SITE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'); // Segredo dinâmico se não houver ENV
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
 if (!MONGODB_URI || !ADMIN_PASSWORD) { 
     console.error("ERRO CRÍTICO: Variáveis de ambiente faltando!"); 
     process.exit(1); 
 }
 
-// Configura Proxy (Necessário para Rate Limit e Cookies no Render/Heroku)
+// Configura Proxy
 app.set('trust proxy', 1);
 
 // --- MIDDLEWARES DE SEGURANÇA ---
 app.use(helmet({
-    contentSecurityPolicy: false, // Desativado para não quebrar scripts inline do painel, ajuste conforme necessidade
+    contentSecurityPolicy: false, 
 }));
 app.use(cors({
     origin: SITE_URL,
     credentials: true
 }));
 
-// Rate Limiter para Logins (Evita Brute Force)
 const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
-    max: 10, // Limite de 10 tentativas por IP
+    windowMs: 15 * 60 * 1000, 
+    max: 10, 
     message: { message: "Muitas tentativas de login. Tente novamente em 15 minutos." }
 });
 
@@ -173,7 +172,6 @@ async function initializeMasterKey() {
 const encrypt = (text) => { if (!appSecretKey) return null; const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
 const decrypt = (text) => { try { if (!appSecretKey || !text) return ""; const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { return ""; }};
 
-// Função de comparação de tempo constante para evitar ataques de timing no Admin
 function safeCompare(a, b) {
     const bufA = Buffer.from(a);
     const bufB = Buffer.from(b);
@@ -186,10 +184,7 @@ function sendDiscordNotification(title, message, color, username, type = 'log') 
     if (type === 'alert') webhookUrl = process.env.DISCORD_WEBHOOK_ALERTS || webhookUrl;
 
     if (!webhookUrl) return;
-    
-    // Sanitização básica para XSS em Discord (apenas remove backticks graves)
     const safeMessage = (message || '').replace(/`/g, "'");
-    
     const payload = JSON.stringify({ embeds: [{ title: title || '\u200b', description: safeMessage || '\u200b', color: color, fields: [{ name: "Conta", value: `\`${username || 'N/A'}\``, inline: true }], footer: { text: "STF Boost System" }, timestamp: new Date().toISOString() }] });
     try {
         const req = https.request({ hostname: new URL(webhookUrl).hostname, path: new URL(webhookUrl).pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }}, () => {});
@@ -229,11 +224,9 @@ function getCountryFromRequest(req) {
     return geo ? geo.country : 'US'; 
 }
 
-// --- FUNÇÕES DE SEGURANÇA E LÓGICA ---
-
 async function enforceUserLimits(userId) {
     try {
-        if (!ObjectId.isValid(userId)) return; // Validação de ObjectId
+        if (!ObjectId.isValid(userId)) return;
         const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
         if (!user) return;
 
@@ -243,7 +236,6 @@ async function enforceUserLimits(userId) {
 
         let runningAccounts = [];
         for (const username in liveAccounts) {
-            // Correção para contar apenas ativos reais, ignorando "Parado (Limite...)"
             const s = liveAccounts[username].status;
             if (liveAccounts[username].ownerUserID === userId.toString() && 
                s !== 'Parado' && !s.startsWith('Parado') && !s.startsWith('Desconectado') && !s.startsWith('Tempo') && !s.startsWith('Banido')) {
@@ -278,9 +270,7 @@ async function enforceUserLimits(userId) {
             }
         });
 
-    } catch (e) {
-        console.error(`[SYSTEM] Erro ao forçar limites para ${userId}:`, e);
-    }
+    } catch (e) { console.error(`[SYSTEM] Erro limites:`, e); }
 }
 
 async function ensureUserPlanStatus(userId) {
@@ -290,98 +280,18 @@ async function ensureUserPlanStatus(userId) {
         if (!user) return null;
 
         if (user.plan !== 'free' && user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) {
-            console.log(`[SYSTEM] Plano expirado detectado em tempo real para ${user.username}. Downgrading...`);
-            
+            console.log(`[SYSTEM] Plano expirado detectado para ${user.username}. Downgrading...`);
             await usersCollection.updateOne({ _id: user._id }, { 
                 $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: FREE_HOURS_MS } 
             });
-            
             await enforceUserLimits(userId);
-            
             user.plan = 'free';
             user.planExpiresAt = null;
         }
         return user;
-    } catch (e) {
-        console.error("[SYSTEM] Erro ensureUserPlanStatus:", e);
-        return null;
-    }
+    } catch (e) { console.error("[SYSTEM] Erro status plano:", e); return null; }
 }
 
-// --- WEBHOOK STRIPE (DEVE VIR ANTES DO EXPRESS.JSON) ---
-// Correção Crítica: Validação de Assinatura do Stripe
-app.post('/api/stripe-webhook', express.raw({type: 'application/json'}), async (req, res) => {
-    const sig = req.headers['stripe-signature'];
-    let event;
-    try {
-        event = stripe.webhooks.constructEvent(req.body, sig, STRIPE_WEBHOOK_SECRET);
-    } catch (err) { 
-        console.error(`[Stripe] Webhook Error: ${err.message}`); 
-        return res.status(400).send(`Webhook Error: ${err.message}`); 
-    }
-
-    if (event.type === 'checkout.session.completed') {
-        const session = event.data.object;
-        const meta = session.metadata;
-        const userId = meta.user_id;
-        
-        if (userId && ObjectId.isValid(userId)) {
-            sendDiscordNotification("💰 Venda Internacional (Stripe)", `User: ${userId}\nPlano: ${meta.plan_id}`, 5763719, "Sistema", "sale");
-            
-            if (meta.coupon_code) await couponsCollection.updateOne({ code: meta.coupon_code }, { $inc: { usageCount: 1 } });
-
-            if (meta.delivery_method !== 'email') {
-                 let updateData = { freeHoursRemaining: 0 };
-                 if (meta.plan_id === 'custom') {
-                    const expiry = new Date(); expiry.setDate(expiry.getDate() + parseInt(meta.custom_days, 10));
-                    updateData.plan = 'custom'; updateData.planExpiresAt = expiry;
-                    updateData.customLimits = { accounts: parseInt(meta.custom_accounts, 10), games: parseInt(meta.custom_games, 10) };
-                } else {
-                    const plan = GLOBAL_PLANS[meta.plan_id];
-                    if (plan) {
-                        let expiry = null; if (plan.days > 0) { expiry = new Date(); expiry.setDate(expiry.getDate() + plan.days); }
-                        updateData.plan = meta.plan_id; updateData.planExpiresAt = expiry; updateData.customLimits = null; 
-                    }
-                }
-                await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: updateData });
-                await enforceUserLimits(userId);
-            }
-        }
-    }
-    res.json({received: true});
-});
-
-// --- CONFIGURAÇÃO EXPRESS PADRÃO ---
-app.use(express.json()); 
-app.use(express.urlencoded({ extended: true })); 
-app.use(session({ 
-    secret: SESSION_SECRET, // Segredo agora via ENV ou Gerado
-    resave: false, 
-    saveUninitialized: false, 
-    store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), 
-    cookie: { 
-        secure: 'auto', // Auto detecta se está em HTTPS
-        httpOnly: true, 
-        maxAge: 24 * 60 * 60 * 1000,
-        sameSite: 'lax'
-    } 
-})); 
-app.use(express.static(path.join(__dirname, 'public'))); 
-
-const isAuthenticated = async (req, res, next) => { 
-    if (req.session.userId && ObjectId.isValid(req.session.userId)) { 
-        try {
-            const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
-            if (user && !user.isBanned) return next();
-            if (user && user.isBanned) req.session.destroy(() => res.redirect('/banned'));
-        } catch (e) {}
-    } 
-    res.redirect('/login?error=unauthorized'); 
-};
-const isAdminAuthenticated = (req, res, next) => { if (req.session.isAdmin) return next(); res.redirect('/admin/login?error=unauthorized'); };
-
-// --- CRON JOBS E WORKERS ---
-// Mantidos iguais, mas referenciando as funções de segurança aprimoradas
 async function deductFreeTime() {
     const updates = new Set();
     for (const u in liveAccounts) { 
@@ -514,17 +424,15 @@ async function loadAccountsIntoMemory() {
         };
     });
 
-    console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas. Iniciando sequencia de auto-login...`);
+    console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas.`);
 
     savedAccounts.forEach((acc, index) => {
         if (acc.settings && acc.settings.autoRelogin) {
             setTimeout(async () => {
                 if (!liveAccounts[acc.username]) return;
-
                 try {
                     const user = await ensureUserPlanStatus(acc.ownerUserID);
                     if (!user) return;
-
                     if (user.isBanned) { liveAccounts[acc.username].status = "Banido"; return; }
                     if (user.plan === 'free' && user.freeHoursRemaining <= 0) { liveAccounts[acc.username].status = "Tempo Esgotado"; return; }
 
@@ -549,11 +457,65 @@ async function loadAccountsIntoMemory() {
                     if (pass) startWorkerForAccount({ ...liveAccounts[acc.username], password: pass });
 
                 } catch (e) { console.error(`[AUTO-START] Erro ao iniciar ${acc.username}:`, e); }
-
             }, index * 15000); 
         }
     });
 }
+
+// --- MIDDLEWARES EXPRESS ---
+app.use('/api/stripe-webhook', express.raw({ type: 'application/json' }));
+app.use(express.json()); 
+app.use(express.urlencoded({ extended: true })); 
+app.use(session({ 
+    secret: SESSION_SECRET, 
+    resave: false, 
+    saveUninitialized: false, 
+    store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), 
+    cookie: { 
+        secure: 'auto', 
+        httpOnly: true, 
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: 'lax'
+    } 
+})); 
+app.use(express.static(path.join(__dirname, 'public'))); 
+
+const isAuthenticated = async (req, res, next) => { 
+    if (req.session.userId && ObjectId.isValid(req.session.userId)) { 
+        try {
+            const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
+            if (user && !user.isBanned) return next();
+            if (user && user.isBanned) req.session.destroy(() => res.redirect('/banned'));
+        } catch (e) {}
+    } 
+    res.redirect('/login?error=unauthorized'); 
+};
+const isAdminAuthenticated = (req, res, next) => { if (req.session.isAdmin) return next(); res.redirect('/admin/login?error=unauthorized'); };
+
+// --- ROTAS DE PÁGINA (Trazidos de volta!) ---
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/login', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
+app.get('/register', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'register.html')));
+app.get('/dashboard', isAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'dashboard.html')));
+app.get('/checkout', isAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'checkout.html')));
+app.get('/terms', (req, res) => res.sendFile(path.join(__dirname, 'public', 'terms.html')));
+app.get('/tutorial', isAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'tutorial.html')));
+app.get('/banned', (req, res) => res.sendFile(path.join(__dirname, 'public', 'banned.html')));
+app.get('/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
+app.get('/admin', (req, res) => res.redirect('/admin/dashboard'));
+app.get('/admin/login', (req, res) => req.session.isAdmin ? res.redirect('/admin/dashboard') : res.sendFile(path.join(__dirname, 'public', 'admin', 'login.html')));
+app.get('/admin/dashboard', isAdminAuthenticated, (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'dashboard.html')));
+app.get('/admin/logout', (req, res) => req.session.destroy(() => res.redirect('/')));
+
+// Rota POST para Admin Login
+app.post('/admin/login', loginLimiter, (req, res) => { 
+    if (safeCompare(req.body.password, ADMIN_PASSWORD)) {
+        req.session.isAdmin = true; 
+        res.redirect('/admin/dashboard');
+    } else {
+        res.redirect('/admin/login?error=invalid');
+    }
+});
 
 // === API ===
 const apiRouter = express.Router();
@@ -566,18 +528,6 @@ apiRouter.get('/global-alert', async (req, res) => {
     } catch (e) { res.status(500).json({}); }
 });
 
-apiRouter.get('/account-games/:username', isAuthenticated, async (req, res) => {
-    const u = req.params.username;
-    const acc = liveAccounts[u];
-    if (acc && acc.ownerUserID === req.session.userId) {
-        res.json(acc.ownedGames || []);
-    } else {
-        const dbAcc = await accountsCollection.findOne({ username: u, ownerUserID: req.session.userId });
-        res.json(dbAcc ? (dbAcc.ownedGames || []) : []);
-    }
-});
-
-// API PROTEGIDA (Aplicar Rate Limit no Login)
 apiRouter.post('/login', loginLimiter, async (req, res) => {
     const { username, password } = req.body;
     const user = await usersCollection.findOne({ username });
@@ -585,8 +535,6 @@ apiRouter.post('/login', loginLimiter, async (req, res) => {
     if (user.isBanned) return res.status(403).json({ message: "Conta banida." });
     req.session.userId = user._id.toString(); req.session.username = user.username; res.json({ message: "Login OK" });
 });
-
-// ... (Resto das rotas API mantidas, mas com proteções aplicadas via middlewares globais e ensureUserPlanStatus)
 
 apiRouter.get('/auth-status', async (req, res) => {
     if (req.session.userId) {
@@ -625,6 +573,80 @@ apiRouter.post('/validate-coupon', async (req, res) => {
         const coupon = await couponsCollection.findOne({ code: code.toUpperCase() });
         if (coupon) { res.json({ valid: true, discount: coupon.discount }); } else { res.json({ valid: false, message: "Cupom inválido." }); }
     } catch (e) { res.status(500).json({ valid: false }); }
+});
+
+apiRouter.post('/create-checkout', isAuthenticated, async (req, res) => {
+    if (!mpClient) return res.status(500).json({ message: "Pagamento indisponível." });
+    const { planId, customConfig, couponCode, deliveryMethod } = req.body;
+    const userId = req.session.userId;
+    const country = getCountryFromRequest(req);
+    const isBrazil = country === 'BR';
+    let price = 0; let title = ""; let metadata = {};
+
+    if (planId === 'custom' && customConfig) {
+        const customPlanDB = GLOBAL_PLANS['custom'];
+        if (!customPlanDB || !customPlanDB.active) return res.status(400).json({ message: "Plano desativado." });
+        const d = parseInt(customConfig.days) || 30; const a = parseInt(customConfig.accounts) || 1; const g = parseInt(customConfig.games) || 10;
+        const PRICING = isBrazil ? CUSTOM_PRICING_BRL : CUSTOM_PRICING_USD;
+        price = PRICING.BASE + (d * PRICING.DAY) + (a * PRICING.ACCOUNT) + (g * PRICING.GAME);
+        title = `STF Boost - Custom (${d}d/${a}c/${g}j)`;
+        metadata = { plan_id: 'custom', custom_days: d, custom_accounts: a, custom_games: g };
+    } else {
+        const plan = GLOBAL_PLANS[planId];
+        if (!plan || !plan.active) return res.status(400).json({ message: "Plano inválido." });
+        price = isBrazil ? plan.price : (plan.price_usd || plan.price);
+        title = `STF Boost - ${plan.name}`;
+        metadata = { plan_id: planId };
+    }
+
+    if (couponCode) {
+        const coupon = await couponsCollection.findOne({ code: couponCode.toUpperCase() });
+        if (coupon) { const discountAmount = (price * coupon.discount) / 100; price = Math.max(0, price - discountAmount); metadata.coupon_code = couponCode.toUpperCase(); }
+    }
+    metadata.delivery_method = deliveryMethod || 'direct';
+
+    try {
+        if (isBrazil) {
+            if (!mpClient) return res.status(500).json({ message: "Erro MP." });
+            const preference = new Preference(mpClient);
+            const result = await preference.create({
+                body: {
+                    items: [{ title: title, quantity: 1, unit_price: parseFloat(price.toFixed(2)), currency_id: 'BRL' }],
+                    payer: { email: req.session.username + "@stfboost.com" },
+                    back_urls: { success: `${SITE_URL}/dashboard`, failure: `${SITE_URL}/checkout` },
+                    auto_return: "approved",
+                    external_reference: userId,
+                    metadata: metadata
+                }
+            });
+            res.json({ url: result.init_point, provider: 'mercadopago' });
+        } else {
+            if (!stripe) return res.status(500).json({ message: "International payments disabled." });
+            const stripeMeta = { user_id: userId, plan_id: metadata.plan_id, delivery_method: metadata.delivery_method, coupon_code: metadata.coupon_code || "" };
+            if(metadata.custom_days) { stripeMeta.custom_days = metadata.custom_days.toString(); stripeMeta.custom_accounts = metadata.custom_accounts.toString(); stripeMeta.custom_games = metadata.custom_games.toString(); }
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: [{ price_data: { currency: 'usd', product_data: { name: title }, unit_amount: Math.round(price * 100) }, quantity: 1 }],
+                mode: 'payment',
+                success_url: `${SITE_URL}/dashboard?payment=success`,
+                cancel_url: `${SITE_URL}/checkout?payment=cancelled`,
+                metadata: stripeMeta
+            });
+            res.json({ url: session.url, provider: 'stripe' });
+        }
+    } catch (e) { console.error("[PAYMENT] Erro:", e); res.status(500).json({ message: "Erro ao criar pagamento." }); }
+});
+
+// Rota nova para buscar jogos da conta (PARA O MODAL)
+apiRouter.get('/account-games/:username', isAuthenticated, async (req, res) => {
+    const u = req.params.username;
+    const acc = liveAccounts[u];
+    if (acc && acc.ownerUserID === req.session.userId) {
+        res.json(acc.ownedGames || []);
+    } else {
+        const dbAcc = await accountsCollection.findOne({ username: u, ownerUserID: req.session.userId });
+        res.json(dbAcc ? (dbAcc.ownedGames || []) : []);
+    }
 });
 
 apiRouter.use(isAuthenticated);
@@ -712,14 +734,6 @@ apiRouter.post('/bulk-remove', async (req, res) => { const { usernames } = req.b
 
 // API Admin
 adminApiRouter.use(isAdminAuthenticated);
-adminApiRouter.post('/admin/login', loginLimiter, (req, res) => { 
-    if (safeCompare(req.body.password, ADMIN_PASSWORD)) {
-        req.session.isAdmin = true; 
-        res.redirect('/admin/dashboard');
-    } else {
-        res.redirect('/admin/login?error=invalid');
-    }
-});
 adminApiRouter.get('/users', async (req, res) => res.json(await usersCollection.find({}, { projection: { password: 0 } }).toArray()));
 adminApiRouter.get('/all-plans', async (req, res) => res.json(await plansCollection.find({}).sort({ price: 1 }).toArray()));
 adminApiRouter.get('/licenses', async (req, res) => res.json(await licensesCollection.find({}).sort({ createdAt: -1 }).toArray()));
