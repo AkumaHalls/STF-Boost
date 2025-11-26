@@ -25,6 +25,13 @@
             margin: 20px 0;
             color: #e2e8f0;
         }
+        .info-box {
+            background: rgba(0, 255, 255, 0.1);
+            border-left: 4px solid #00ffff;
+            padding: 15px;
+            margin: 15px 0;
+            color: #e2e8f0;
+        }
         .step-number {
             display: inline-block;
             width: 30px;
@@ -93,24 +100,40 @@
                 </div>
 
                 <div>
-                    <h3 class="text-xl mb-2"><span class="step-number">2</span> Definir Jogos</h3>
-                    <p>Antes de iniciar, clique no botão <strong>[JOGOS]</strong>. Insira os <strong>AppIDs</strong> dos jogos que quer farmar (ex: <code>730</code> para CS2, <code>570</code> para Dota 2). Separe por vírgula.</p>
-                    <p class="text-sm text-gray-500 mt-1">Nota: O número de jogos permitidos depende do seu Plano.</p>
+                    <h3 class="text-xl mb-2"><span class="step-number">2</span> Iniciar Pela Primeira Vez (Essencial!)</h3>
+                    <p>Antes de escolher os jogos, você precisa <strong>Iniciar</strong> a conta pelo menos uma vez. Porquê?</p>
+                    <ul class="list-disc list-inside ml-10 mt-2 text-gray-300">
+                        <li>Ao conectar, o nosso sistema "lê" a sua biblioteca de jogos.</li>
+                        <li>Sem isso, a aba "Meus Jogos" ficará vazia.</li>
+                    </ul>
+                    <p class="mt-2">1. Clique em <strong>[INICIAR]</strong>.<br>2. Insira o código Steam Guard se pedir.<br>3. Aguarde o status ficar "Rodando".<br>4. Agora pode clicar em <strong>[PARAR]</strong> para configurar os jogos.</p>
                 </div>
 
                 <div>
-                    <h3 class="text-xl mb-2"><span class="step-number">3</span> Configurações e Shared Secret</h3>
+                    <h3 class="text-xl mb-2"><span class="step-number">3</span> Definir Jogos</h3>
+                    <p>Clique no botão <strong>[JOGOS]</strong>. Agora você verá duas abas:</p>
+                    
+                    <div class="info-box">
+                        <strong class="text-cyan-400">Aba "Meus Jogos":</strong><br>
+                        Aqui aparecem todos os jogos que você tem na conta. Basta marcar as caixinhas dos jogos que quer farmar e salvar.<br><br>
+                        <em class="text-sm text-gray-400">Nota: Se a lista estiver vazia mesmo após iniciar, verifique se o seu Perfil Steam > Configurações de Privacidade > "Detalhes dos Jogos" está definido como <strong>Público</strong>.</em>
+                    </div>
+
+                    <div class="bg-gray-800 p-3 rounded border border-gray-600 mt-2">
+                        <strong class="text-gray-300">Aba "Manual / IDs":</strong><br>
+                        Use esta aba se quiser inserir AppIDs manualmente (ex: <code>730</code>) ou se quiser farmar jogos gratuitos que ainda não estão na sua biblioteca.
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-xl mb-2"><span class="step-number">4</span> Configurações e Personalização</h3>
                     <p>Clique no botão <strong>[CONFIG.]</strong> para personalizar:</p>
                     <ul class="list-disc list-inside ml-10 mt-2 text-gray-300">
-                        <li><strong>Título Customizado:</strong> Aparece "Em jogo não Steam: [Seu Texto]".</li>
+                        <li><strong>Título Customizado:</strong> Aparece "Em jogo não Steam: [Seu Texto]". <em class="text-yellow-400">(Nota: Isso substitui o farm de jogos normais).</em></li>
+                        <li><strong>Mensagem Automática:</strong> Responde automaticamente a quem te mandar mensagem no chat (1x a cada 5 min).</li>
                         <li><strong>Aparecer Offline:</strong> Farma horas sem ninguém ver que você está online.</li>
                         <li><strong>Shared Secret:</strong> Cole aqui o código do seu autenticador para ativar o modo 24/7 automático.</li>
                     </ul>
-                </div>
-
-                <div>
-                    <h3 class="text-xl mb-2"><span class="step-number">4</span> Iniciar</h3>
-                    <p>Clique em <strong>[INICIAR]</strong>. Se pedir código, o status ficará amarelo ("Pendente: Steam Guard"). Clique no botão <strong>[GUARD]</strong> e digite o código que chegou no seu email/app.</p>
                 </div>
             </div>
         </section>
@@ -119,8 +142,8 @@
             <h2 class="text-2xl mb-4">Planos e Pagamentos</h2>
             <p class="mb-4">Você pode fazer upgrade do seu plano a qualquer momento.</p>
             <ul class="list-disc list-inside space-y-2">
-                <li><strong>Automático:</strong> Pague via Mercado Pago e o plano ativa na hora.</li>
-                <li><strong>Manual:</strong> Faça um Pix para o administrador e receba uma Chave de Licença.</li>
+                <li><strong>Automático:</strong> Pague via Mercado Pago (Pix/Cartão) e o plano ativa na hora.</li>
+                <li><strong>Manual:</strong> Faça um Pix para o administrador e envie o comprovante.</li>
                 <li><strong>Ativar Chave:</strong> Se recebeu uma chave (sorteio ou compra manual), vá em "Ativar Licença" no menu lateral e cole o código.</li>
             </ul>
             <p class="mt-4 text-sm text-gray-400">Se o seu plano expirar, as contas param automaticamente e voltam para o limite do plano Gratuito.</p>
