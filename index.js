@@ -233,7 +233,6 @@ function getCountryFromRequest(req) {
 
 // --- FUNÇÕES LÓGICAS E LIMITES ---
 
-// Helper para obter os limites do plano de forma segura
 function getUserLimits(user) {
     if (user.customLimits && typeof user.customLimits.accounts === 'number') {
         return user.customLimits;
@@ -254,6 +253,7 @@ async function enforceUserLimits(userId) {
         let runningAccounts = [];
         for (const username in liveAccounts) {
             const s = liveAccounts[username].status;
+            // WHILTELIST: Só conta o que é realmente ativo
             if (liveAccounts[username].ownerUserID === userId.toString() && 
                (s === 'Rodando' || s.startsWith('Iniciando') || s.startsWith('Pendente'))) {
                 runningAccounts.push(liveAccounts[username]);
@@ -298,15 +298,11 @@ async function ensureUserPlanStatus(userId) {
 
         if (user.plan !== 'free' && user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) {
             console.log(`[SYSTEM] Plano expirado detectado para ${user.username}. Downgrading...`);
-            
-            // CORREÇÃO CRÍTICA: Remove o objeto customLimits para não bugar o plano Free
             await usersCollection.updateOne({ _id: user._id }, { 
                 $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: 0 },
                 $unset: { customLimits: "" } 
             });
-            
             await enforceUserLimits(userId);
-            
             for (const u in liveAccounts) {
                 if(liveAccounts[u].ownerUserID === userId.toString()) {
                     try { if (liveAccounts[u].worker) liveAccounts[u].worker.kill(); } catch(e){}
@@ -316,7 +312,7 @@ async function ensureUserPlanStatus(userId) {
             user.plan = 'free';
             user.planExpiresAt = null;
             user.freeHoursRemaining = 0;
-            delete user.customLimits; // Limpa na memória local também
+            delete user.customLimits; 
         }
         return user;
     } catch (e) { console.error("[SYSTEM] Erro status plano:", e); return null; }
@@ -329,18 +325,28 @@ function processWorkerQueue() {
     }
 }
 
-function startWorkerForAccount(accountData) {
+async function startWorkerForAccount(accountData) {
     const username = accountData.username;
     if (liveAccounts[username]?.worker) { try { liveAccounts[username].worker.kill(); } catch(e) {} }
     if (liveAccounts[username]?.startupTimeout) clearTimeout(liveAccounts[username].startupTimeout);
 
     activeWorkerCount++; 
 
+    // --- NOVO: GARANTE QUE EXISTE MACHINE ID ---
+    if (!accountData.machineId) {
+        // Gera um machineId aleatório se não tiver
+        accountData.machineId = crypto.randomBytes(10).toString('hex');
+        // Salva no banco para ser consistente
+        await accountsCollection.updateOne({ username: username }, { $set: { machineId: accountData.machineId } });
+    }
+
     const worker = fork(path.join(__dirname, 'worker.js'));
     liveAccounts[username].worker = worker;
     liveAccounts[username].status = "Iniciando...";
     liveAccounts[username].manual_logout = false;
     liveAccounts[username].ownerUserID = accountData.ownerUserID;
+    // Atualiza memória
+    liveAccounts[username].machineId = accountData.machineId;
 
     liveAccounts[username].startupTimeout = setTimeout(() => {
         if (liveAccounts[username]?.status === "Iniciando...") {
@@ -388,8 +394,6 @@ function startWorkerForAccount(accountData) {
                     acc.sessionStartTime = null;
                 } else {
                     const limits = getUserLimits(user);
-                    const limitAccounts = limits.accounts;
-                    
                     let running = 0;
                     for (const u in liveAccounts) {
                         const s = liveAccounts[u].status;
@@ -399,14 +403,16 @@ function startWorkerForAccount(accountData) {
                         }
                     }
 
-                    if (running < limitAccounts) {
+                    if (running < limits.accounts) {
                         acc.status = "Reiniciando...";
+                        // DELAY DE RESTART (Anti-Throttle)
+                        const restartDelay = 90000 + Math.random() * 30000;
                         setTimeout(() => {
                             if (liveAccounts[username]) {
                                 const decrypted = decrypt(acc.encryptedPassword);
                                 if (decrypted) startWorkerForAccount({ ...acc, password: decrypted });
                             }
-                        }, 30000);
+                        }, restartDelay);
                     } else {
                          acc.status = "Parado (Limite)";
                          acc.sessionStartTime = null;
@@ -440,7 +446,6 @@ async function checkExpiredPlans() {
     try {
         const expired = await usersCollection.find({ plan: { $ne: 'free' }, planExpiresAt: { $lt: now } }).toArray();
         for (const u of expired) {
-            // LIMPEZA PROFUNDA: Remove customLimits para não bugar o free
             await usersCollection.updateOne({ _id: u._id }, { 
                 $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: 0 },
                 $unset: { customLimits: "" }
@@ -450,6 +455,7 @@ async function checkExpiredPlans() {
     } catch(e) { console.error("[CRON] Erro checkExpiredPlans:", e); }
 }
 
+// --- CARREGAMENTO INICIAL (COLD BOOT LENTO 120s) ---
 async function loadAccountsIntoMemory() {
     const savedAccounts = await accountsCollection.find({}).toArray(); 
     
@@ -462,20 +468,31 @@ async function loadAccountsIntoMemory() {
             worker: null, 
             sessionStartTime: null, 
             manual_logout: false,
-            ownedGames: acc.ownedGames || [] 
+            ownedGames: acc.ownedGames || [],
+            machineId: acc.machineId // Carrega do banco se tiver
         };
     });
 
-    console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas.`);
+    console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas. Iniciando Cold Boot (120s delay)...`);
 
-    savedAccounts.forEach((acc, index) => {
-        if (acc.settings && acc.settings.autoRelogin) {
-            setTimeout(() => {
-                workerQueue.push(acc);
-                processWorkerQueue();
-            }, index * 30000); 
-        }
-    });
+    const autoStartAccounts = savedAccounts.filter(acc => acc.settings && acc.settings.autoRelogin);
+
+    // INICIALIZAÇÃO EM CASCATA LENTA (2 minutos entre cada conta)
+    for (const [i, acc] of autoStartAccounts.entries()) {
+        // A primeira inicia logo, as outras esperam 2min, 4min, 6min...
+        const delay = i * 120000; 
+        
+        setTimeout(() => {
+            // Verifica se ainda deve iniciar (usuário pode ter deletado ou mudado de ideia)
+            if (liveAccounts[acc.username]) {
+                // Descriptografa a senha APENAS aqui, na hora H
+                const pass = decrypt(acc.password);
+                if (pass) {
+                    startWorkerForAccount({ ...liveAccounts[acc.username], password: pass });
+                }
+            }
+        }, delay);
+    }
 }
 
 // --- CONFIGURAÇÃO EXPRESS ---
@@ -496,7 +513,7 @@ app.use(session({
 })); 
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// --- MIDDLEWARES ---
+// --- MIDDLEWARES DE AUTENTICAÇÃO ---
 const isAuthenticated = async (req, res, next) => { 
     if (req.session.userId && ObjectId.isValid(req.session.userId)) { 
         try {
@@ -754,10 +771,7 @@ apiRouter.post('/activate-license', async (req, res) => {
     if(key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({message: "Não é sua"}); 
     let exp = null; const duration = key.durationDays || (GLOBAL_PLANS[key.plan] ? GLOBAL_PLANS[key.plan].days : 30); 
     if(duration > 0){ exp = new Date(); exp.setDate(exp.getDate() + duration); } 
-    await usersCollection.updateOne({ _id: new ObjectId(uid) }, { 
-        $set: { plan: key.plan, planExpiresAt: exp, freeHoursRemaining: 0 },
-        $unset: { customLimits: "" } // Limpa limites customizados ao ativar licença
-    }); 
+    await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { plan: key.plan, planExpiresAt: exp, freeHoursRemaining: 0, customLimits: null } }); 
     await licensesCollection.updateOne({ _id: key._id }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } }); 
     sendDiscordNotification("🔑 Chave Ativada", `User: ${uid} | Plano: ${key.plan} | Dias: ${duration}`, 3447003, "System", "sale"); 
     await enforceUserLimits(uid); res.json({ message: "Ativado" }); 
