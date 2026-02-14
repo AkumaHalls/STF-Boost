@@ -142,23 +142,30 @@
                         let highlightClass = 'bg-gray-800 border border-gray-700'; // Padrão
                         let badge = '';
                         let titleColor = 'text-white';
-
-                        // Sanitização do ID para uso em classes/atributos
                         const safeId = escapeHtml(p.id);
                         
                         if (p.style === 'fire') { 
-                            highlightClass = 'bg-gray-800 border border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] relative transform hover:-translate-y-1 transition-transform'; 
+                            highlightClass = 'premium-highlight bg-gray-800 relative transform transition-transform'; 
                             badge = '<span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-600 text-white text-xs font-bold px-3 py-1 rounded-full tracking-wider uppercase">Mais Popular</span>'; 
                             titleColor = 'text-orange-400'; 
                         }
                         else if (p.style === 'cosmic') { 
-                            highlightClass = 'bg-gray-800 border border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.3)] relative transform hover:-translate-y-1 transition-transform'; 
+                            highlightClass = 'lifetime-highlight bg-gray-800 relative transform transition-transform'; 
                             badge = '<span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-full tracking-wider uppercase">Vitalício</span>'; 
                             titleColor = 'text-purple-400'; 
                         }
-                        else if (p.style === 'halloween') { highlightClass += ' border-orange-700'; titleColor = 'text-orange-500'; }
-                        else if (p.style === 'christmas') { highlightClass += ' border-red-700'; titleColor = 'text-red-400'; }
-                        else if (p.style === 'newyear') { highlightClass += ' border-yellow-600'; titleColor = 'text-yellow-400'; }
+                        else if (p.style === 'halloween') { 
+                            highlightClass = 'halloween-highlight bg-gray-800 relative'; 
+                            titleColor = 'text-orange-500'; 
+                        }
+                        else if (p.style === 'christmas') { 
+                            highlightClass = 'christmas-highlight bg-gray-800 relative'; 
+                            titleColor = 'text-red-400'; 
+                        }
+                        else if (p.style === 'newyear') { 
+                            highlightClass = 'newyear-highlight bg-gray-800 relative'; 
+                            titleColor = 'text-yellow-400'; 
+                        }
 
                         const priceDisplay = p.price === 0 ? 'Grátis' : `R$ ${p.price.toFixed(2).replace('.',',')}`;
                         const periodDisplay = p.price === 0 ? '' : (p.days > 0 ? '/mês' : '<span class="text-xs align-top">único</span>');
