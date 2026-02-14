@@ -131,8 +131,8 @@
         <div class="modal-content">
             <h2>Configurações da Conta</h2>
             <div id="settingsForm">
-                <div class="settings-form-row"><label>Título Customizado:</label><input type="text" id="customTitleInput"></div>
-                <div class="settings-form-row"><label>Mensagem Automática:</label><input type="text" id="customAwayMessageInput"></div>
+                <div class="settings-form-row"><label>Título Customizado:</label><input type="text" id="customTitleInput" placeholder="Premium ou Superior"></div>
+                <div class="settings-form-row"><label>Mensagem Automática:</label><input type="text" id="customAwayMessageInput" placeholder="Premium ou Superior"></div>
                 <div class="settings-form-row"><label>Aparecer Offline:</label><label class="switch"><input type="checkbox" id="appearOfflineToggle"><span class="slider"></span></label></div>
                 <div class="settings-form-row"><label>Aceitar Amigos:</label><label class="switch"><input type="checkbox" id="autoAcceptFriendsToggle"><span class="slider"></span></label></div>
                 <div class="settings-form-row"><label>Reconectar Auto:</label><label class="switch"><input type="checkbox" id="autoReloginToggle"><span class="slider"></span></label></div>
@@ -140,6 +140,7 @@
                 <div class="settings-form-row separator"><label>Credenciais</label></div>
                 <div class="settings-form-row"><label>Nova Senha:</label><input type="password" id="newPasswordInput"></div>
             </div>
+            <p id="upgradeHint" style="color: var(--pending-color); font-size: 12px; display:none; text-align: center;">Algumas opções requerem plano superior.</p>
             <button id="saveSettingsButton">Salvar</button>
             <button id="closeSettingsModalButton" class="remove-btn">Cancelar</button>
         </div>
@@ -415,22 +416,55 @@
                             fetchUserOwnedGames(acc.username); 
                         };
                         
-                        const btnSettings = document.createElement('button'); btnSettings.innerHTML=icons.settings+"Config"; btnSettings.className="settings-btn";
-                        btnSettings.onclick=()=>{ 
-                            currentlyEditingSettingsFor=acc.username;
-                            const s=acc.settings;
-                            document.getElementById('customTitleInput').value=s.customInGameTitle||'';
-                            document.getElementById('customAwayMessageInput').value=s.customAwayMessage||'';
-                            document.getElementById('appearOfflineToggle').checked=s.appearOffline;
-                            document.getElementById('autoAcceptFriendsToggle').checked=s.autoAcceptFriends;
-                            document.getElementById('autoReloginToggle').checked=s.autoRelogin;
-                            document.getElementById('sharedSecretInput').value=s.sharedSecret||'';
+                        // Configuração Inteligente baseada no Plano
+                        const btnSettings = document.createElement('button'); 
+                        btnSettings.innerHTML=icons.settings+"Config"; 
+                        btnSettings.className="settings-btn";
+                        
+                        btnSettings.onclick = () => { 
+                            currentlyEditingSettingsFor = acc.username;
+                            const s = acc.settings;
                             
-                            const els = ['customTitleInput','customAwayMessageInput','appearOfflineToggle','autoAcceptFriendsToggle'];
-                            els.forEach(id=>document.getElementById(id).disabled=false);
-                            if(currentUserPlan==='free') els.forEach(id=>document.getElementById(id).disabled=true);
-                            else if(currentUserPlan==='basic') document.getElementById('autoAcceptFriendsToggle').disabled=true;
-                            settingsModal.style.display='block';
+                            // Carrega valores
+                            document.getElementById('customTitleInput').value = s.customInGameTitle || '';
+                            document.getElementById('customAwayMessageInput').value = s.customAwayMessage || '';
+                            document.getElementById('appearOfflineToggle').checked = s.appearOffline;
+                            document.getElementById('autoAcceptFriendsToggle').checked = s.autoAcceptFriends;
+                            document.getElementById('autoReloginToggle').checked = s.autoRelogin;
+                            document.getElementById('sharedSecretInput').value = s.sharedSecret || '';
+                            
+                            // Elementos a controlar
+                            const elTitle = document.getElementById('customTitleInput');
+                            const elAway = document.getElementById('customAwayMessageInput');
+                            const elOffline = document.getElementById('appearOfflineToggle');
+                            const elFriends = document.getElementById('autoAcceptFriendsToggle');
+                            
+                            // Reseta estados
+                            [elTitle, elAway, elOffline, elFriends].forEach(el => {
+                                el.disabled = false;
+                                if(el.type === 'text') el.placeholder = '';
+                            });
+                            document.getElementById('upgradeHint').style.display = 'none';
+
+                            // Lógica de Bloqueio Visual baseada no plano
+                            const isPremium = ['premium', 'ultimate', 'lifetime', 'halloween', 'christmas', 'newyear'].includes(currentUserPlan);
+                            const isPlus = isPremium || currentUserPlan === 'plus';
+
+                            if (!isPremium) {
+                                elTitle.disabled = true; 
+                                elTitle.placeholder = "Requer Premium";
+                                elAway.disabled = true;
+                                elAway.placeholder = "Requer Premium";
+                                elOffline.disabled = true;
+                                document.getElementById('upgradeHint').style.display = 'block';
+                            }
+                            
+                            if (!isPlus) {
+                                elFriends.disabled = true;
+                                document.getElementById('upgradeHint').style.display = 'block';
+                            }
+
+                            settingsModal.style.display = 'block';
                         };
 
                         const btnDel = document.createElement('button'); btnDel.innerHTML=icons.remove+"Remover"; btnDel.className="remove-btn"; 
