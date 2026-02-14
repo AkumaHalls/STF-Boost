@@ -125,17 +125,13 @@
         <div class="modal-content">
             <h2 id="modalPlanTitle">Editar Plano</h2>
             <input type="hidden" id="editPlanId">
-            
             <div class="settings-form-row"><label>ID (Sistema):</label><input type="text" id="editPlanIdDisplay" readonly style="opacity: 0.7;"></div>
             <div class="settings-form-row"><label>Nome Visível:</label><input type="text" id="editPlanName"></div>
-            
             <div class="settings-form-row"><label>Preço (BRL):</label><input type="number" id="editPlanPrice" step="0.01"></div>
             <div class="settings-form-row"><label>Preço (USD):</label><input type="number" id="editPlanPriceUSD" step="0.01"></div>
-            
             <div class="settings-form-row"><label>Dias de Duração:</label><input type="number" id="editPlanDays"></div>
             <div class="settings-form-row"><label>Limite Contas:</label><input type="number" id="editPlanAccounts"></div>
             <div class="settings-form-row"><label>Limite Jogos:</label><input type="number" id="editPlanGames"></div>
-            
             <div class="settings-form-row"><label>Estilo Visual:</label>
                 <select id="editPlanStyle">
                     <option value="none">Padrão</option>
@@ -146,17 +142,14 @@
                     <option value="newyear">Ano Novo</option>
                 </select>
             </div>
-            
             <div class="settings-form-row"><label>Ativo na Loja:</label>
                 <select id="editPlanActive">
                     <option value="true">Sim</option>
                     <option value="false">Não</option>
                 </select>
             </div>
-            
             <p>Lista de Benefícios (um por linha):</p>
-            <textarea id="editPlanFeatures" rows="5" placeholder="Ex: 24/7 Online&#10;Suporte Prioritário"></textarea>
-            
+            <textarea id="editPlanFeatures" rows="5"></textarea>
             <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
                 <button id="closeEditPlanModal" class="remove-btn">Cancelar</button>
                 <button id="savePlanButton">Salvar Alterações</button>
@@ -179,8 +172,46 @@
         }
 
         function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
-        const userMap = new Map(); 
+        
         let allPlans = [];
+
+        // FUNÇÃO DE EDITAR TORNADA GLOBAL PARA O ONCLICK FUNCIONAR
+        window.openEditPlan = function(id) {
+            console.log("Abrindo edição para:", id);
+            const p = allPlans.find(x => x.id === id);
+            if (!p) { console.error("Plano não encontrado"); return; }
+
+            document.getElementById('editPlanId').value = p.id;
+            document.getElementById('editPlanIdDisplay').value = p.id;
+            document.getElementById('editPlanName').value = p.name || '';
+            document.getElementById('editPlanPrice').value = p.price || 0;
+            document.getElementById('editPlanPriceUSD').value = p.price_usd || 0;
+            document.getElementById('editPlanDays').value = p.days || 0;
+            document.getElementById('editPlanAccounts').value = p.accounts || 0;
+            document.getElementById('editPlanGames').value = p.games || 0;
+            document.getElementById('editPlanStyle').value = p.style || 'none';
+            document.getElementById('editPlanActive').value = p.active ? 'true' : 'false';
+            
+            const featuresList = Array.isArray(p.features) ? p.features : [];
+            document.getElementById('editPlanFeatures').value = featuresList.join('\n');
+            
+            document.getElementById('editPlanModal').style.display = 'block';
+        };
+
+        window.deletePlan = async function(id) {
+             if(confirm('Tem certeza? Isso pode afetar usuários neste plano.')) { 
+                 await fetch('/api/admin/delete-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); 
+                 // Recarrega a página para atualizar tudo
+                 window.location.reload(); 
+             }
+        };
+
+        window.deleteCoupon = async function(id) {
+            if(!confirm("Excluir cupom?")) return;
+            await fetch('/api/admin/delete-coupon', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+            // Recarrega
+            window.location.reload();
+        };
 
         document.addEventListener('DOMContentLoaded', () => {
             const usersTableBody = document.getElementById('usersTableBody');
@@ -223,18 +254,16 @@
                 try {
                     const res = await fetch('/api/admin/all-plans'); 
                     allPlans = await res.json();
-                    
-                    plansTableBody.innerHTML = ''; 
-                    planSelect.innerHTML = '';
+                    plansTableBody.innerHTML = ''; planSelect.innerHTML = '';
                     
                     allPlans.forEach(p => {
                         const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; planSelect.appendChild(opt);
                         const row = document.createElement('tr');
-                        // Usamos p.id entre aspas simples para garantir que passe como string no onclick
-                        row.innerHTML = `<td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick='openEditPlan("${p.id}")'>Edit</button><button class="delete-key-btn" onclick='deletePlan("${p.id}")'>Del</button></td>`;
+                        // Correção da chamada onclick
+                        row.innerHTML = `<td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick="openEditPlan('${escapeHtml(p.id)}')">Edit</button><button class="delete-key-btn" onclick="deletePlan('${escapeHtml(p.id)}')">Del</button></td>`;
                         plansTableBody.appendChild(row);
                     });
-                } catch(e) { console.error("Erro fetchPlans:", e); }
+                } catch(e) { console.error(e); }
             }
 
             async function fetchCoupons() {
@@ -244,7 +273,7 @@
                     if(coupons.length===0) couponsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">Sem cupons.</td></tr>';
                     coupons.forEach(c => {
                         const row = document.createElement('tr');
-                        row.innerHTML = `<td><code style="color:var(--primary-color)">${escapeHtml(c.code)}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick='deleteCoupon("${c._id}")'>Excluir</button></td>`;
+                        row.innerHTML = `<td><code style="color:var(--primary-color)">${escapeHtml(c.code)}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick="deleteCoupon('${c._id}')">Excluir</button></td>`;
                         couponsTableBody.appendChild(row);
                     });
                 } catch(e) {}
@@ -258,13 +287,7 @@
                 if(res.ok) { showToast("Cupom criado!"); fetchCoupons(); document.getElementById('couponCodeInput').value=''; }
             };
 
-            window.deleteCoupon = async (id) => {
-                if(!confirm("Excluir cupom?")) return;
-                await fetch('/api/admin/delete-coupon', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-                fetchCoupons();
-            };
-
-            async function fetchUsers() { const res = await fetch('/api/admin/users'); const users = await res.json(); users.forEach(u => userMap.set(u._id, u.username)); renderUsers(users); }
+            async function fetchUsers() { const res = await fetch('/api/admin/users'); const users = await res.json(); renderUsers(users); }
             
             function renderUsers(users) { 
                 usersTableBody.innerHTML = '';
@@ -316,31 +339,19 @@
                     const uid = e.target.dataset.uid;
                     const isUnban = e.target.textContent === 'Desbanir';
                     const endpoint = isUnban ? '/api/admin/unban-user' : '/api/admin/ban-user';
-                    
                     try {
                         const res = await fetch(endpoint, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
                         const data = await res.json();
-                        if(res.ok) {
-                            showToast(data.message, 'info');
-                            fetchUsers();
-                        } else {
-                            showToast('Erro ao alterar status.', 'error');
-                        }
+                        if(res.ok) { showToast(data.message, 'info'); fetchUsers(); }
                     } catch(err) { showToast('Erro de conexão.', 'error'); }
                 }
-                
                 if(e.target.classList.contains('delete-btn')) {
                     const uid = e.target.dataset.uid;
                     if(confirm('TEM CERTEZA? Isso apagará o usuário, todas as contas Steam associadas e encerrará os processos ativos. Esta ação é irreversível.')) {
                         try {
                             const res = await fetch('/api/admin/delete-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
                             const data = await res.json();
-                            if(res.ok) {
-                                showToast(data.message, 'info');
-                                fetchUsers();
-                            } else {
-                                showToast('Erro ao excluir usuário.', 'error');
-                            }
+                            if(res.ok) { showToast(data.message, 'info'); fetchUsers(); }
                         } catch(err) { showToast('Erro de conexão.', 'error'); }
                     }
                 }
@@ -368,86 +379,39 @@
             };
 
             const editModal = document.getElementById('editPlanModal');
-            
-            // --- CORREÇÃO CRÍTICA DO BOTÃO EDIT ---
-            window.openEditPlan = (id) => {
-                const p = allPlans.find(x => x.id === id);
-                if (!p) {
-                    console.error("Plano não encontrado para edição:", id);
-                    return;
-                }
-
-                // Preenche os campos com segurança (valores padrão se undefined)
-                document.getElementById('editPlanId').value = p.id;
-                document.getElementById('editPlanIdDisplay').value = p.id;
-                document.getElementById('editPlanName').value = p.name || '';
-                document.getElementById('editPlanPrice').value = p.price || 0;
-                document.getElementById('editPlanPriceUSD').value = p.price_usd || 0; // Novo campo
-                document.getElementById('editPlanDays').value = p.days || 0;
-                document.getElementById('editPlanAccounts').value = p.accounts || 0;
-                document.getElementById('editPlanGames').value = p.games || 0;
-                document.getElementById('editPlanStyle').value = p.style || 'none';
-                document.getElementById('editPlanActive').value = p.active ? 'true' : 'false';
-                
-                // Trata as features com segurança (converte para array se não for)
-                const featuresList = Array.isArray(p.features) ? p.features : [];
-                document.getElementById('editPlanFeatures').value = featuresList.join('\n');
-                
-                editModal.style.display = 'block';
-            };
-
             document.getElementById('savePlanButton').onclick = async () => {
                 const data = {
                     id: document.getElementById('editPlanId').value,
                     name: document.getElementById('editPlanName').value,
                     price: document.getElementById('editPlanPrice').value,
-                    price_usd: document.getElementById('editPlanPriceUSD').value, // Envia o USD
+                    price_usd: document.getElementById('editPlanPriceUSD').value,
                     days: document.getElementById('editPlanDays').value,
                     accounts: document.getElementById('editPlanAccounts').value,
                     games: document.getElementById('editPlanGames').value,
                     style: document.getElementById('editPlanStyle').value,
                     active: document.getElementById('editPlanActive').value === 'true',
-                    // Divide por quebra de linha e remove linhas vazias
-                    features: document.getElementById('editPlanFeatures').value.split('\n').filter(line => line.trim() !== '')
+                    features: document.getElementById('editPlanFeatures').value.split('\n').filter(l => l.trim() !== '')
                 };
-                
-                await fetch('/api/admin/update-plan-details', {
-                    method:'POST',
-                    headers:{'Content-Type':'application/json'},
-                    body:JSON.stringify(data)
-                });
-                
-                editModal.style.display = 'none'; 
-                fetchPlans();
-                showToast("Plano salvo com sucesso!");
+                await fetch('/api/admin/update-plan-details', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+                editModal.style.display = 'none'; fetchPlans();
+                showToast("Plano atualizado!");
             };
-
             document.getElementById('closeEditPlanModal').onclick = () => editModal.style.display = 'none';
-            
             document.getElementById('addPlanButton').onclick = () => { 
-                // Limpa o modal para criar um novo
                 document.getElementById('editPlanId').value = ''; 
-                document.getElementById('editPlanIdDisplay').value = 'novo_plano'; 
+                document.getElementById('editPlanIdDisplay').value = ''; 
                 document.getElementById('editPlanName').value = '';
-                document.getElementById('editPlanPrice').value = '0';
-                document.getElementById('editPlanPriceUSD').value = '0';
-                document.getElementById('editPlanDays').value = '30';
+                document.getElementById('editPlanPrice').value = 0;
+                document.getElementById('editPlanPriceUSD').value = 0;
                 document.getElementById('editPlanFeatures').value = '';
                 
-                // Permite editar o ID visualmente se for novo (opcional, mas aqui deixamos fixo no hidden)
-                const newId = prompt("Digite o ID único do novo plano (ex: super_vip):");
+                const newId = prompt("ID único (ex: super_vip):");
                 if(newId) {
-                    document.getElementById('editPlanId').value = newId.toLowerCase().replace(/\s/g, '_');
-                    document.getElementById('editPlanIdDisplay').value = newId.toLowerCase().replace(/\s/g, '_');
+                    const safeId = newId.toLowerCase().replace(/\s/g, '_');
+                    document.getElementById('editPlanId').value = safeId;
+                    document.getElementById('editPlanIdDisplay').value = safeId;
                     editModal.style.display = 'block'; 
                 }
-            };
-
-            window.deletePlan = async(id) => {
-                 if(confirm('Tem certeza? Isso pode afetar usuários neste plano.')) { 
-                     await fetch('/api/admin/delete-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); 
-                     fetchPlans(); 
-                 }
             };
 
             fetchAll();
