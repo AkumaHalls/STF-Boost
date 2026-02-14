@@ -142,6 +142,17 @@
     <div id="toastContainer"></div>
 
     <script>
+        // Função de Segurança (Escape)
+        const escapeHtml = (unsafe) => {
+            if (unsafe === null || unsafe === undefined) return "";
+            return String(unsafe)
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
         function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
         const userMap = new Map(); let allPlans = [];
 
@@ -156,7 +167,6 @@
                 await fetchPlans(); await fetchUsers(); await fetchLicenses(); await fetchCoupons(); await fetchGlobalAlert();
             }
 
-            // --- Lógica do Alerta Global ---
             async function fetchGlobalAlert() {
                 try {
                     const res = await fetch('/api/global-alert');
@@ -190,13 +200,13 @@
                     allPlans.forEach(p => {
                         const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; planSelect.appendChild(opt);
                         const row = document.createElement('tr');
-                        row.innerHTML = `<td>${p.id}</td><td>${p.name}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick='openEditPlan("${p.id}")'>Edit</button><button class="delete-key-btn" onclick='deletePlan("${p.id}")'>Del</button></td>`;
+                        // Sanitização aplicada nos nomes e IDs dos planos
+                        row.innerHTML = `<td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick='openEditPlan("${escapeHtml(p.id)}")'>Edit</button><button class="delete-key-btn" onclick='deletePlan("${escapeHtml(p.id)}")'>Del</button></td>`;
                         plansTableBody.appendChild(row);
                     });
                 } catch(e) {}
             }
 
-            // Cupons
             async function fetchCoupons() {
                 try {
                     const res = await fetch('/api/admin/coupons'); const coupons = await res.json();
@@ -204,7 +214,8 @@
                     if(coupons.length===0) couponsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">Sem cupons.</td></tr>';
                     coupons.forEach(c => {
                         const row = document.createElement('tr');
-                        row.innerHTML = `<td><code style="color:var(--primary-color)">${c.code}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick='deleteCoupon("${c._id}")'>Excluir</button></td>`;
+                        // Sanitização do código do cupom
+                        row.innerHTML = `<td><code style="color:var(--primary-color)">${escapeHtml(c.code)}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick='deleteCoupon("${c._id}")'>Excluir</button></td>`;
                         couponsTableBody.appendChild(row);
                     });
                 } catch(e) {}
@@ -230,9 +241,11 @@
                 usersTableBody.innerHTML = '';
                 users.forEach(u => {
                     const row = document.createElement('tr');
-                    let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${p.name}</option>`);
+                    // IMPORTANTE: Sanitização do nome de usuário do cliente
+                    const safeUser = escapeHtml(u.username);
+                    let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${escapeHtml(p.name)}</option>`);
                     row.innerHTML = `
-                        <td>${u.username}</td>
+                        <td>${safeUser}</td>
                         <td><select class="plan-select" data-uid="${u._id}">${opts}</select></td>
                         <td class="${u.isBanned ? 'status-banned' : 'status-unused'}">${u.isBanned ? 'BANIDO' : 'Ativo'}</td>
                         <td class="actions-cell">
@@ -248,12 +261,12 @@
                 licensesTableBody.innerHTML = '';
                 lic.forEach(k => {
                     const row = document.createElement('tr');
-                    row.innerHTML = `<td>${k.key}</td><td>${k.plan}</td><td>${k.isUsed?'Usado':'Livre'}</td><td>${k.assignedToUsername||'-'}</td><td class="actions-cell">${!k.isUsed?`<button class="assign-key-btn" data-lid="${k._id}">Atribuir</button><button class="delete-key-btn" data-lid="${k._id}">Del</button>`:''}</td>`;
+                    // Sanitização de chaves e usuários
+                    row.innerHTML = `<td>${escapeHtml(k.key)}</td><td>${escapeHtml(k.plan)}</td><td>${k.isUsed?'Usado':'Livre'}</td><td>${escapeHtml(k.assignedToUsername||'-')}</td><td class="actions-cell">${!k.isUsed?`<button class="assign-key-btn" data-lid="${k._id}">Atribuir</button><button class="delete-key-btn" data-lid="${k._id}">Del</button>`:''}</td>`;
                     licensesTableBody.appendChild(row);
                 });
             }
 
-            // CORREÇÃO APLICADA AQUI: Incluído durationDays no corpo da requisição
             document.getElementById('generateKeysButton').onclick = async () => {
                 const planVal = document.getElementById('planSelect').value;
                 const quantityVal = document.getElementById('quantityInput').value;
