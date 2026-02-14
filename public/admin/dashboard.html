@@ -125,17 +125,42 @@
         <div class="modal-content">
             <h2 id="modalPlanTitle">Editar Plano</h2>
             <input type="hidden" id="editPlanId">
-            <div class="settings-form-row"><label>ID:</label><input type="text" id="editPlanIdDisplay"></div>
-            <div class="settings-form-row"><label>Nome:</label><input type="text" id="editPlanName"></div>
-            <div class="settings-form-row"><label>Preço:</label><input type="number" id="editPlanPrice" step="0.01"></div>
-            <div class="settings-form-row"><label>Dias:</label><input type="number" id="editPlanDays"></div>
-            <div class="settings-form-row"><label>Contas:</label><input type="number" id="editPlanAccounts"></div>
-            <div class="settings-form-row"><label>Jogos:</label><input type="number" id="editPlanGames"></div>
-            <div class="settings-form-row"><label>Estilo:</label><select id="editPlanStyle"><option value="none">Normal</option><option value="fire">Fogo</option><option value="cosmic">Cósmico</option><option value="halloween">Halloween</option><option value="christmas">Natal</option><option value="newyear">Ano Novo</option></select></div>
-            <div class="settings-form-row"><label>Ativo:</label><select id="editPlanActive"><option value="true">Sim</option><option value="false">Não</option></select></div>
-            <p>Features:</p><textarea id="editPlanFeatures" rows="4"></textarea>
-            <button id="savePlanButton">Salvar</button>
-            <button id="closeEditPlanModal" class="remove-btn">Cancelar</button>
+            
+            <div class="settings-form-row"><label>ID (Sistema):</label><input type="text" id="editPlanIdDisplay" readonly style="opacity: 0.7;"></div>
+            <div class="settings-form-row"><label>Nome Visível:</label><input type="text" id="editPlanName"></div>
+            
+            <div class="settings-form-row"><label>Preço (BRL):</label><input type="number" id="editPlanPrice" step="0.01"></div>
+            <div class="settings-form-row"><label>Preço (USD):</label><input type="number" id="editPlanPriceUSD" step="0.01"></div>
+            
+            <div class="settings-form-row"><label>Dias de Duração:</label><input type="number" id="editPlanDays"></div>
+            <div class="settings-form-row"><label>Limite Contas:</label><input type="number" id="editPlanAccounts"></div>
+            <div class="settings-form-row"><label>Limite Jogos:</label><input type="number" id="editPlanGames"></div>
+            
+            <div class="settings-form-row"><label>Estilo Visual:</label>
+                <select id="editPlanStyle">
+                    <option value="none">Padrão</option>
+                    <option value="fire">Fogo (Premium)</option>
+                    <option value="cosmic">Cósmico (Vitalício)</option>
+                    <option value="halloween">Halloween</option>
+                    <option value="christmas">Natal</option>
+                    <option value="newyear">Ano Novo</option>
+                </select>
+            </div>
+            
+            <div class="settings-form-row"><label>Ativo na Loja:</label>
+                <select id="editPlanActive">
+                    <option value="true">Sim</option>
+                    <option value="false">Não</option>
+                </select>
+            </div>
+            
+            <p>Lista de Benefícios (um por linha):</p>
+            <textarea id="editPlanFeatures" rows="5" placeholder="Ex: 24/7 Online&#10;Suporte Prioritário"></textarea>
+            
+            <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
+                <button id="closeEditPlanModal" class="remove-btn">Cancelar</button>
+                <button id="savePlanButton">Salvar Alterações</button>
+            </div>
         </div>
     </div>
 
@@ -154,7 +179,8 @@
         }
 
         function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
-        const userMap = new Map(); let allPlans = [];
+        const userMap = new Map(); 
+        let allPlans = [];
 
         document.addEventListener('DOMContentLoaded', () => {
             const usersTableBody = document.getElementById('usersTableBody');
@@ -195,16 +221,20 @@
 
             async function fetchPlans() {
                 try {
-                    const res = await fetch('/api/admin/all-plans'); allPlans = await res.json();
-                    plansTableBody.innerHTML = ''; planSelect.innerHTML = '';
+                    const res = await fetch('/api/admin/all-plans'); 
+                    allPlans = await res.json();
+                    
+                    plansTableBody.innerHTML = ''; 
+                    planSelect.innerHTML = '';
+                    
                     allPlans.forEach(p => {
                         const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; planSelect.appendChild(opt);
                         const row = document.createElement('tr');
-                        // Sanitização aplicada nos nomes e IDs dos planos
-                        row.innerHTML = `<td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick='openEditPlan("${escapeHtml(p.id)}")'>Edit</button><button class="delete-key-btn" onclick='deletePlan("${escapeHtml(p.id)}")'>Del</button></td>`;
+                        // Usamos p.id entre aspas simples para garantir que passe como string no onclick
+                        row.innerHTML = `<td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick='openEditPlan("${p.id}")'>Edit</button><button class="delete-key-btn" onclick='deletePlan("${p.id}")'>Del</button></td>`;
                         plansTableBody.appendChild(row);
                     });
-                } catch(e) {}
+                } catch(e) { console.error("Erro fetchPlans:", e); }
             }
 
             async function fetchCoupons() {
@@ -214,7 +244,6 @@
                     if(coupons.length===0) couponsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">Sem cupons.</td></tr>';
                     coupons.forEach(c => {
                         const row = document.createElement('tr');
-                        // Sanitização do código do cupom
                         row.innerHTML = `<td><code style="color:var(--primary-color)">${escapeHtml(c.code)}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick='deleteCoupon("${c._id}")'>Excluir</button></td>`;
                         couponsTableBody.appendChild(row);
                     });
@@ -241,7 +270,6 @@
                 usersTableBody.innerHTML = '';
                 users.forEach(u => {
                     const row = document.createElement('tr');
-                    // IMPORTANTE: Sanitização do nome de usuário do cliente
                     const safeUser = escapeHtml(u.username);
                     let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${escapeHtml(p.name)}</option>`);
                     row.innerHTML = `
@@ -261,7 +289,6 @@
                 licensesTableBody.innerHTML = '';
                 lic.forEach(k => {
                     const row = document.createElement('tr');
-                    // Sanitização de chaves e usuários
                     row.innerHTML = `<td>${escapeHtml(k.key)}</td><td>${escapeHtml(k.plan)}</td><td>${k.isUsed?'Usado':'Livre'}</td><td>${escapeHtml(k.assignedToUsername||'-')}</td><td class="actions-cell">${!k.isUsed?`<button class="assign-key-btn" data-lid="${k._id}">Atribuir</button><button class="delete-key-btn" data-lid="${k._id}">Del</button>`:''}</td>`;
                     licensesTableBody.appendChild(row);
                 });
@@ -341,36 +368,86 @@
             };
 
             const editModal = document.getElementById('editPlanModal');
+            
+            // --- CORREÇÃO CRÍTICA DO BOTÃO EDIT ---
             window.openEditPlan = (id) => {
-                const p = allPlans.find(x=>x.id===id);
-                document.getElementById('editPlanId').value = p.id; document.getElementById('editPlanIdDisplay').value = p.id;
-                document.getElementById('editPlanName').value = p.name; document.getElementById('editPlanPrice').value = p.price;
-                document.getElementById('editPlanDays').value = p.days; document.getElementById('editPlanAccounts').value = p.accounts;
-                document.getElementById('editPlanGames').value = p.games; document.getElementById('editPlanFeatures').value = p.features.join('\n');
+                const p = allPlans.find(x => x.id === id);
+                if (!p) {
+                    console.error("Plano não encontrado para edição:", id);
+                    return;
+                }
+
+                // Preenche os campos com segurança (valores padrão se undefined)
+                document.getElementById('editPlanId').value = p.id;
+                document.getElementById('editPlanIdDisplay').value = p.id;
+                document.getElementById('editPlanName').value = p.name || '';
+                document.getElementById('editPlanPrice').value = p.price || 0;
+                document.getElementById('editPlanPriceUSD').value = p.price_usd || 0; // Novo campo
+                document.getElementById('editPlanDays').value = p.days || 0;
+                document.getElementById('editPlanAccounts').value = p.accounts || 0;
+                document.getElementById('editPlanGames').value = p.games || 0;
+                document.getElementById('editPlanStyle').value = p.style || 'none';
+                document.getElementById('editPlanActive').value = p.active ? 'true' : 'false';
+                
+                // Trata as features com segurança (converte para array se não for)
+                const featuresList = Array.isArray(p.features) ? p.features : [];
+                document.getElementById('editPlanFeatures').value = featuresList.join('\n');
+                
                 editModal.style.display = 'block';
             };
+
             document.getElementById('savePlanButton').onclick = async () => {
                 const data = {
                     id: document.getElementById('editPlanId').value,
                     name: document.getElementById('editPlanName').value,
                     price: document.getElementById('editPlanPrice').value,
+                    price_usd: document.getElementById('editPlanPriceUSD').value, // Envia o USD
                     days: document.getElementById('editPlanDays').value,
                     accounts: document.getElementById('editPlanAccounts').value,
                     games: document.getElementById('editPlanGames').value,
                     style: document.getElementById('editPlanStyle').value,
                     active: document.getElementById('editPlanActive').value === 'true',
-                    features: document.getElementById('editPlanFeatures').value.split('\n')
+                    // Divide por quebra de linha e remove linhas vazias
+                    features: document.getElementById('editPlanFeatures').value.split('\n').filter(line => line.trim() !== '')
                 };
-                await fetch('/api/admin/update-plan-details', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-                editModal.style.display = 'none'; fetchPlans();
+                
+                await fetch('/api/admin/update-plan-details', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify(data)
+                });
+                
+                editModal.style.display = 'none'; 
+                fetchPlans();
+                showToast("Plano salvo com sucesso!");
             };
+
             document.getElementById('closeEditPlanModal').onclick = () => editModal.style.display = 'none';
+            
             document.getElementById('addPlanButton').onclick = () => { 
-                document.getElementById('editPlanId').value = ''; document.getElementById('editPlanIdDisplay').value = ''; 
-                editModal.style.display = 'block'; 
+                // Limpa o modal para criar um novo
+                document.getElementById('editPlanId').value = ''; 
+                document.getElementById('editPlanIdDisplay').value = 'novo_plano'; 
+                document.getElementById('editPlanName').value = '';
+                document.getElementById('editPlanPrice').value = '0';
+                document.getElementById('editPlanPriceUSD').value = '0';
+                document.getElementById('editPlanDays').value = '30';
+                document.getElementById('editPlanFeatures').value = '';
+                
+                // Permite editar o ID visualmente se for novo (opcional, mas aqui deixamos fixo no hidden)
+                const newId = prompt("Digite o ID único do novo plano (ex: super_vip):");
+                if(newId) {
+                    document.getElementById('editPlanId').value = newId.toLowerCase().replace(/\s/g, '_');
+                    document.getElementById('editPlanIdDisplay').value = newId.toLowerCase().replace(/\s/g, '_');
+                    editModal.style.display = 'block'; 
+                }
             };
+
             window.deletePlan = async(id) => {
-                 if(confirm('Del?')) { await fetch('/api/admin/delete-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); fetchPlans(); }
+                 if(confirm('Tem certeza? Isso pode afetar usuários neste plano.')) { 
+                     await fetch('/api/admin/delete-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); 
+                     fetchPlans(); 
+                 }
             };
 
             fetchAll();
