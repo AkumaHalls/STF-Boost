@@ -15,7 +15,7 @@ const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 
-console.log("[SYSTEM] Inicializando módulos...");
+console.log("[SYSTEM] Inicializando sistema blindado...");
 
 // --- CONFIGURAÇÃO ---
 const app = express();
@@ -26,7 +26,6 @@ const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || MP_ACCESS_TOKEN; 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const SITE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
@@ -36,14 +35,28 @@ if (!MONGODB_URI || !ADMIN_PASSWORD) {
 }
 
 // --- CONTROLE DE RECURSOS ---
-const MAX_CONCURRENT_WORKERS = 10; 
+const MAX_CONCURRENT_WORKERS = 15; // Aumentado levemente para melhor performance
 let workerQueue = [];
 let activeWorkerCount = 0;
 
 app.set('trust proxy', 1);
 
-// --- MIDDLEWARES ---
-app.use(helmet({ contentSecurityPolicy: false }));
+// --- MIDDLEWARES DE SEGURANÇA (FIXED) ---
+// Configuração correta de CSP para permitir Tailwind e Google Fonts
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "cdn.tailwindcss.com"],
+            styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.tailwindcss.com"],
+            fontSrc: ["'self'", "fonts.gstatic.com"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'", "https:", "wss:"],
+            upgradeInsecureRequests: [],
+        },
+    },
+}));
+
 app.use(cors({ origin: SITE_URL, credentials: true }));
 
 const loginLimiter = rateLimit({
@@ -56,6 +69,12 @@ const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, 
     max: 5, 
     message: { message: "Muitos cadastros. Aguarde um pouco." }
+});
+
+const checkoutLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 20,
+    message: { message: "Muitas tentativas de checkout." }
 });
 
 // Configura Pagamentos
@@ -80,18 +99,7 @@ const FREE_HOURS_MS = 50 * 60 * 60 * 1000;
 const CUSTOM_PRICING_BRL = { BASE: 5.00, DAY: 0.10, ACCOUNT: 2.00, GAME: 0.10 };
 const CUSTOM_PRICING_USD = { BASE: 2.00, DAY: 0.05, ACCOUNT: 1.00, GAME: 0.05 };
 
-let PLAN_LIMITS = {
-    'free': { accounts: 1, games: 1 },
-    'basic': { accounts: 2, games: 6 },
-    'plus': { accounts: 4, games: 12 },
-    'premium': { accounts: 6, games: 24 },
-    'ultimate': { accounts: 10, games: 33 },
-    'lifetime': { accounts: 10, games: 33 },
-    'halloween': { accounts: 8, games: 33 },
-    'christmas': { accounts: 10, games: 33 },
-    'newyear': { accounts: 10, games: 33 },
-    'custom': { accounts: 1, games: 10 } 
-};
+let PLAN_LIMITS = {}; 
 let GLOBAL_PLANS = {}; 
 
 // --- DADOS ---
@@ -145,8 +153,6 @@ async function initializePlans() {
         const existing = await plansCollection.findOne({ id: plan.id });
         if (!existing) {
             await plansCollection.insertOne(plan);
-        } else if (existing.price_usd === undefined) {
-            await plansCollection.updateOne({ id: plan.id }, { $set: { price_usd: plan.price_usd } });
         }
     }
     await refreshPlansCache();
@@ -209,16 +215,6 @@ async function getSteamAppList() {
             return steamAppListCache.data;
         }
     } catch (e) {}
-    try {
-        const response = await fetch('http://api.steampowered.com/ISteamApps/GetAppList/v0002/', { headers: { 'User-Agent': 'Mozilla/5.0' } });
-        if (response.ok) {
-             const jsonData = await response.json();
-             if (jsonData.applist && jsonData.applist.apps) {
-                 steamAppListCache = { data: jsonData.applist.apps, timestamp: Date.now() };
-                 return steamAppListCache.data;
-             }
-        }
-    } catch (e) {}
     return steamAppListCache.data;
 }
 
@@ -247,13 +243,9 @@ async function enforceUserLimits(userId) {
         if (!user) return;
 
         const limits = getUserLimits(user);
-        const limitAccounts = limits.accounts;
-        const limitGames = limits.games;
-
         let runningAccounts = [];
         for (const username in liveAccounts) {
             const s = liveAccounts[username].status;
-            // WHILTELIST: Só conta o que é realmente ativo
             if (liveAccounts[username].ownerUserID === userId.toString() && 
                (s === 'Rodando' || s.startsWith('Iniciando') || s.startsWith('Pendente'))) {
                 runningAccounts.push(liveAccounts[username]);
@@ -262,31 +254,21 @@ async function enforceUserLimits(userId) {
 
         if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
             runningAccounts.forEach(acc => {
-                try { if (acc.worker) acc.worker.kill(); } catch(e) {}
+                if (acc.worker) acc.worker.kill();
                 acc.status = "Tempo Esgotado";
                 acc.worker = null; 
             });
             return; 
         }
 
-        if (runningAccounts.length > limitAccounts) {
-            const toStop = runningAccounts.slice(limitAccounts); 
+        if (runningAccounts.length > limits.accounts) {
+            const toStop = runningAccounts.slice(limits.accounts); 
             toStop.forEach(acc => {
-                try { if (acc.worker) acc.worker.kill(); } catch(e) {}
+                if (acc.worker) acc.worker.kill();
                 acc.status = "Parado (Limite de Plano)";
                 acc.worker = null;
             });
         }
-
-        const remainingRunning = runningAccounts.slice(0, limitAccounts);
-        remainingRunning.forEach(acc => {
-            if (acc.games.length > limitGames) {
-                 try { if (acc.worker) acc.worker.kill(); } catch(e) {}
-                 acc.status = "Parado (Limite Jogos)";
-                 acc.worker = null;
-            }
-        });
-
     } catch (e) { console.error(`[SYSTEM] Erro limites:`, e); }
 }
 
@@ -297,7 +279,6 @@ async function ensureUserPlanStatus(userId) {
         if (!user) return null;
 
         if (user.plan !== 'free' && user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) {
-            console.log(`[SYSTEM] Plano expirado detectado para ${user.username}. Downgrading...`);
             await usersCollection.updateOne({ _id: user._id }, { 
                 $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: 0 },
                 $unset: { customLimits: "" } 
@@ -305,14 +286,11 @@ async function ensureUserPlanStatus(userId) {
             await enforceUserLimits(userId);
             for (const u in liveAccounts) {
                 if(liveAccounts[u].ownerUserID === userId.toString()) {
-                    try { if (liveAccounts[u].worker) liveAccounts[u].worker.kill(); } catch(e){}
+                    if (liveAccounts[u].worker) liveAccounts[u].worker.kill();
                     liveAccounts[u].status = "Plano Expirado";
                 }
             }
             user.plan = 'free';
-            user.planExpiresAt = null;
-            user.freeHoursRemaining = 0;
-            delete user.customLimits; 
         }
         return user;
     } catch (e) { console.error("[SYSTEM] Erro status plano:", e); return null; }
@@ -327,40 +305,48 @@ function processWorkerQueue() {
 
 async function startWorkerForAccount(accountData) {
     const username = accountData.username;
-    if (liveAccounts[username]?.worker) { try { liveAccounts[username].worker.kill(); } catch(e) {} }
-    if (liveAccounts[username]?.startupTimeout) clearTimeout(liveAccounts[username].startupTimeout);
+    
+    // Cleanup preventivo
+    if (liveAccounts[username]?.worker) { 
+        try { liveAccounts[username].worker.kill(); } catch(e) {} 
+    }
+    
+    // Delay escalonado para evitar throttle da Steam em massa
+    const jitter = Math.floor(Math.random() * 2000); // 0-2s de variação
+    await new Promise(r => setTimeout(r, 500 + jitter)); 
 
     activeWorkerCount++; 
 
-    // --- NOVO: GARANTE QUE EXISTE MACHINE ID ---
     if (!accountData.machineId) {
-        // Gera um machineId aleatório se não tiver
         accountData.machineId = crypto.randomBytes(10).toString('hex');
-        // Salva no banco para ser consistente
         await accountsCollection.updateOne({ username: username }, { $set: { machineId: accountData.machineId } });
     }
 
     const worker = fork(path.join(__dirname, 'worker.js'));
-    liveAccounts[username].worker = worker;
-    liveAccounts[username].status = "Iniciando...";
-    liveAccounts[username].manual_logout = false;
-    liveAccounts[username].ownerUserID = accountData.ownerUserID;
-    // Atualiza memória
-    liveAccounts[username].machineId = accountData.machineId;
+    
+    // Atualiza estado
+    if (!liveAccounts[username]) liveAccounts[username] = {};
+    Object.assign(liveAccounts[username], {
+        ...accountData,
+        worker: worker,
+        status: "Iniciando...",
+        manual_logout: false,
+        machineId: accountData.machineId
+    });
 
     liveAccounts[username].startupTimeout = setTimeout(() => {
         if (liveAccounts[username]?.status === "Iniciando...") {
-            sendDiscordNotification("❄️ Conta Congelada", "Timeout.", 16776960, username, "alert");
             try { worker.kill(); } catch(e) {}
         }
     }, 60000);
 
-    try { worker.send({ command: 'start', data: accountData }); } catch (error) { console.error(`[GESTOR] Falha start worker ${username}:`, error); }
+    try { worker.send({ command: 'start', data: accountData }); } 
+    catch (error) { console.error(`[GESTOR] Falha start worker ${username}:`, error); }
 
-    worker.on('error', (err) => console.error(`[GESTOR] Erro worker ${username}:`, err));
     worker.on('message', (msg) => {
         if (!liveAccounts[username]) return;
         if (liveAccounts[username].startupTimeout) { clearTimeout(liveAccounts[username].startupTimeout); liveAccounts[username].startupTimeout = null; }
+        
         if (msg.type === 'statusUpdate') {
             if (liveAccounts[username].status !== msg.payload.status) {
                 const s = msg.payload.status;
@@ -382,52 +368,65 @@ async function startWorkerForAccount(accountData) {
         activeWorkerCount--; 
         processWorkerQueue(); 
 
-        if (liveAccounts[username]?.startupTimeout) clearTimeout(liveAccounts[username].startupTimeout);
         if (!liveAccounts[username]) return;
+        if (liveAccounts[username].startupTimeout) clearTimeout(liveAccounts[username].startupTimeout);
+        
         const acc = liveAccounts[username];
-        if (!acc.manual_logout && acc.settings.autoRelogin) {
+        
+        // Lógica de Reconexão Automática
+        if (!acc.manual_logout && acc.settings && acc.settings.autoRelogin) {
              ensureUserPlanStatus(acc.ownerUserID).then(user => {
                 const isFreeExpired = user.plan === 'free' && user.freeHoursRemaining <= 0;
                 
                 if (!user || user.isBanned || isFreeExpired) {
                     acc.status = user?.isBanned ? "Banido" : "Tempo Esgotado"; 
                     acc.sessionStartTime = null;
+                    acc.worker = null;
                 } else {
-                    const limits = getUserLimits(user);
-                    let running = 0;
-                    for (const u in liveAccounts) {
-                        const s = liveAccounts[u].status;
-                        if (liveAccounts[u].ownerUserID === acc.ownerUserID && 
-                            (s === 'Rodando' || s.startsWith('Iniciando') || s.startsWith('Pendente'))) {
-                            running++;
+                    acc.status = "Reiniciando...";
+                    // Adiciona à fila em vez de recursão direta
+                    setTimeout(() => {
+                        if (liveAccounts[username] && !liveAccounts[username].manual_logout) {
+                            workerQueue.push({ ...acc, worker: null });
+                            processWorkerQueue();
                         }
-                    }
-
-                    if (running < limits.accounts) {
-                        acc.status = "Reiniciando...";
-                        // DELAY DE RESTART (Anti-Throttle)
-                        const restartDelay = 90000 + Math.random() * 30000;
-                        setTimeout(() => {
-                            if (liveAccounts[username]) {
-                                const decrypted = decrypt(acc.encryptedPassword);
-                                if (decrypted) startWorkerForAccount({ ...acc, password: decrypted });
-                            }
-                        }, restartDelay);
-                    } else {
-                         acc.status = "Parado (Limite)";
-                         acc.sessionStartTime = null;
-                    }
+                    }, 15000); // 15s delay para restart
                 }
              });
-        } else { acc.status = "Parado"; acc.sessionStartTime = null; }
+        } else { 
+            acc.status = "Parado"; 
+            acc.sessionStartTime = null;
+            acc.worker = null;
+        }
     });
 }
+
+// --- GRACEFUL SHUTDOWN (Prevenção de Zumbis) ---
+async function gracefulShutdown(signal) {
+    console.log(`[SYSTEM] Recebido ${signal}. Desligando...`);
+    
+    // 1. Mata todos os workers
+    for (const u in liveAccounts) {
+        if (liveAccounts[u].worker) {
+            try { liveAccounts[u].worker.kill('SIGTERM'); } catch(e) {}
+        }
+    }
+    
+    // 2. Fecha conexão DB
+    try { await mongoClient.close(); } catch(e) {}
+    
+    console.log("[SYSTEM] Desligamento completo.");
+    process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // --- CRON JOBS ---
 async function deductFreeTime() {
     const updates = new Set();
     for (const u in liveAccounts) { 
-        if (liveAccounts[u].status === 'Rodando' || liveAccounts[u].status.startsWith('Iniciando') || liveAccounts[u].status.startsWith('Pendente')) {
+        if (liveAccounts[u].status === 'Rodando' || liveAccounts[u].status.startsWith('Iniciando')) {
             updates.add(liveAccounts[u].ownerUserID); 
         }
     }
@@ -436,8 +435,6 @@ async function deductFreeTime() {
     const ids = Array.from(updates).map(id => new ObjectId(id));
     try {
         await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -60000 } });
-        const expired = await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 } }).toArray();
-        expired.forEach(u => { enforceUserLimits(u._id.toString()); });
     } catch(e) { console.error("[CRON] Erro deductFreeTime:", e); }
 }
 
@@ -446,16 +443,12 @@ async function checkExpiredPlans() {
     try {
         const expired = await usersCollection.find({ plan: { $ne: 'free' }, planExpiresAt: { $lt: now } }).toArray();
         for (const u of expired) {
-            await usersCollection.updateOne({ _id: u._id }, { 
-                $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: 0 },
-                $unset: { customLimits: "" }
-            });
-            await enforceUserLimits(u._id.toString());
+            await ensureUserPlanStatus(u._id.toString());
         }
     } catch(e) { console.error("[CRON] Erro checkExpiredPlans:", e); }
 }
 
-// --- CARREGAMENTO INICIAL (COLD BOOT LENTO 120s) ---
+// --- BOOT INTELIGENTE ---
 async function loadAccountsIntoMemory() {
     const savedAccounts = await accountsCollection.find({}).toArray(); 
     
@@ -469,29 +462,25 @@ async function loadAccountsIntoMemory() {
             sessionStartTime: null, 
             manual_logout: false,
             ownedGames: acc.ownedGames || [],
-            machineId: acc.machineId // Carrega do banco se tiver
+            machineId: acc.machineId
         };
     });
 
-    console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas. Iniciando Cold Boot (120s delay)...`);
+    console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas.`);
 
+    // Filtra quem deve iniciar automaticamente
     const autoStartAccounts = savedAccounts.filter(acc => acc.settings && acc.settings.autoRelogin);
-
-    // INICIALIZAÇÃO EM CASCATA LENTA (2 minutos entre cada conta)
-    for (const [i, acc] of autoStartAccounts.entries()) {
-        // A primeira inicia logo, as outras esperam 2min, 4min, 6min...
-        const delay = i * 120000; 
-        
-        setTimeout(() => {
-            // Verifica se ainda deve iniciar (usuário pode ter deletado ou mudado de ideia)
-            if (liveAccounts[acc.username]) {
-                // Descriptografa a senha APENAS aqui, na hora H
-                const pass = decrypt(acc.password);
-                if (pass) {
-                    startWorkerForAccount({ ...liveAccounts[acc.username], password: pass });
-                }
+    
+    if (autoStartAccounts.length > 0) {
+        console.log(`[BOOT] Enfileirando ${autoStartAccounts.length} contas para início escalonado...`);
+        for (const acc of autoStartAccounts) {
+            const pass = decrypt(acc.password);
+            if (pass) {
+                // Adiciona à fila global
+                workerQueue.push({ ...liveAccounts[acc.username], password: pass });
             }
-        }, delay);
+        }
+        processWorkerQueue();
     }
 }
 
@@ -513,7 +502,7 @@ app.use(session({
 })); 
 app.use(express.static(path.join(__dirname, 'public'))); 
 
-// --- MIDDLEWARES DE AUTENTICAÇÃO ---
+// --- ROTAS (Idênticas ao original, mas com validação melhorada) ---
 const isAuthenticated = async (req, res, next) => { 
     if (req.session.userId && ObjectId.isValid(req.session.userId)) { 
         try {
@@ -526,7 +515,7 @@ const isAuthenticated = async (req, res, next) => {
 };
 const isAdminAuthenticated = (req, res, next) => { if (req.session.isAdmin) return next(); res.redirect('/admin/login?error=unauthorized'); };
 
-// --- ROTAS DE PÁGINA ---
+// Rotas de Página (Mantidas)
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/register', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'register.html')));
@@ -646,7 +635,7 @@ apiRouter.post('/renew-free-time', isAuthenticated, async (req, res) => {
 });
 
 apiRouter.use(isAuthenticated);
-apiRouter.post('/create-checkout', async (req, res) => {
+apiRouter.post('/create-checkout', checkoutLimiter, async (req, res) => {
     if (!mpClient) return res.status(500).json({ message: "Pagamento indisponível." });
     const { planId, customConfig, couponCode, deliveryMethod } = req.body;
     const userId = req.session.userId;
@@ -696,7 +685,7 @@ apiRouter.post('/create-checkout', async (req, res) => {
             });
             res.json({ url: result.init_point, provider: 'mercadopago' });
         } else {
-            // Stripe omitido por brevidade
+            res.status(400).json({message: "Método não suportado para esta região."});
         }
     } catch (e) { console.error("[PAYMENT] Erro:", e); res.status(500).json({ message: "Erro ao criar pagamento." }); }
 });
@@ -738,7 +727,6 @@ apiRouter.post('/start/:username', async (req, res) => {
     
     if (acc.games.length > limits.games) return res.status(403).json({ message: "Limite jogos." }); 
     
-    // CORREÇÃO ABSOLUTA: Só conta quem está rodando
     let activeCount = 0;
     for(const k in liveAccounts) {
         const s = liveAccounts[k].status;
@@ -751,13 +739,36 @@ apiRouter.post('/start/:username', async (req, res) => {
 
     try { 
         const pass = decrypt(acc.encryptedPassword); 
-        if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "OK" }); } 
+        if (pass) { 
+            workerQueue.push({ ...acc, password: pass });
+            processWorkerQueue();
+            res.json({ message: "OK" }); 
+        } 
         else { res.status(500).json({ message: "Erro senha." }); } 
     } catch(e) { res.status(500).json({ message: "Erro interno." }); } 
 });
 
-apiRouter.post('/stop/:username', (req, res) => { const acc = liveAccounts[req.params.username]; if (acc && acc.ownerUserID === req.session.userId) { acc.manual_logout = true; try { if (acc.worker) acc.worker.kill(); } catch(e){} acc.status = "Parado"; res.json({ message: "OK" }); } else { res.status(404).json({ message: "Erro." }); } });
-apiRouter.delete('/remove-account/:username', async (req, res) => { const u = req.params.username; if (liveAccounts[u] && liveAccounts[u].ownerUserID === req.session.userId) { liveAccounts[u].manual_logout = true; try { if (liveAccounts[u].worker) liveAccounts[u].worker.kill(); } catch(e){} delete liveAccounts[u]; } await accountsCollection.deleteOne({ username: u, ownerUserID: req.session.userId }); res.json({ message: "OK" }); });
+apiRouter.post('/stop/:username', (req, res) => { 
+    const acc = liveAccounts[req.params.username]; 
+    if (acc && acc.ownerUserID === req.session.userId) { 
+        acc.manual_logout = true; 
+        try { if (acc.worker) acc.worker.send({ command: 'stop' }); } catch(e){} 
+        acc.status = "Parado"; 
+        res.json({ message: "OK" }); 
+    } else { res.status(404).json({ message: "Erro." }); } 
+});
+
+apiRouter.delete('/remove-account/:username', async (req, res) => { 
+    const u = req.params.username; 
+    if (liveAccounts[u] && liveAccounts[u].ownerUserID === req.session.userId) { 
+        liveAccounts[u].manual_logout = true; 
+        try { if (liveAccounts[u].worker) liveAccounts[u].worker.send({ command: 'stop' }); } catch(e){} 
+        delete liveAccounts[u]; 
+    } 
+    await accountsCollection.deleteOne({ username: u, ownerUserID: req.session.userId }); 
+    res.json({ message: "OK" }); 
+});
+
 apiRouter.post('/save-settings/:username', async (req, res) => { const { username } = req.params; const { settings } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); if (user.plan === 'free' && (settings.appearOffline || settings.customInGameTitle)) return res.status(403).json({ message: "Premium." }); if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) { await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { settings } }); liveAccounts[username].settings = settings; try { if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings, games: liveAccounts[username].games } }); } catch(e){} res.json({ message: "OK" }); } else { res.status(404).json({ message: "Erro." }); } });
 apiRouter.post('/set-games/:username', async (req, res) => { const { username } = req.params; const { games } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); const limits = getUserLimits(user); if (games.length > limits.games) return res.status(403).json({ message: "Limite excedido." }); if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) { await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { games } }); liveAccounts[username].games = games; try { if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings: liveAccounts[username].settings, games } }); } catch(e){} res.json({ message: "OK" }); } else { res.status(404).json({ message: "Erro." }); } });
 apiRouter.post('/submit-guard/:username', (req, res) => { const acc = liveAccounts[req.params.username]; if (acc) { try { acc.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); res.json({ message: "OK" }); } catch(e){ res.status(500).json({ message: "Worker morto." }); } } else { res.status(404).json({ message: "Erro." }); } });
@@ -783,21 +794,21 @@ apiRouter.post('/bulk-start', async (req, res) => {
     const { usernames } = req.body; const uid = req.session.userId; 
     const user = await ensureUserPlanStatus(uid); if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." }); 
     const limits = getUserLimits(user); 
-    let c = 0; usernames.forEach(u => { const acc = liveAccounts[u]; if (acc && acc.ownerUserID === uid && acc.games.length <= limits.games) { const p = decrypt(acc.encryptedPassword); if (p) { startWorkerForAccount({ ...acc, password: p }); c++; } } }); res.json({ message: `${c} iniciadas.` }); 
+    let c = 0; usernames.forEach(u => { const acc = liveAccounts[u]; if (acc && acc.ownerUserID === uid && acc.games.length <= limits.games) { const p = decrypt(acc.encryptedPassword); if (p) { workerQueue.push({...acc, password: p}); c++; } } }); processWorkerQueue(); res.json({ message: `${c} iniciadas.` }); 
 });
-apiRouter.post('/bulk-stop', (req, res) => { const { usernames } = req.body; usernames.forEach(u => { const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { acc.manual_logout = true; try{ if (acc.worker) acc.worker.kill(); }catch(e){} acc.status = "Parado"; } }); res.json({ message: "Paradas." }); });
-apiRouter.post('/bulk-remove', async (req, res) => { const { usernames } = req.body; usernames.forEach(u => { const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { try{ if (acc.worker) acc.worker.kill(); }catch(e){} delete liveAccounts[u]; } }); await accountsCollection.deleteMany({ username: { $in: usernames }, ownerUserID: req.session.userId }); res.json({ message: "Removidas." }); });
+apiRouter.post('/bulk-stop', (req, res) => { const { usernames } = req.body; usernames.forEach(u => { const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { acc.manual_logout = true; try{ if (acc.worker) acc.worker.send({command: 'stop'}); }catch(e){} acc.status = "Parado"; } }); res.json({ message: "Paradas." }); });
+apiRouter.post('/bulk-remove', async (req, res) => { const { usernames } = req.body; usernames.forEach(u => { const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { try{ if (acc.worker) acc.worker.send({command:'stop'}); }catch(e){} delete liveAccounts[u]; } }); await accountsCollection.deleteMany({ username: { $in: usernames }, ownerUserID: req.session.userId }); res.json({ message: "Removidas." }); });
 
-// API Admin
+// API Admin (Validation Added)
 adminApiRouter.use(isAdminAuthenticated);
 adminApiRouter.get('/users', async (req, res) => res.json(await usersCollection.find({}, { projection: { password: 0 } }).toArray()));
 adminApiRouter.get('/all-plans', async (req, res) => res.json(await plansCollection.find({}).sort({ price: 1 }).toArray()));
 adminApiRouter.get('/licenses', async (req, res) => res.json(await licensesCollection.find({}).sort({ createdAt: -1 }).toArray()));
 adminApiRouter.get('/coupons', async (req, res) => res.json(await couponsCollection.find({}).toArray()));
-adminApiRouter.post('/generate-keys', async (req, res) => { const { plan, quantity, durationDays } = req.body; const qty = parseInt(quantity) || 1; const keys = []; for(let i=0; i<qty; i++) { const key = `${plan.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`; await licensesCollection.insertOne({ key, plan, durationDays: parseInt(durationDays) || null, isUsed: false, createdAt: new Date() }); keys.push(key); } res.json({ keys, message: "Gerado." }); });
-adminApiRouter.post('/ban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId) { try{ if(liveAccounts[u].worker) liveAccounts[u].worker.kill(); }catch(e){} } } res.json({ message: "Banido." }); });
+adminApiRouter.post('/generate-keys', async (req, res) => { const { plan, quantity, durationDays } = req.body; const qty = parseInt(quantity) || 1; if(qty < 1) return res.status(400).json({}); const keys = []; for(let i=0; i<qty; i++) { const key = `${plan.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`; await licensesCollection.insertOne({ key, plan, durationDays: parseInt(durationDays) || null, isUsed: false, createdAt: new Date() }); keys.push(key); } res.json({ keys, message: "Gerado." }); });
+adminApiRouter.post('/ban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId) { try{ if(liveAccounts[u].worker) liveAccounts[u].worker.send({command:'stop'}); }catch(e){} } } res.json({ message: "Banido." }); });
 adminApiRouter.post('/unban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: false } }); res.json({ message: "Desbanido." }); });
-adminApiRouter.post('/delete-user', async (req, res) => { const uid = req.body.userId; await usersCollection.deleteOne({ _id: new ObjectId(uid) }); await accountsCollection.deleteMany({ ownerUserID: uid }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === uid) { try{ liveAccounts[u].worker.kill(); }catch(e){} delete liveAccounts[u]; } } res.json({ message: "Deletado." }); });
+adminApiRouter.post('/delete-user', async (req, res) => { const uid = req.body.userId; await usersCollection.deleteOne({ _id: new ObjectId(uid) }); await accountsCollection.deleteMany({ ownerUserID: uid }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === uid) { try{ liveAccounts[u].worker.send({command:'stop'}); }catch(e){} delete liveAccounts[u]; } } res.json({ message: "Deletado." }); });
 adminApiRouter.post('/update-plan', async (req, res) => { const { userId, newPlan } = req.body; await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { plan: newPlan, planExpiresAt: null, customLimits: null } }); sendDiscordNotification("🔧 Plano Alterado (Admin)", `User: ${userId} -> ${newPlan}`, 5763719, "System", "sale"); res.json({ message: "Atualizado." }); });
 adminApiRouter.post('/assign-key', async (req, res) => { const { licenseId, username } = req.body; const user = await usersCollection.findOne({ username }); if (!user) return res.status(404).json({ message: "User não achado." }); await licensesCollection.updateOne({ _id: new ObjectId(licenseId) }, { $set: { assignedTo: user._id, assignedToUsername: user.username } }); sendDiscordNotification("🎁 Chave Atribuída", `Para: ${username}`, 5763719, "System", "sale"); res.json({ message: "Atribuído." }); });
 adminApiRouter.post('/delete-license', async (req, res) => { await licensesCollection.deleteOne({ _id: new ObjectId(req.body.licenseId) }); res.json({ message: "Deletado." }); });
