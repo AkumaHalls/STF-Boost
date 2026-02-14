@@ -58,61 +58,105 @@ body {
 }
 
 /* ============================================= */
-/* 3. ANIMAÇÕES DE DESTAQUE (CARDS)              */
+/* 3. ANIMAÇÕES DE DESTAQUE (CARDS TURBINADOS)   */
 /* ============================================= */
 
-/* Premium (Fogo) */
-@keyframes fire-glow {
-    0% { box-shadow: 0 0 10px rgba(255, 165, 0, 0.5), 0 0 20px rgba(255, 69, 0, 0.4); border-color: rgba(255, 165, 0, 0.7); }
-    50% { box-shadow: 0 0 20px rgba(255, 165, 0, 0.8), 0 0 40px rgba(255, 69, 0, 0.7); border-color: rgba(255, 165, 0, 1); }
-    100% { box-shadow: 0 0 10px rgba(255, 165, 0, 0.5), 0 0 20px rgba(255, 69, 0, 0.4); border-color: rgba(255, 165, 0, 0.7); }
+/* 1. PREMIUM (FOGO) - Efeito de Respiração e Brilho Intenso */
+.premium-highlight {
+    border: 2px solid #ff4500 !important;
+    animation: fire-breath 2s infinite alternate ease-in-out !important;
+    z-index: 10;
+    overflow: visible !important;
+}
+@keyframes fire-breath {
+    0% {
+        box-shadow: 0 0 10px rgba(255, 69, 0, 0.5), inset 0 0 5px rgba(255, 69, 0, 0.2);
+        transform: scale(1);
+    }
+    100% {
+        box-shadow: 0 0 30px rgba(255, 140, 0, 0.9), inset 0 0 15px rgba(255, 69, 0, 0.5);
+        transform: scale(1.03);
+        border-color: #ff8c00 !important;
+    }
 }
 
-/* Vitalício (Cósmico/RGB) */
-@keyframes cosmic-glow {
-    0% { box-shadow: 0 0 10px #ff00ff, 0 0 20px #00ffff; border-color: #ff00ff; }
-    25% { box-shadow: 0 0 15px #00ffff, 0 0 25px #ff00ff; border-color: #00ffff; }
-    50% { box-shadow: 0 0 20px #ff00ff, 0 0 30px #00ffff; border-color: #ff00ff; }
-    75% { box-shadow: 0 0 15px #00ffff, 0 0 25px #ff00ff; border-color: #00ffff; }
-    100% { box-shadow: 0 0 10px #ff00ff, 0 0 20px #00ffff; border-color: #ff00ff; }
+/* 2. VITALÍCIO (CÓSMICO) - Efeito RGB Gaming Rápido */
+.lifetime-highlight {
+    border-width: 2px !important;
+    animation: rgb-cycle 3s linear infinite !important;
+    z-index: 10;
+    overflow: visible !important;
+}
+@keyframes rgb-cycle {
+    0% { border-color: #ff0000; box-shadow: 0 0 15px #ff0000; }
+    15% { border-color: #ff00ff; box-shadow: 0 0 15px #ff00ff; }
+    30% { border-color: #0000ff; box-shadow: 0 0 15px #0000ff; }
+    45% { border-color: #00ffff; box-shadow: 0 0 15px #00ffff; }
+    60% { border-color: #00ff00; box-shadow: 0 0 15px #00ff00; }
+    75% { border-color: #ffff00; box-shadow: 0 0 15px #ffff00; }
+    100% { border-color: #ff0000; box-shadow: 0 0 15px #ff0000; }
 }
 
-/* Halloween (Roxo/Laranja) */
-@keyframes halloween-pulse {
-    0% { box-shadow: 0 0 10px #ff6600; border-color: #800080; }
-    50% { box-shadow: 0 0 25px #800080; border-color: #ff6600; }
-    100% { box-shadow: 0 0 10px #ff6600; border-color: #800080; }
+/* 3. HALLOWEEN - Efeito Fantasma (Flutuante e Roxo) */
+.halloween-highlight {
+    border: 2px solid #9d00ff !important;
+    animation: ghost-float 3s ease-in-out infinite !important;
+    position: relative;
+    z-index: 10;
+    overflow: visible !important;
 }
-@keyframes bat-fly {
-    0% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
-    10% { opacity: 1; }
-    50% { transform: translate(20px, -10px) rotate(10deg); }
-    90% { opacity: 1; }
-    100% { transform: translate(-20px, -5px) rotate(-10deg); opacity: 0; }
+.halloween-highlight::after {
+    content: "🦇"; position: absolute; top: -20px; right: -10px; font-size: 30px;
+    animation: bat-orbit 4s linear infinite; pointer-events: none;
 }
-
-/* Natal (Verde/Vermelho) */
-@keyframes christmas-pulse {
-    0% { box-shadow: 0 0 10px #ff0000; border-color: #00ff00; }
-    50% { box-shadow: 0 0 25px #00ff00; border-color: #ff0000; }
-    100% { box-shadow: 0 0 10px #ff0000; border-color: #00ff00; }
+@keyframes ghost-float {
+    0%, 100% { box-shadow: 0 0 10px #9d00ff; transform: translateY(0); }
+    50% { box-shadow: 0 10px 25px rgba(157, 0, 255, 0.6); transform: translateY(-10px); }
 }
-@keyframes snow-fall-card {
-    0% { transform: translateY(-10px); opacity: 0; }
-    20% { opacity: 1; }
-    100% { transform: translateY(20px); opacity: 0; }
+@keyframes bat-orbit {
+    0% { transform: translateX(0) rotate(0deg); opacity: 0.8; }
+    50% { transform: translateX(-20px) translateY(-10px) rotate(-20deg); opacity: 1; }
+    100% { transform: translateX(0) rotate(0deg); opacity: 0.8; }
 }
 
-/* Ano Novo (Dourado/Brilho) */
-@keyframes newyear-pulse {
-    0% { box-shadow: 0 0 10px #ffd700; border-color: #ffffff; }
-    50% { box-shadow: 0 0 30px #ffffff; border-color: #ffd700; }
-    100% { box-shadow: 0 0 10px #ffd700; border-color: #ffffff; }
+/* 4. NATAL - Efeito Pisca-Pisca (Vermelho e Verde) */
+.christmas-highlight {
+    border-width: 2px !important;
+    animation: xmas-lights 1s steps(2, end) infinite !important;
+    z-index: 10;
+    overflow: visible !important;
 }
-@keyframes sparkle-pop {
-    0% { transform: scale(0); opacity: 0; }
-    50% { transform: scale(1.2); opacity: 1; }
-    100% { transform: scale(1); opacity: 0; }
+.christmas-highlight::after {
+    content: "❄️"; position: absolute; top: -15px; right: 5px; font-size: 25px;
+    animation: snow-spin 3s linear infinite; pointer-events: none;
+}
+@keyframes xmas-lights {
+    0% { border-color: #ff0000; box-shadow: 0 0 15px #ff0000; }
+    50% { border-color: #00ff00; box-shadow: 0 0 15px #00ff00; }
+    100% { border-color: #ff0000; box-shadow: 0 0 15px #ff0000; }
+}
+@keyframes snow-spin {
+    0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); }
+}
+
+/* 5. ANO NOVO - Efeito Ouro Cintilante */
+.newyear-highlight {
+    border: 2px solid #ffd700 !important;
+    animation: gold-shimmer 2s ease-in-out infinite !important;
+    z-index: 10;
+    overflow: visible !important;
+}
+.newyear-highlight::after {
+    content: "✨"; position: absolute; top: -15px; right: -15px; font-size: 30px;
+    animation: sparkle-fade 1.5s ease-in-out infinite; pointer-events: none;
+}
+@keyframes gold-shimmer {
+    0%, 100% { box-shadow: 0 0 10px #ffd700; border-color: #b8860b; }
+    50% { box-shadow: 0 0 30px #ffd700, 0 0 50px rgba(255, 215, 0, 0.4); border-color: #ffd700; }
+}
+@keyframes sparkle-fade {
+    0%, 100% { opacity: 0.5; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
 }
 
 /* ============================================= */
@@ -292,36 +336,11 @@ button:disabled {
     transition: all 0.3s ease;
     box-shadow: 0 0 15px rgba(0, 255, 255, 0.1); 
     position: relative; 
+    overflow: hidden; /* Mantém o conteúdo padrão dentro */
 }
 .feature-card:hover {
-    box-shadow: 0 0 25px rgba(0, 255, 255, 0.3);
     transform: translateY(-5px);
-}
-
-/* Classes de Destaque nos Cards */
-.premium-highlight { border-width: 2px; animation: fire-glow 2s ease-in-out infinite; }
-.lifetime-highlight { border-width: 2px; animation: cosmic-glow 3s linear infinite; }
-
-.halloween-highlight { 
-    border-width: 2px; 
-    animation: halloween-pulse 3s ease-in-out infinite; 
-}
-.halloween-highlight::after {
-    content: "🦇"; position: absolute; top: -15px; right: 10px; font-size: 24px; animation: bat-fly 4s linear infinite;
-}
-.christmas-highlight { 
-    border-width: 2px; 
-    animation: christmas-pulse 3s ease-in-out infinite; 
-}
-.christmas-highlight::after {
-    content: "❄️"; position: absolute; top: 10px; right: 10px; font-size: 20px; animation: snow-fall-card 3s linear infinite;
-}
-.newyear-highlight { 
-    border-width: 2px; 
-    animation: newyear-pulse 2s ease-in-out infinite; 
-}
-.newyear-highlight::after {
-    content: "✨"; position: absolute; top: -10px; right: -10px; font-size: 24px; animation: sparkle-pop 1.5s ease-in-out infinite;
+    background: rgba(255,255,255,0.05);
 }
 
 /* Sliders Personalizados */
@@ -561,3 +580,99 @@ input:checked + .slider:before { transform: translateX(26px); }
 .my-key-item strong { color: var(--primary-color); display: block; margin-bottom: 5px; }
 .my-key-item span { color: var(--pending-color); font-size: 12px; display: block; margin-bottom: 10px; }
 .my-key-item input[type="text"] { width: 100%; background: #000; color: #fff; border: 1px solid var(--primary-color); padding: 5px; }
+
+/* ============================================= */
+/* 10. ALERTA GLOBAL                             */
+/* ============================================= */
+.global-alert {
+    width: 100%;
+    padding: 12px 40px 12px 20px;
+    text-align: center;
+    font-weight: bold;
+    position: relative;
+    display: none; /* Oculto por padrão */
+    z-index: 9999;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    animation: slideDown 0.5s ease-out;
+    box-sizing: border-box;
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-100%); }
+    to { transform: translateY(0); }
+}
+
+/* Cores dos Alertas */
+.alert-danger { background-color: #ff4444; color: white; border-bottom: 2px solid #cc0000; }
+.alert-warning { background-color: #ffbb33; color: black; border-bottom: 2px solid #ff8800; }
+.alert-info { background-color: #33b5e5; color: white; border-bottom: 2px solid #0099cc; }
+.alert-success { background-color: #00C851; color: white; border-bottom: 2px solid #007E33; }
+
+/* Botão de Fechar */
+.alert-close {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: inherit;
+    font-size: 20px;
+    cursor: pointer;
+    opacity: 0.7;
+    padding: 0;
+    margin: 0;
+    line-height: 1;
+    min-width: auto;
+    box-shadow: none;
+}
+.alert-close:hover { opacity: 1; background: none; box-shadow: none; color: inherit; }
+
+/* ============================================= */
+/* 11. MODAL DE JOGOS (ABAS E LISTA)             */
+/* ============================================= */
+.tab-container {
+    display: flex;
+    border-bottom: 1px solid var(--primary-color);
+    margin-bottom: 15px;
+}
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    text-transform: uppercase;
+    transition: all 0.3s;
+}
+.tab-btn:hover { color: #fff; background: rgba(0,255,255,0.1); }
+.tab-btn.active {
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--primary-color);
+    box-shadow: none;
+    background: rgba(0,255,255,0.05);
+}
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+.game-list-container {
+    max-height: 250px;
+    overflow-y: auto;
+    border: 1px solid rgba(0, 255, 255, 0.2);
+    border-radius: 4px;
+    background: rgba(0,0,0,0.2);
+    padding: 5px;
+}
+.game-item {
+    display: flex;
+    align-items: center;
+    padding: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.game-item:hover { background: rgba(0, 255, 255, 0.1); }
+.game-item input { margin-right: 10px; cursor: pointer; width: auto !important; }
+.game-item label { cursor: pointer; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

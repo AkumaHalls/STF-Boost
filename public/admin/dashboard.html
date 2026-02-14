@@ -33,6 +33,28 @@
             <div class="admin-container">
                 
                 <div class="admin-card">
+                    <h2>Notificação Global</h2>
+                    <div class="admin-form" style="flex-direction: column; align-items: stretch;">
+                        <textarea id="globalAlertMessage" rows="3" placeholder="Escreva o aviso aqui..." style="width: 100%; margin-bottom: 10px;"></textarea>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <label>Tipo:</label>
+                            <select id="globalAlertType">
+                                <option value="danger">Perigo (Vermelho)</option>
+                                <option value="warning">Alerta (Amarelo)</option>
+                                <option value="info">Info (Azul)</option>
+                                <option value="success">Sucesso (Verde)</option>
+                            </select>
+                            <label>Ativo:</label>
+                            <select id="globalAlertActive">
+                                <option value="true">Sim</option>
+                                <option value="false">Não</option>
+                            </select>
+                            <button id="saveGlobalAlertButton" class="assign-key-btn" style="margin-left: auto;">Salvar e Publicar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="admin-card">
                     <h2>Gerador de Licenças</h2>
                     <div class="admin-form">
                         <label for="planSelect">Plano:</label>
@@ -103,25 +125,93 @@
         <div class="modal-content">
             <h2 id="modalPlanTitle">Editar Plano</h2>
             <input type="hidden" id="editPlanId">
-            <div class="settings-form-row"><label>ID:</label><input type="text" id="editPlanIdDisplay"></div>
-            <div class="settings-form-row"><label>Nome:</label><input type="text" id="editPlanName"></div>
-            <div class="settings-form-row"><label>Preço:</label><input type="number" id="editPlanPrice" step="0.01"></div>
-            <div class="settings-form-row"><label>Dias:</label><input type="number" id="editPlanDays"></div>
-            <div class="settings-form-row"><label>Contas:</label><input type="number" id="editPlanAccounts"></div>
-            <div class="settings-form-row"><label>Jogos:</label><input type="number" id="editPlanGames"></div>
-            <div class="settings-form-row"><label>Estilo:</label><select id="editPlanStyle"><option value="none">Normal</option><option value="fire">Fogo</option><option value="cosmic">Cósmico</option><option value="halloween">Halloween</option><option value="christmas">Natal</option><option value="newyear">Ano Novo</option></select></div>
-            <div class="settings-form-row"><label>Ativo:</label><select id="editPlanActive"><option value="true">Sim</option><option value="false">Não</option></select></div>
-            <p>Features:</p><textarea id="editPlanFeatures" rows="4"></textarea>
-            <button id="savePlanButton">Salvar</button>
-            <button id="closeEditPlanModal" class="remove-btn">Cancelar</button>
+            <div class="settings-form-row"><label>ID (Sistema):</label><input type="text" id="editPlanIdDisplay" readonly style="opacity: 0.7;"></div>
+            <div class="settings-form-row"><label>Nome Visível:</label><input type="text" id="editPlanName"></div>
+            <div class="settings-form-row"><label>Preço (BRL):</label><input type="number" id="editPlanPrice" step="0.01"></div>
+            <div class="settings-form-row"><label>Preço (USD):</label><input type="number" id="editPlanPriceUSD" step="0.01"></div>
+            <div class="settings-form-row"><label>Dias de Duração:</label><input type="number" id="editPlanDays"></div>
+            <div class="settings-form-row"><label>Limite Contas:</label><input type="number" id="editPlanAccounts"></div>
+            <div class="settings-form-row"><label>Limite Jogos:</label><input type="number" id="editPlanGames"></div>
+            <div class="settings-form-row"><label>Estilo Visual:</label>
+                <select id="editPlanStyle">
+                    <option value="none">Padrão</option>
+                    <option value="fire">Fogo (Premium)</option>
+                    <option value="cosmic">Cósmico (Vitalício)</option>
+                    <option value="halloween">Halloween</option>
+                    <option value="christmas">Natal</option>
+                    <option value="newyear">Ano Novo</option>
+                </select>
+            </div>
+            <div class="settings-form-row"><label>Ativo na Loja:</label>
+                <select id="editPlanActive">
+                    <option value="true">Sim</option>
+                    <option value="false">Não</option>
+                </select>
+            </div>
+            <p>Lista de Benefícios (um por linha):</p>
+            <textarea id="editPlanFeatures" rows="5"></textarea>
+            <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
+                <button id="closeEditPlanModal" class="remove-btn">Cancelar</button>
+                <button id="savePlanButton">Salvar Alterações</button>
+            </div>
         </div>
     </div>
 
     <div id="toastContainer"></div>
 
     <script>
+        // Função de Segurança (Escape)
+        const escapeHtml = (unsafe) => {
+            if (unsafe === null || unsafe === undefined) return "";
+            return String(unsafe)
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
         function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
-        const userMap = new Map(); let allPlans = [];
+        
+        let allPlans = [];
+
+        // FUNÇÃO DE EDITAR TORNADA GLOBAL PARA O ONCLICK FUNCIONAR
+        window.openEditPlan = function(id) {
+            console.log("Abrindo edição para:", id);
+            const p = allPlans.find(x => x.id === id);
+            if (!p) { console.error("Plano não encontrado"); return; }
+
+            document.getElementById('editPlanId').value = p.id;
+            document.getElementById('editPlanIdDisplay').value = p.id;
+            document.getElementById('editPlanName').value = p.name || '';
+            document.getElementById('editPlanPrice').value = p.price || 0;
+            document.getElementById('editPlanPriceUSD').value = p.price_usd || 0;
+            document.getElementById('editPlanDays').value = p.days || 0;
+            document.getElementById('editPlanAccounts').value = p.accounts || 0;
+            document.getElementById('editPlanGames').value = p.games || 0;
+            document.getElementById('editPlanStyle').value = p.style || 'none';
+            document.getElementById('editPlanActive').value = p.active ? 'true' : 'false';
+            
+            const featuresList = Array.isArray(p.features) ? p.features : [];
+            document.getElementById('editPlanFeatures').value = featuresList.join('\n');
+            
+            document.getElementById('editPlanModal').style.display = 'block';
+        };
+
+        window.deletePlan = async function(id) {
+             if(confirm('Tem certeza? Isso pode afetar usuários neste plano.')) { 
+                 await fetch('/api/admin/delete-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); 
+                 // Recarrega a página para atualizar tudo
+                 window.location.reload(); 
+             }
+        };
+
+        window.deleteCoupon = async function(id) {
+            if(!confirm("Excluir cupom?")) return;
+            await fetch('/api/admin/delete-coupon', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+            // Recarrega
+            window.location.reload();
+        };
 
         document.addEventListener('DOMContentLoaded', () => {
             const usersTableBody = document.getElementById('usersTableBody');
@@ -131,23 +221,51 @@
             const planSelect = document.getElementById('planSelect');
             
             async function fetchAll() {
-                await fetchPlans(); await fetchUsers(); await fetchLicenses(); await fetchCoupons();
+                await fetchPlans(); await fetchUsers(); await fetchLicenses(); await fetchCoupons(); await fetchGlobalAlert();
             }
+
+            async function fetchGlobalAlert() {
+                try {
+                    const res = await fetch('/api/global-alert');
+                    const data = await res.json();
+                    if(data) {
+                        document.getElementById('globalAlertMessage').value = data.message || '';
+                        document.getElementById('globalAlertType').value = data.type || 'info';
+                        document.getElementById('globalAlertActive').value = data.active ? 'true' : 'false';
+                    }
+                } catch(e){}
+            }
+
+            document.getElementById('saveGlobalAlertButton').onclick = async () => {
+                const message = document.getElementById('globalAlertMessage').value;
+                const type = document.getElementById('globalAlertType').value;
+                const active = document.getElementById('globalAlertActive').value;
+                
+                const res = await fetch('/api/admin/update-global-alert', {
+                    method: 'POST',
+                    headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ message, type, active })
+                });
+                const data = await res.json();
+                showToast(data.message, 'info');
+            };
 
             async function fetchPlans() {
                 try {
-                    const res = await fetch('/api/admin/all-plans'); allPlans = await res.json();
+                    const res = await fetch('/api/admin/all-plans'); 
+                    allPlans = await res.json();
                     plansTableBody.innerHTML = ''; planSelect.innerHTML = '';
+                    
                     allPlans.forEach(p => {
                         const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; planSelect.appendChild(opt);
                         const row = document.createElement('tr');
-                        row.innerHTML = `<td>${p.id}</td><td>${p.name}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick='openEditPlan("${p.id}")'>Edit</button><button class="delete-key-btn" onclick='deletePlan("${p.id}")'>Del</button></td>`;
+                        // Correção da chamada onclick
+                        row.innerHTML = `<td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick="openEditPlan('${escapeHtml(p.id)}')">Edit</button><button class="delete-key-btn" onclick="deletePlan('${escapeHtml(p.id)}')">Del</button></td>`;
                         plansTableBody.appendChild(row);
                     });
-                } catch(e) {}
+                } catch(e) { console.error(e); }
             }
 
-            // Cupons
             async function fetchCoupons() {
                 try {
                     const res = await fetch('/api/admin/coupons'); const coupons = await res.json();
@@ -155,8 +273,7 @@
                     if(coupons.length===0) couponsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">Sem cupons.</td></tr>';
                     coupons.forEach(c => {
                         const row = document.createElement('tr');
-                        // ATUALIZADO: Mostra usageCount
-                        row.innerHTML = `<td><code style="color:var(--primary-color)">${c.code}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick='deleteCoupon("${c._id}")'>Excluir</button></td>`;
+                        row.innerHTML = `<td><code style="color:var(--primary-color)">${escapeHtml(c.code)}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick="deleteCoupon('${c._id}')">Excluir</button></td>`;
                         couponsTableBody.appendChild(row);
                     });
                 } catch(e) {}
@@ -170,19 +287,22 @@
                 if(res.ok) { showToast("Cupom criado!"); fetchCoupons(); document.getElementById('couponCodeInput').value=''; }
             };
 
-            window.deleteCoupon = async (id) => {
-                if(!confirm("Excluir cupom?")) return;
-                await fetch('/api/admin/delete-coupon', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-                fetchCoupons();
-            };
-
-            async function fetchUsers() { const res = await fetch('/api/admin/users'); const users = await res.json(); users.forEach(u => userMap.set(u._id, u.username)); renderUsers(users); }
+            async function fetchUsers() { const res = await fetch('/api/admin/users'); const users = await res.json(); renderUsers(users); }
+            
             function renderUsers(users) { 
                 usersTableBody.innerHTML = '';
                 users.forEach(u => {
                     const row = document.createElement('tr');
-                    let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${p.name}</option>`);
-                    row.innerHTML = `<td>${u.username}</td><td><select class="plan-select" data-uid="${u._id}">${opts}</select></td><td>${u.isBanned?'Ban':'Ok'}</td><td class="actions-cell"><button class="ban-btn" data-uid="${u._id}">Ban/Unban</button></td>`;
+                    const safeUser = escapeHtml(u.username);
+                    let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${escapeHtml(p.name)}</option>`);
+                    row.innerHTML = `
+                        <td>${safeUser}</td>
+                        <td><select class="plan-select" data-uid="${u._id}">${opts}</select></td>
+                        <td class="${u.isBanned ? 'status-banned' : 'status-unused'}">${u.isBanned ? 'BANIDO' : 'Ativo'}</td>
+                        <td class="actions-cell">
+                            <button class="ban-btn" data-uid="${u._id}">${u.isBanned ? 'Desbanir' : 'Banir'}</button>
+                            <button class="delete-btn" data-uid="${u._id}" style="border-color: #ff6B6B; color: #ff6B6B; margin-left: 5px; font-size: 12px; padding: 5px 10px;">Excluir</button>
+                        </td>`;
                     usersTableBody.appendChild(row);
                 });
             }
@@ -192,28 +312,59 @@
                 licensesTableBody.innerHTML = '';
                 lic.forEach(k => {
                     const row = document.createElement('tr');
-                    row.innerHTML = `<td>${k.key}</td><td>${k.plan}</td><td>${k.isUsed?'Usado':'Livre'}</td><td>${k.assignedToUsername||'-'}</td><td class="actions-cell">${!k.isUsed?`<button class="assign-key-btn" data-lid="${k._id}">Atribuir</button><button class="delete-key-btn" data-lid="${k._id}">Del</button>`:''}</td>`;
+                    row.innerHTML = `<td>${escapeHtml(k.key)}</td><td>${escapeHtml(k.plan)}</td><td>${k.isUsed?'Usado':'Livre'}</td><td>${escapeHtml(k.assignedToUsername||'-')}</td><td class="actions-cell">${!k.isUsed?`<button class="assign-key-btn" data-lid="${k._id}">Atribuir</button><button class="delete-key-btn" data-lid="${k._id}">Del</button>`:''}</td>`;
                     licensesTableBody.appendChild(row);
                 });
             }
 
             document.getElementById('generateKeysButton').onclick = async () => {
-                await fetch('/api/admin/generate-keys', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:document.getElementById('planSelect').value, quantity:document.getElementById('quantityInput').value})});
+                const planVal = document.getElementById('planSelect').value;
+                const quantityVal = document.getElementById('quantityInput').value;
+                const durationVal = document.getElementById('durationInput').value; 
+
+                await fetch('/api/admin/generate-keys', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({
+                        plan: planVal, 
+                        quantity: quantityVal,
+                        durationDays: durationVal 
+                    })
+                });
                 fetchLicenses();
             };
             
             usersTableBody.onclick = async (e) => {
                 if(e.target.classList.contains('ban-btn')) {
                     const uid = e.target.dataset.uid;
-                    await fetch('/api/admin/ban-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
-                    fetchUsers();
+                    const isUnban = e.target.textContent === 'Desbanir';
+                    const endpoint = isUnban ? '/api/admin/unban-user' : '/api/admin/ban-user';
+                    try {
+                        const res = await fetch(endpoint, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
+                        const data = await res.json();
+                        if(res.ok) { showToast(data.message, 'info'); fetchUsers(); }
+                    } catch(err) { showToast('Erro de conexão.', 'error'); }
+                }
+                if(e.target.classList.contains('delete-btn')) {
+                    const uid = e.target.dataset.uid;
+                    if(confirm('TEM CERTEZA? Isso apagará o usuário, todas as contas Steam associadas e encerrará os processos ativos. Esta ação é irreversível.')) {
+                        try {
+                            const res = await fetch('/api/admin/delete-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
+                            const data = await res.json();
+                            if(res.ok) { showToast(data.message, 'info'); fetchUsers(); }
+                        } catch(err) { showToast('Erro de conexão.', 'error'); }
+                    }
                 }
             };
+
             usersTableBody.onchange = async (e) => {
                 if(e.target.classList.contains('plan-select')) {
-                    await fetch('/api/admin/update-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:e.target.dataset.uid, newPlan:e.target.value})});
+                    const res = await fetch('/api/admin/update-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:e.target.dataset.uid, newPlan:e.target.value})});
+                    const data = await res.json();
+                    showToast(data.message, 'info');
                 }
             };
+
             licensesTableBody.onclick = async (e) => {
                 if(e.target.classList.contains('delete-key-btn')) {
                     await fetch('/api/admin/delete-license', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({licenseId:e.target.dataset.lid})});
@@ -228,36 +379,39 @@
             };
 
             const editModal = document.getElementById('editPlanModal');
-            window.openEditPlan = (id) => {
-                const p = allPlans.find(x=>x.id===id);
-                document.getElementById('editPlanId').value = p.id; document.getElementById('editPlanIdDisplay').value = p.id;
-                document.getElementById('editPlanName').value = p.name; document.getElementById('editPlanPrice').value = p.price;
-                document.getElementById('editPlanDays').value = p.days; document.getElementById('editPlanAccounts').value = p.accounts;
-                document.getElementById('editPlanGames').value = p.games; document.getElementById('editPlanFeatures').value = p.features.join('\n');
-                editModal.style.display = 'block';
-            };
             document.getElementById('savePlanButton').onclick = async () => {
                 const data = {
                     id: document.getElementById('editPlanId').value,
                     name: document.getElementById('editPlanName').value,
                     price: document.getElementById('editPlanPrice').value,
+                    price_usd: document.getElementById('editPlanPriceUSD').value,
                     days: document.getElementById('editPlanDays').value,
                     accounts: document.getElementById('editPlanAccounts').value,
                     games: document.getElementById('editPlanGames').value,
                     style: document.getElementById('editPlanStyle').value,
                     active: document.getElementById('editPlanActive').value === 'true',
-                    features: document.getElementById('editPlanFeatures').value.split('\n')
+                    features: document.getElementById('editPlanFeatures').value.split('\n').filter(l => l.trim() !== '')
                 };
                 await fetch('/api/admin/update-plan-details', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
                 editModal.style.display = 'none'; fetchPlans();
+                showToast("Plano atualizado!");
             };
             document.getElementById('closeEditPlanModal').onclick = () => editModal.style.display = 'none';
             document.getElementById('addPlanButton').onclick = () => { 
-                document.getElementById('editPlanId').value = ''; document.getElementById('editPlanIdDisplay').value = ''; 
-                editModal.style.display = 'block'; 
-            };
-            window.deletePlan = async(id) => {
-                 if(confirm('Del?')) { await fetch('/api/admin/delete-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); fetchPlans(); }
+                document.getElementById('editPlanId').value = ''; 
+                document.getElementById('editPlanIdDisplay').value = ''; 
+                document.getElementById('editPlanName').value = '';
+                document.getElementById('editPlanPrice').value = 0;
+                document.getElementById('editPlanPriceUSD').value = 0;
+                document.getElementById('editPlanFeatures').value = '';
+                
+                const newId = prompt("ID único (ex: super_vip):");
+                if(newId) {
+                    const safeId = newId.toLowerCase().replace(/\s/g, '_');
+                    document.getElementById('editPlanId').value = safeId;
+                    document.getElementById('editPlanIdDisplay').value = safeId;
+                    editModal.style.display = 'block'; 
+                }
             };
 
             fetchAll();

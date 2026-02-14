@@ -14,6 +14,10 @@
         body { font-family: 'Inter', sans-serif; }
         .tech-font { font-family: 'Share Tech Mono', monospace; }
         .gradient-bg { background: linear-gradient(90deg, #0a0a14, #1E3A8A); }
+        /* Ajuste para slider */
+        .custom-plan-slider { width: 100%; accent-color: #06b6d4; cursor: pointer; }
+        .custom-label { display: flex; justify-content: space-between; font-size: 0.875rem; color: #cbd5e1; margin-bottom: 0.25rem; }
+        .custom-val { font-weight: bold; color: #fff; }
     </style>
 </head>
 <body class="bg-gray-900 text-white">
@@ -24,13 +28,13 @@
             <span class="text-2xl tech-font">STF Boost</span>
         </div>
         <nav class="hidden md:flex items-center gap-6">
-            <a href="#features" class="hover:text-blue-400">Funcionalidades</a>
-            <a href="#pricing" class="hover:text-blue-400">Preços</a>
-            <a href="#faq" class="hover:text-blue-400">FAQ</a>
+            <a href="#features" class="hover:text-blue-400 transition-colors">Funcionalidades</a>
+            <a href="#pricing" class="hover:text-blue-400 transition-colors">Preços</a>
+            <a href="#faq" class="hover:text-blue-400 transition-colors">FAQ</a>
         </nav>
         <div class="flex items-center gap-4" id="header-auth-buttons">
-            <a href="/login" class="text-sm px-4 py-2 rounded-md hover:bg-gray-700">Login</a>
-            <a href="/register" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">Começar Agora</a>
+            <a href="/login" class="text-sm px-4 py-2 rounded-md hover:bg-gray-700 transition-colors">Login</a>
+            <a href="/register" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors font-bold">Começar Agora</a>
         </div>
     </header>
 
@@ -41,7 +45,7 @@
                 O serviço de boost de horas mais estável e seguro. Ganhe 50 horas grátis ao se registar e domine o seu perfil.
             </p>
             <div class="flex gap-4">
-                <a href="/register" class="bg-blue-600 px-8 py-3 rounded-md text-lg font-semibold hover:bg-blue-700 transition-colors">
+                <a href="/register" class="bg-blue-600 px-8 py-3 rounded-md text-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-900/50">
                     Começar de Graça
                 </a>
                 <a href="#pricing" class="bg-gray-700 px-8 py-3 rounded-md text-lg font-semibold hover:bg-gray-600 transition-colors">
@@ -54,17 +58,17 @@
     <section id="features" class="container mx-auto px-4 py-24">
         <h2 class="text-4xl font-bold text-center mb-12 tech-font">Porquê escolher o <span class="text-blue-400">STF Boost</span>?</h2>
         <div class="grid md:grid-cols-3 gap-8">
-            <div class="feature-card p-6 rounded-lg text-center">
-                <h3 class="text-2xl font-semibold mb-3">50 Horas Grátis</h3>
+            <div class="feature-card p-6 rounded-lg text-center bg-gray-800 border border-gray-700 hover:border-blue-500 transition-colors">
+                <h3 class="text-2xl font-semibold mb-3 text-blue-300">50 Horas Grátis</h3>
                 <p class="text-gray-300">Crie sua conta e receba 50 horas de boost totalmente grátis, renováveis.</p>
             </div>
-            <div class="feature-card p-6 rounded-lg text-center">
-                <h3 class="text-2xl font-semibold mb-3">Seguro</h3>
-                <p class="text-gray-300">Nossa tecnologia simula que você está a jogar, garantindo zero risco.</p>
+            <div class="feature-card p-6 rounded-lg text-center bg-gray-800 border border-gray-700 hover:border-blue-500 transition-colors">
+                <h3 class="text-2xl font-semibold mb-3 text-blue-300">Seguro</h3>
+                <p class="text-gray-300">Nossa tecnologia simula que você está a jogar, garantindo zero risco (No-VAC).</p>
             </div>
-            <div class="feature-card p-6 rounded-lg text-center">
-                <h3 class="text-2xl font-semibold mb-3">Painel Completo</h3>
-                <p class="text-gray-300">Controle total sobre suas contas. Adicione jogos, defina status e mais.</p>
+            <div class="feature-card p-6 rounded-lg text-center bg-gray-800 border border-gray-700 hover:border-blue-500 transition-colors">
+                <h3 class="text-2xl font-semibold mb-3 text-blue-300">Painel Completo</h3>
+                <p class="text-gray-300">Controle total sobre suas contas. Adicione jogos, defina status e muito mais.</p>
             </div>
         </div>
     </section>
@@ -74,7 +78,7 @@
             <h2 class="text-4xl font-bold text-center mb-12 tech-font">Planos Simples e Justos</h2>
             
             <div id="plansContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 max-w-[1600px] mx-auto">
-                <div class="text-center col-span-full">A carregar planos...</div>
+                <div class="text-center col-span-full text-gray-400 animate-pulse">A carregar planos...</div>
             </div>
         </div>
     </section>
@@ -82,44 +86,49 @@
     <section id="faq" class="container mx-auto px-4 py-24 max-w-3xl">
         <h2 class="text-4xl font-bold text-center mb-12 tech-font">Perguntas Frequentes (FAQ)</h2>
         <div class="space-y-4">
-            <div class="feature-card rounded-lg p-4">
-                <h3 class="text-lg font-semibold">Posso levar banimento (VAC)?</h3>
-                <p class="text-gray-300 pt-2">Não. Nosso serviço não interage com nenhum arquivo de jogo.</p>
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <h3 class="text-lg font-semibold text-white">Posso levar banimento (VAC)?</h3>
+                <p class="text-gray-300 pt-2">Não. Nosso serviço não interage com arquivos do jogo nem modifica a memória. Ele apenas simula a presença na Steam através de protocolos seguros.</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <h3 class="text-lg font-semibold text-white">Preciso deixar meu PC ligado?</h3>
+                <p class="text-gray-300 pt-2">Não! O boost roda 24/7 em nossos servidores na nuvem. Você pode desligar seu PC e continuar farmando.</p>
             </div>
         </div>
     </section>
 
-    <footer class="bg-gray-950 py-12">
-        <div class="container mx-auto px-4 text-center text-gray-400">
-            <p>&copy; 2025 STF Boost. Todos os direitos reservados.</p>
+    <footer class="bg-gray-950 py-12 border-t border-gray-900">
+        <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
+            <p>&copy; 2026 STF Boost. Todos os direitos reservados.</p>
+            <p class="mt-2">Não afiliado à Valve Corporation.</p>
         </div>
     </footer>
     
-    <div id="purchaseModal" class="modal">
-        <div class="modal-content">
-            <h2 class="text-2xl tech-font text-blue-400" id="purchaseTitle">Comprar Plano</h2>
-            <p class="text-lg mb-4" id="purchaseDesc">Siga os passos abaixo:</p>
-            <div id="customPlanDetails" class="mb-4 p-3 bg-gray-800 rounded border border-gray-600 hidden"></div>
-            <ol class="list-decimal list-inside space-y-2 my-4 text-gray-300">
-                <li>Registe-se no site.</li>
-                <li>Entre em contato com o admin enviando o valor do plano.</li>
-                <li>**Chave Pix Aleatória:** <code class="bg-black p-1 rounded text-cyan-400 select-all">29e55f42-fea9-467a-b85d-8080f5cc7a0e</code></li>
-                <li>Envie o comprovante no Discord ou Email.</li>
-            </ol>
-            <button id="closePurchaseModalButton" class="remove-btn mt-4 w-full">Entendi</button>
-        </div>
-    </div>
-
     <script>
+        // --- FUNÇÃO DE SEGURANÇA (XSS) ---
+        const escapeHtml = (unsafe) => {
+            if (unsafe === null || unsafe === undefined) return "";
+            return String(unsafe)
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
+            // Verifica Login
             const authButtons = document.getElementById('header-auth-buttons');
             if (authButtons) {
                 fetch('/api/auth-status').then(res => res.json()).then(data => {
-                    if (data.loggedIn) authButtons.innerHTML = `<a href="/dashboard" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors">Painel de Controle</a>`;
+                    if (data.loggedIn) {
+                        authButtons.innerHTML = `<a href="/dashboard" class="text-sm bg-blue-600 px-4 py-2 rounded-md hover:bg-blue-700 transition-colors font-bold shadow-lg shadow-blue-900/50">Painel de Controle</a>`;
+                    }
                 }).catch(console.error);
             }
 
             const plansContainer = document.getElementById('plansContainer');
+
             fetch('/api/plans')
                 .then(res => res.json())
                 .then(plans => {
@@ -127,58 +136,112 @@
                     
                     // 1. Renderiza Planos Padrão
                     plans.forEach(p => {
-                        if (p.id === 'custom') return; // Pula o custom aqui, renderiza depois se existir
+                        if (p.id === 'custom') return; 
 
-                        let highlightClass = '', badge = '', titleColor = 'text-blue-400';
-                        if (p.style === 'fire') { highlightClass = 'premium-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10">MAIS POPULAR</span>'; titleColor = 'text-blue-400 relative z-20'; }
-                        else if (p.style === 'cosmic') { highlightClass = 'lifetime-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">TEMPO LIMITADO</span>'; titleColor = 'text-purple-400 relative z-20'; }
-                        else if (p.style === 'halloween') { highlightClass = 'halloween-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-orange-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">🎃 ESPECIAL</span>'; titleColor = 'text-orange-400 relative z-20'; }
-                        else if (p.style === 'christmas') { highlightClass = 'christmas-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-red-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">🎄 NATAL</span>'; titleColor = 'text-red-400 relative z-20'; }
-                        else if (p.style === 'newyear') { highlightClass = 'newyear-highlight relative'; badge = '<span class="absolute top-0 -translate-y-1/2 left-1/2 -translate-x-1/2 bg-yellow-600 text-white text-sm font-bold px-4 py-1 rounded-full tech-font z-10 shadow-lg">✨ ANO NOVO</span>'; titleColor = 'text-yellow-400 relative z-20'; }
-
-                        const priceDisplay = p.price === 0 ? 'R$ 0' : `R$ ${p.price.toFixed(2).replace('.',',')}`;
-                        const periodDisplay = p.price === 0 ? '/para sempre' : (p.days > 0 ? '/mês' : 'Único');
-                        const buttonText = p.price === 0 ? 'Começar de Graça' : (p.days === 0 ? 'Comprar Acesso' : 'Comprar');
-                        const buttonAction = p.price === 0 ? `href="/register"` : `href="/checkout?plan=${p.id}"`;
-                        const buttonHtml = p.price === 0 ? 
-                            `<a ${buttonAction} class="mt-auto w-full text-center bg-gray-600 px-6 py-3 rounded-md font-semibold hover:bg-gray-500 transition-colors cursor-pointer">${buttonText}</a>` : 
-                            `<a ${buttonAction} class="purchase-button mt-auto w-full text-center bg-blue-600 px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition-colors cursor-pointer">${buttonText}</a>`;
+                        // Configurações de Estilo (Badges)
+                        let highlightClass = 'bg-gray-800 border border-gray-700'; // Padrão
+                        let badge = '';
+                        let titleColor = 'text-white';
+                        const safeId = escapeHtml(p.id);
                         
+                        if (p.style === 'fire') { 
+                            highlightClass = 'premium-highlight bg-gray-800 relative transform transition-transform'; 
+                            badge = '<span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-orange-500 to-red-600 text-white text-xs font-bold px-3 py-1 rounded-full tracking-wider uppercase">Mais Popular</span>'; 
+                            titleColor = 'text-orange-400'; 
+                        }
+                        else if (p.style === 'cosmic') { 
+                            highlightClass = 'lifetime-highlight bg-gray-800 relative transform transition-transform'; 
+                            badge = '<span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-full tracking-wider uppercase">Vitalício</span>'; 
+                            titleColor = 'text-purple-400'; 
+                        }
+                        else if (p.style === 'halloween') { 
+                            highlightClass = 'halloween-highlight bg-gray-800 relative'; 
+                            titleColor = 'text-orange-500'; 
+                        }
+                        else if (p.style === 'christmas') { 
+                            highlightClass = 'christmas-highlight bg-gray-800 relative'; 
+                            titleColor = 'text-red-400'; 
+                        }
+                        else if (p.style === 'newyear') { 
+                            highlightClass = 'newyear-highlight bg-gray-800 relative'; 
+                            titleColor = 'text-yellow-400'; 
+                        }
+
+                        const priceDisplay = p.price === 0 ? 'Grátis' : `R$ ${p.price.toFixed(2).replace('.',',')}`;
+                        const periodDisplay = p.price === 0 ? '' : (p.days > 0 ? '/mês' : '<span class="text-xs align-top">único</span>');
+                        
+                        const buttonText = p.price === 0 ? 'Criar Conta Grátis' : (p.days === 0 ? 'Comprar Vitalício' : 'Assinar Agora');
+                        const buttonLink = p.price === 0 ? '/register' : `/checkout?plan=${safeId}`;
+                        const buttonClass = p.price === 0 ? 
+                            "bg-gray-700 hover:bg-gray-600 text-gray-200" : 
+                            "bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/30";
+
+                        // Sanitização das Features
                         let featuresHtml = '';
-                        p.features.forEach(f => { featuresHtml += `<li class="flex items-center gap-3"><span class="text-green-400">✓</span> ${f}</li>`; });
+                        if (Array.isArray(p.features)) {
+                            p.features.forEach(f => { 
+                                featuresHtml += `<li class="flex items-start gap-3 text-sm text-gray-300"><span class="text-green-400 mt-0.5 font-bold">✓</span> ${escapeHtml(f)}</li>`; 
+                            });
+                        }
 
                         const cardHtml = `
-                            <div class="feature-card ${highlightClass}">
+                            <div class="${highlightClass} p-6 rounded-xl flex flex-col h-full relative">
                                 ${badge}
-                                <h3 class="text-2xl font-bold text-center mb-4 ${titleColor}">${p.name}</h3>
-                                <div class="text-5xl font-bold text-center my-4">${priceDisplay} <span class="text-lg font-normal">${periodDisplay}</span></div>
-                                ${p.days === 0 && p.price > 0 ? '<p class="text-center text-gray-400 mb-6 -mt-4">Pagamento Único</p>' : ''}
-                                <ul class="space-y-3 mb-8 text-sm flex-grow">${featuresHtml}</ul>
-                                ${buttonHtml}
+                                <h3 class="text-2xl font-bold text-center mb-2 ${titleColor} tech-font mt-2">${escapeHtml(p.name)}</h3>
+                                <div class="text-center my-6">
+                                    <span class="text-4xl font-bold text-white">${priceDisplay}</span>
+                                    <span class="text-gray-400 font-medium">${periodDisplay}</span>
+                                </div>
+                                <ul class="space-y-4 mb-8 flex-grow border-t border-gray-700 pt-6">
+                                    ${featuresHtml}
+                                </ul>
+                                <a href="${buttonLink}" class="mt-auto w-full block text-center py-3 rounded-lg font-bold transition-all transform active:scale-95 ${buttonClass}">
+                                    ${buttonText}
+                                </a>
                             </div>
                         `;
                         plansContainer.insertAdjacentHTML('beforeend', cardHtml);
                     });
 
-                    // 2. Renderiza Plano Personalizado (Se existir e estiver ativo)
+                    // 2. Renderiza Plano Personalizado
                     const customPlan = plans.find(p => p.id === 'custom');
                     if (customPlan) {
                         const customHtml = `
-                            <div class="feature-card border-2 border-dashed border-gray-600 relative">
-                                <h3 class="text-2xl font-bold text-center mb-2 text-white">Personalizado</h3>
-                                <p class="text-center text-xs text-gray-400 mb-4">Monte o seu plano ideal</p>
-                                <div class="text-4xl font-bold text-center my-4 text-cyan-400">R$ <span id="customPriceDisplay">15.00</span></div>
-                                <div class="space-y-4 mb-6 flex-grow">
-                                    <div><div class="custom-label"><span>Dias</span><span id="daysVal" class="custom-val">30</span></div><input type="range" id="daysRange" min="7" max="365" value="30" class="custom-plan-slider"></div>
-                                    <div><div class="custom-label"><span>Contas</span><span id="accountsVal" class="custom-val">1</span></div><input type="range" id="accountsRange" min="1" max="33" value="1" class="custom-plan-slider"></div>
-                                    <div><div class="custom-label"><span>Jogos</span><span id="gamesVal" class="custom-val">10</span></div><input type="range" id="gamesRange" min="1" max="33" value="10" class="custom-plan-slider"></div>
+                            <div class="bg-gray-900 border-2 border-dashed border-gray-700 p-6 rounded-xl flex flex-col h-full hover:border-cyan-500 transition-colors group">
+                                <h3 class="text-2xl font-bold text-center mb-2 text-white tech-font mt-2 group-hover:text-cyan-400 transition-colors">Personalizado</h3>
+                                <p class="text-center text-xs text-gray-400 mb-6">Configure do seu jeito</p>
+                                
+                                <div class="text-center mb-6">
+                                    <span class="text-4xl font-bold text-cyan-400" id="customPriceDisplay">R$ --</span>
                                 </div>
-                                <a id="customBuyButton" href="#" class="mt-auto w-full text-center bg-cyan-600 px-6 py-3 rounded-md font-semibold hover:bg-cyan-700 transition-colors">Comprar Personalizado</a>
+                                
+                                <div class="space-y-6 mb-8 flex-grow">
+                                    <div>
+                                        <div class="custom-label"><span>Dias</span><span id="daysVal" class="custom-val text-cyan-400">30</span></div>
+                                        <input type="range" id="daysRange" min="30" max="365" step="1" value="30" class="custom-plan-slider">
+                                    </div>
+                                    <div>
+                                        <div class="custom-label"><span>Contas</span><span id="accountsVal" class="custom-val text-cyan-400">1</span></div>
+                                        <input type="range" id="accountsRange" min="1" max="50" step="1" value="1" class="custom-plan-slider">
+                                    </div>
+                                    <div>
+                                        <div class="custom-label"><span>Jogos</span><span id="gamesVal" class="custom-val text-cyan-400">10</span></div>
+                                        <input type="range" id="gamesRange" min="1" max="32" step="1" value="10" class="custom-plan-slider">
+                                    </div>
+                                </div>
+                                
+                                <a id="customBuyButton" href="#" class="mt-auto w-full block text-center py-3 rounded-lg font-bold bg-cyan-900 text-cyan-100 hover:bg-cyan-600 hover:text-white transition-all">
+                                    Calcular e Comprar
+                                </a>
                             </div>
                         `;
                         plansContainer.insertAdjacentHTML('beforeend', customHtml);
                         setupCustomLogic();
                     }
+                })
+                .catch(err => {
+                    plansContainer.innerHTML = '<div class="col-span-full text-center text-red-400">Erro ao carregar planos. Tente atualizar a página.</div>';
+                    console.error(err);
                 });
 
             function setupCustomLogic() {
@@ -187,15 +250,20 @@
                 const priceDisp = document.getElementById('customPriceDisplay');
                 const btn = document.getElementById('customBuyButton');
                 
-                const BASE=5, DAY=0.1, ACC=2, GAME=0.1;
+                // PREÇOS BASE (Devem refletir o index.js)
+                const PRICING = { BASE: 5.00, DAY: 0.10, ACCOUNT: 2.00, GAME: 0.10 };
 
                 function calc() {
                     const d = parseInt(dR.value), a = parseInt(aR.value), g = parseInt(gR.value);
                     dV.textContent = d; aV.textContent = a; gV.textContent = g;
-                    const total = BASE + (d * DAY) + (a * ACC) + (g * GAME);
-                    priceDisp.textContent = total.toFixed(2);
+                    
+                    const total = PRICING.BASE + (d * PRICING.DAY) + (a * PRICING.ACCOUNT) + (g * PRICING.GAME);
+                    priceDisp.textContent = `R$ ${total.toFixed(2).replace('.',',')}`;
+                    
+                    // Link seguro
                     btn.href = `/checkout?plan=custom&days=${d}&accounts=${a}&games=${g}`;
                 }
+
                 dR.addEventListener('input', calc); aR.addEventListener('input', calc); gR.addEventListener('input', calc);
                 calc();
             }
