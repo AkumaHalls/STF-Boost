@@ -7,7 +7,8 @@
     <link rel="icon" type="image/png" href="/logo.png?v=1.1">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/style.css?v=2.2"> <style>
+    <link rel="stylesheet" href="/style.css?v=2.2">
+    <style>
         body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; color: #333; }
         .checkout-container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
         .card { background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 30px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
@@ -54,7 +55,7 @@
                             <option value="email">Email - Enviar Chave de Licença (Manual)</option>
                         </select>
                         <div id="deliveryInfo" class="info-box info-blue">
-                            A ativação é automática e imediata após o pagamento. O plano será aplicado diretamente na conta <strong><span id="usernameDisplay">...</span></strong>.
+                            Carregando informações do usuário...
                         </div>
                     </div>
                     <div class="mb-4">
@@ -114,22 +115,35 @@
     </div>
 
     <script>
+        // --- FUNÇÃO DE SEGURANÇA XSS ---
+        const escapeHtml = (unsafe) => {
+            if (unsafe === null || unsafe === undefined) return "";
+            return String(unsafe)
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
         document.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
             const planId = urlParams.get('plan');
             let isCustom = (planId === 'custom');
             let customConfig = {};
+            
+            // Sanitização básica na entrada dos parâmetros
             if (isCustom) {
                 customConfig = {
-                    days: parseInt(urlParams.get('days')) || 30,
-                    accounts: parseInt(urlParams.get('accounts')) || 1,
-                    games: parseInt(urlParams.get('games')) || 10
+                    days: Math.abs(parseInt(urlParams.get('days'))) || 30,
+                    accounts: Math.abs(parseInt(urlParams.get('accounts'))) || 1,
+                    games: Math.abs(parseInt(urlParams.get('games'))) || 10
                 };
             }
 
             if (!planId) { window.location.href = '/'; return; }
 
-            const usernameDisplay = document.getElementById('usernameDisplay');
+            const usernameDisplay = document.getElementById('usernameDisplay'); // Elemento não existe mais, uso interno
             const accountInput = document.getElementById('accountInput');
             const payBtn = document.getElementById('payButton');
             const termsCheckbox = document.getElementById('termsCheckbox');
@@ -144,13 +158,15 @@
 
             let currentPrice = 0;
             let appliedCouponCode = null;
+            let currentUser = '';
 
             try {
                 const authRes = await fetch('/api/auth-status');
                 const authData = await authRes.json();
                 if (!authData.loggedIn) { window.location.href = '/login?redirect=' + encodeURIComponent(window.location.href); return; }
-                usernameDisplay.textContent = authData.username;
-                accountInput.value = authData.username;
+                
+                currentUser = authData.username;
+                accountInput.value = currentUser;
 
                 let planName, planPrice, features = [];
 
@@ -181,12 +197,19 @@
                 updatePriceDisplay();
                 
                 const featuresList = document.getElementById('planFeaturesList');
-                features.forEach(f => featuresList.innerHTML += `<li>${f}</li>`);
+                featuresList.innerHTML = ''; // Limpa antes de adicionar
+                features.forEach(f => {
+                    // CRÍTICO: Usar createElement para evitar XSS
+                    const li = document.createElement('li');
+                    li.textContent = f;
+                    featuresList.appendChild(li);
+                });
 
-                // Delivery Logic
-                deliveryMethod.addEventListener('change', () => {
+                // Lógica de Atualização da UI de Entrega (Segura)
+                const updateDeliveryUI = () => {
+                    const safeUser = escapeHtml(currentUser);
                     if (deliveryMethod.value === 'direct') {
-                        deliveryInfo.innerHTML = `A ativação é automática e imediata após o pagamento. O plano será aplicado diretamente na conta <strong>${authData.username}</strong>.`;
+                        deliveryInfo.innerHTML = `A ativação é automática e imediata após o pagamento. O plano será aplicado diretamente na conta <strong>${safeUser}</strong>.`;
                         deliveryInfo.className = 'info-box info-blue';
                         payBtn.textContent = "Pagar com Mercado Pago";
                     } else {
@@ -194,47 +217,70 @@
                         deliveryInfo.className = 'info-box info-red';
                         payBtn.textContent = "Ver Dados de Pagamento";
                     }
-                });
+                };
+                
+                // Inicializa a UI
+                updateDeliveryUI();
+                deliveryMethod.addEventListener('change', updateDeliveryUI);
 
-                // Coupon Logic
+                // Lógica do Cupom
                 applyPromoBtn.onclick = async () => {
                     const code = promoCodeInput.value.trim();
                     if (!code) return;
-                    const res = await fetch('/api/validate-coupon', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ code }) });
-                    const data = await res.json();
-                    if (data.valid) {
-                        const discountAmount = (currentPrice * data.discount) / 100;
-                        currentPrice = Math.max(0, currentPrice - discountAmount);
-                        appliedCouponCode = code;
-                        updatePriceDisplay();
-                        promoMessage.textContent = `Desconto de ${data.discount}% aplicado!`;
-                        promoMessage.className = "text-xs mt-1 text-green-600";
-                        applyPromoBtn.disabled = true; promoCodeInput.disabled = true;
-                    } else {
-                        promoMessage.textContent = "Cupom inválido.";
-                        promoMessage.className = "text-xs mt-1 text-red-600";
+                    // Limpa mensagens anteriores
+                    promoMessage.textContent = "Verificando...";
+                    promoMessage.className = "text-xs mt-1 text-gray-500";
+                    
+                    try {
+                        const res = await fetch('/api/validate-coupon', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ code }) });
+                        const data = await res.json();
+                        if (data.valid) {
+                            const discountAmount = (currentPrice * data.discount) / 100;
+                            currentPrice = Math.max(0, currentPrice - discountAmount);
+                            appliedCouponCode = code;
+                            updatePriceDisplay();
+                            promoMessage.textContent = `Desconto de ${data.discount}% aplicado!`;
+                            promoMessage.className = "text-xs mt-1 text-green-600";
+                            applyPromoBtn.disabled = true; promoCodeInput.disabled = true;
+                        } else {
+                            promoMessage.textContent = "Cupom inválido.";
+                            promoMessage.className = "text-xs mt-1 text-red-600";
+                        }
+                    } catch (e) {
+                         promoMessage.textContent = "Erro ao validar.";
                     }
                 };
 
-                // Pay Logic
+                // Lógica de Pagamento
                 termsCheckbox.addEventListener('change', () => {
                     payBtn.disabled = !termsCheckbox.checked;
                     payBtn.style.opacity = termsCheckbox.checked ? "1" : "0.7";
                 });
 
                 payBtn.onclick = async () => {
-                    if (deliveryMethod.value === 'manual') {
+                    if (deliveryMethod.value === 'email') { // Se for Manual/Email
                         manualModal.style.display = 'block';
                     } else {
                         payBtn.disabled = true; payBtn.textContent = 'Processando...';
                         try {
                             const body = { planId: planId, couponCode: appliedCouponCode, deliveryMethod: deliveryMethod.value };
                             if (isCustom) body.customConfig = customConfig;
+                            
                             const res = await fetch('/api/create-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
                             const data = await res.json();
-                            if (res.ok && data.url) window.location.href = data.url;
-                            else { alert('Erro: ' + (data.message || 'Erro no MP')); payBtn.disabled = false; payBtn.textContent = "Tentar Novamente"; }
-                        } catch (e) { alert('Erro de conexão.'); payBtn.disabled = false; payBtn.textContent = "Tentar Novamente"; }
+                            
+                            if (res.ok && data.url) {
+                                window.location.href = data.url;
+                            } else { 
+                                alert('Erro: ' + (data.message || 'Erro no processamento')); 
+                                payBtn.disabled = false; 
+                                payBtn.textContent = "Tentar Novamente"; 
+                            }
+                        } catch (e) { 
+                            alert('Erro de conexão.'); 
+                            payBtn.disabled = false; 
+                            payBtn.textContent = "Tentar Novamente"; 
+                        }
                     }
                 };
 
