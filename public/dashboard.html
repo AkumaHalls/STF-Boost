@@ -173,6 +173,17 @@
     <div id="toastContainer"></div>
 
     <script>
+        // --- FUNÇÃO DE SEGURANÇA CONTRA XSS ---
+        const escapeHtml = (unsafe) => {
+            if (unsafe === null || unsafe === undefined) return "";
+            return String(unsafe)
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+
         // Função Global para as abas
         window.switchTab = function(tabName) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -218,7 +229,7 @@
             let currentUserGameLimit = 1; 
             let currentUserOwnedGames = [];
 
-            const icons = { play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`, stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`, guard: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`, games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`, remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`, settings: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`, refresh: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>` };
+            const icons = { play: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`, stop: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>`, guard: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>`, games: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>`, remove: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`, settings: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`, refresh: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>` };
             function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
             function formatUptime(ms) { if(!ms||ms<=0)return '00:00:00'; let s=Math.floor(ms/1000), d=Math.floor(s/86400); s%=86400; let h=Math.floor(s/3600).toString().padStart(2,'0'); s%=3600; let m=Math.floor(s/60).toString().padStart(2,'0'); s=(s%60).toString().padStart(2,'0'); return d>0?`${d}d, ${h}:${m}:${s}`:`${h}:${m}:${s}`; }
 
@@ -231,7 +242,7 @@
                         const lastClosed = localStorage.getItem('globalAlertClosed');
                         if (lastClosed !== data.updatedAt) {
                             const el = document.getElementById('globalAlert');
-                            el.className = `global-alert alert-${data.type}`; 
+                            el.className = `global-alert alert-${escapeHtml(data.type)}`; 
                             document.getElementById('globalAlertMessage').textContent = data.message;
                             el.style.display = 'block';
                             el.dataset.updatedAt = data.updatedAt;
@@ -355,6 +366,9 @@
                     
                     for (const u in data.accounts) {
                         const acc = data.accounts[u];
+                        const safeUser = escapeHtml(acc.username); // SANITIZAÇÃO
+                        const safeStatus = escapeHtml(acc.status); // SANITIZAÇÃO
+                        
                         if (acc.status === 'Rodando') runningCount++;
                         else if (acc.status === 'Parado' || acc.status === 'Desconectado') stoppedCount++;
                         else attentionCount++;
@@ -364,9 +378,9 @@
                         const isChecked = checkedUsernames.has(acc.username) ? 'checked' : '';
 
                         row.innerHTML = `
-                            <td><input type="checkbox" class="account-checkbox" data-username="${acc.username}" ${isChecked}></td>
-                            <td>${acc.username}</td>
-                            <td class="${statusClass}">${acc.status}</td>
+                            <td><input type="checkbox" class="account-checkbox" data-username="${safeUser}" ${isChecked}></td>
+                            <td>${safeUser}</td>
+                            <td class="${statusClass}">${safeStatus}</td>
                             <td>${formatUptime(acc.uptime)}</td>
                             <td class="actions-cell"></td>`;
                         
@@ -391,7 +405,7 @@
                             appIdsInput.value=acc.games.join(', '); 
                             gamesModal.style.display='block'; 
                             updateGameLimitText();
-                            fetchUserOwnedGames(acc.username); // Carrega os jogos
+                            fetchUserOwnedGames(acc.username); 
                         };
                         
                         const btnSettings = document.createElement('button'); btnSettings.innerHTML=icons.settings+"Config"; btnSettings.className="settings-btn";
@@ -456,12 +470,12 @@
                     const div = document.createElement('div');
                     div.className = 'game-item';
                     const isChecked = currentSelected.includes(String(g.appid));
+                    // Uso de escapeHtml aqui para nomes de jogos
                     div.innerHTML = `
                         <input type="checkbox" id="g_${g.appid}" value="${g.appid}" ${isChecked ? 'checked' : ''}>
-                        <label for="g_${g.appid}">${g.name} <span style="color:#666; font-size:10px;">(${g.appid})</span></label>
+                        <label for="g_${g.appid}">${escapeHtml(g.name)} <span style="color:#666; font-size:10px;">(${g.appid})</span></label>
                     `;
                     
-                    // Evento de Clique na Linha (Sincroniza com Textarea)
                     div.onclick = (e) => {
                         if(e.target.tagName !== 'INPUT') {
                             const cb = div.querySelector('input');
@@ -474,7 +488,6 @@
             }
 
             window.selectAllGames = function() {
-                // Seleciona todos os VISÍVEIS no filtro atual
                 const cbs = myGamesList.querySelectorAll('input[type="checkbox"]');
                 const allChecked = Array.from(cbs).every(cb => cb.checked);
                 cbs.forEach(cb => cb.checked = !allChecked);
@@ -482,19 +495,13 @@
             };
 
             function syncGamesSelection() {
-                // Atualiza o Textarea baseado nos checkboxes
                 const checkboxes = myGamesList.querySelectorAll('input[type="checkbox"]:checked');
-                // Pega os IDs atuais do textarea para não perder os manuais que não estão na lista visual
                 let currentIds = appIdsInput.value.split(',').map(s => s.trim()).filter(s => s);
-                
-                // Remove IDs da lista visual atual para readicionar apenas os marcados (evita duplicidade)
                 const allVisibleIds = Array.from(myGamesList.querySelectorAll('input')).map(i => i.value);
                 currentIds = currentIds.filter(id => !allVisibleIds.includes(id));
-                
                 checkboxes.forEach(cb => {
                     if(!currentIds.includes(cb.value)) currentIds.push(cb.value);
                 });
-                
                 appIdsInput.value = currentIds.join(', ');
                 updateGameLimitText();
             }
@@ -543,7 +550,6 @@
                 fetch(`/api/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(res => res.json()).then(data => { showToast(data.message, data.ok !== false ? 'info' : 'error'); if (data.ok !== false) hideSettingsModal(); });
             });
 
-            // Search Game Manual (Tab 2)
             let searchTimeout;
             gameSearchInput.addEventListener('input', () => {
                 clearTimeout(searchTimeout);
@@ -553,7 +559,9 @@
                     const data = await res.json();
                     gameSearchResults.innerHTML='';
                     data.forEach(g=>{
-                        const d=document.createElement('div'); d.className='search-result-item'; d.textContent=`${g.name} (${g.appid})`;
+                        const d=document.createElement('div'); d.className='search-result-item'; 
+                        // Sanitização
+                        d.textContent=`${g.name} (${g.appid})`;
                         d.onclick=()=>{ 
                             const ids=appIdsInput.value.split(',').map(s=>s.trim()).filter(s=>s);
                             if(!ids.includes(String(g.appid))) { ids.push(g.appid); appIdsInput.value=ids.join(', '); updateGameLimitText(); }
@@ -612,7 +620,8 @@
                         myKeysList.innerHTML = '';
                         keys.forEach(k => {
                             const d = document.createElement('div'); d.className = 'my-key-item';
-                            d.innerHTML = `<strong>${k.plan}</strong><span>${k.durationDays ? k.durationDays + ' dias' : 'Vitalícia'}</span><input type="text" value="${k.key}" readonly>`;
+                            // Sanitização aqui também
+                            d.innerHTML = `<strong>${escapeHtml(k.plan)}</strong><span>${k.durationDays ? k.durationDays + ' dias' : 'Vitalícia'}</span><input type="text" value="${escapeHtml(k.key)}" readonly>`;
                             myKeysList.appendChild(d);
                         });
                     }
