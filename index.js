@@ -136,7 +136,7 @@ async function connectToDB() {
 }
 
 async function initializePlans() {
-    // AQUI DEFINIMOS O ESCALONAMENTO DE BENEFÍCIOS E DIAS
+    // AQUI DEFINIMOS O ESCALONAMENTO DE BENEFÍCIOS E DIAS PADRÃO
     const defaultPlans = [
         { 
             id: 'free', name: 'Gratuito', price: 0, price_usd: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, 
@@ -170,10 +170,10 @@ async function initializePlans() {
     ];
 
     for (const plan of defaultPlans) {
-        // Usamos updateOne com upsert para garantir que os benefícios (features) e dias sejam atualizados se mudarmos aqui no código
+        // CORREÇÃO CRÍTICA: Usar $setOnInsert para não sobrescrever edições do Admin ao reiniciar
         await plansCollection.updateOne(
             { id: plan.id }, 
-            { $set: plan }, 
+            { $setOnInsert: plan }, 
             { upsert: true }
         );
     }
@@ -796,7 +796,40 @@ adminApiRouter.post('/generate-keys', async (req, res) => { const { plan, quanti
 adminApiRouter.post('/ban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId) { try{ if(liveAccounts[u].worker) liveAccounts[u].worker.kill(); }catch(e){} } } res.json({ message: "Banido." }); });
 adminApiRouter.post('/unban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: false } }); res.json({ message: "Desbanido." }); });
 adminApiRouter.post('/delete-user', async (req, res) => { const uid = req.body.userId; await usersCollection.deleteOne({ _id: new ObjectId(uid) }); await accountsCollection.deleteMany({ ownerUserID: uid }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === uid) { try{ liveAccounts[u].worker.kill(); }catch(e){} delete liveAccounts[u]; } } res.json({ message: "Deletado." }); });
-adminApiRouter.post('/update-plan', async (req, res) => { const { userId, newPlan } = req.body; await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { plan: newPlan, planExpiresAt: null, customLimits: null } }); sendDiscordNotification("🔧 Plano Alterado (Admin)", `User: ${userId} -> ${newPlan}`, 5763719, "System", "sale"); res.json({ message: "Atualizado." }); });
+
+// --- CORREÇÃO: LÓGICA DE UPDATE DE PLANO ---
+adminApiRouter.post('/update-plan', async (req, res) => {
+    const { userId, newPlan } = req.body;
+    
+    // 1. Busca as configurações do plano escolhido
+    const planDetails = GLOBAL_PLANS[newPlan];
+    
+    // 2. Calcula a nova data de expiração
+    let newExpiry = null;
+    if (planDetails) {
+        if (planDetails.days > 0) {
+            const date = new Date();
+            date.setDate(date.getDate() + planDetails.days);
+            newExpiry = date;
+        } else if (newPlan === 'lifetime') {
+            newExpiry = null; 
+        }
+    }
+
+    // 3. Atualiza o usuário com a nova data e plano
+    await usersCollection.updateOne({ _id: new ObjectId(userId) }, { 
+        $set: { 
+            plan: newPlan, 
+            planExpiresAt: newExpiry, 
+            customLimits: null,
+            freeHoursRemaining: 0 // Remove horas grátis ao ativar plano pago
+        } 
+    });
+
+    sendDiscordNotification("🔧 Plano Alterado (Admin)", `User: ${userId} -> ${newPlan}`, 5763719, "System", "sale");
+    res.json({ message: "Atualizado com sucesso." });
+});
+
 adminApiRouter.post('/assign-key', async (req, res) => { const { licenseId, username } = req.body; const user = await usersCollection.findOne({ username }); if (!user) return res.status(404).json({ message: "User não achado." }); await licensesCollection.updateOne({ _id: new ObjectId(licenseId) }, { $set: { assignedTo: user._id, assignedToUsername: user.username } }); sendDiscordNotification("🎁 Chave Atribuída", `Para: ${username}`, 5763719, "System", "sale"); res.json({ message: "Atribuído." }); });
 adminApiRouter.post('/delete-license', async (req, res) => { await licensesCollection.deleteOne({ _id: new ObjectId(req.body.licenseId) }); res.json({ message: "Deletado." }); });
 adminApiRouter.post('/update-plan-details', async (req, res) => { const { id, name, price, days, accounts, games, style, active, features, price_usd } = req.body; await plansCollection.updateOne({ id: id }, { $set: { name, price: parseFloat(price), price_usd: parseFloat(price_usd), days: parseInt(days), accounts: parseInt(accounts), games: parseInt(games), style, active, features } }, { upsert: true }); await refreshPlansCache(); res.json({ message: "OK" }); });
