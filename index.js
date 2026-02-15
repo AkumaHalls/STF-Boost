@@ -77,6 +77,20 @@ const FREE_HOURS_MS = 50 * 60 * 60 * 1000;
 const CUSTOM_PRICING_BRL = { BASE: 5.00, DAY: 0.10, ACCOUNT: 2.00, GAME: 0.10 };
 const CUSTOM_PRICING_USD = { BASE: 2.00, DAY: 0.05, ACCOUNT: 1.00, GAME: 0.05 };
 
+// Níveis de permissão para funcionalidades
+const PLAN_LEVELS = {
+    'free': 0,
+    'basic': 1,
+    'plus': 2,
+    'premium': 3,
+    'ultimate': 4,
+    'lifetime': 5,
+    'halloween': 3,
+    'christmas': 4,
+    'newyear': 4,
+    'custom': 1 // Custom é tratado caso a caso, mas base 1
+};
+
 let PLAN_LIMITS = {
     'free': { accounts: 1, games: 1 },
     'basic': { accounts: 2, games: 6 },
@@ -84,9 +98,6 @@ let PLAN_LIMITS = {
     'premium': { accounts: 6, games: 24 },
     'ultimate': { accounts: 10, games: 33 },
     'lifetime': { accounts: 10, games: 33 },
-    'halloween': { accounts: 8, games: 33 },
-    'christmas': { accounts: 10, games: 33 },
-    'newyear': { accounts: 10, games: 33 },
     'custom': { accounts: 1, games: 10 } 
 };
 let GLOBAL_PLANS = {}; 
@@ -125,26 +136,46 @@ async function connectToDB() {
 }
 
 async function initializePlans() {
+    // AQUI DEFINIMOS O ESCALONAMENTO DE BENEFÍCIOS E DIAS PADRÃO
     const defaultPlans = [
-        { id: 'free', name: 'Gratuito', price: 0, price_usd: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, features: ['50 Horas', '1 Conta', '1 Jogo'] },
-        { id: 'basic', name: 'Basic', price: 7.90, price_usd: 3.99, days: 30, accounts: 2, games: 6, style: 'none', active: true, features: ['30 Dias', '2 Contas', '6 Jogos'] },
-        { id: 'plus', name: 'Plus', price: 15.90, price_usd: 6.99, days: 30, accounts: 4, games: 12, style: 'none', active: true, features: ['30 Dias', '4 Contas', '12 Jogos'] },
-        { id: 'premium', name: 'Premium', price: 27.90, price_usd: 9.99, days: 30, accounts: 6, games: 24, style: 'fire', active: true, features: ['30 Dias', '6 Contas', '24 Jogos'] },
-        { id: 'ultimate', name: 'Ultimate', price: 54.90, price_usd: 14.99, days: 30, accounts: 10, games: 33, style: 'none', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
-        { id: 'lifetime', name: 'Vitalício', price: 249.90, price_usd: 49.99, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, features: ['Vitalício', '10 Contas', '33 Jogos'] },
-        { id: 'halloween', name: 'Halloween', price: 19.90, price_usd: 7.99, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias', '8 Contas', '33 Jogos'] },
-        { id: 'christmas', name: 'Natal', price: 89.90, price_usd: 29.99, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano', '10 Contas', '33 Jogos'] },
+        { 
+            id: 'free', name: 'Gratuito', price: 0, price_usd: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, 
+            features: ['50 Horas Renováveis', '1 Conta Steam', '1 Jogo Simultâneo', 'Suporte Básico'] 
+        },
+        { 
+            id: 'basic', name: 'Basic', price: 7.90, price_usd: 3.99, days: 30, accounts: 2, games: 6, style: 'none', active: true, 
+            features: ['30 Dias de Acesso', '2 Contas Steam', '6 Jogos Simultâneos', 'Reconexão Automática', 'Suporte 2FA'] 
+        },
+        { 
+            id: 'plus', name: 'Plus', price: 15.90, price_usd: 6.99, days: 30, accounts: 4, games: 12, style: 'none', active: true, 
+            features: ['30 Dias de Acesso', '4 Contas Steam', '12 Jogos Simultâneos', 'Auto-Aceitar Amigos', 'Prioridade na Fila'] 
+        },
+        { 
+            id: 'premium', name: 'Premium', price: 27.90, price_usd: 9.99, days: 30, accounts: 6, games: 24, style: 'fire', active: true, 
+            features: ['30 Dias de Acesso', '6 Contas Steam', '24 Jogos Simultâneos', 'Aparecer Offline', 'Título Personalizado', 'Mensagem Ausente'] 
+        },
+        { 
+            id: 'ultimate', name: 'Ultimate', price: 54.90, price_usd: 14.99, days: 30, accounts: 10, games: 33, style: 'none', active: true, 
+            features: ['30 Dias de Acesso', '10 Contas Steam', '33 Jogos (Máx)', 'Todos os Benefícios', 'Suporte VIP', 'Slots Dedicados'] 
+        },
+        { 
+            id: 'lifetime', name: 'Vitalício', price: 249.90, price_usd: 49.99, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, 
+            features: ['Acesso Vitalício', '10 Contas Steam', '33 Jogos (Máx)', 'Status Cósmico no Painel', 'Todas as Funcionalidades'] 
+        },
+        // Planos Sazonais (Mantidos)
+        { id: 'halloween', name: 'Halloween', price: 19.90, price_usd: 7.99, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias (Promo)', '8 Contas', '33 Jogos'] },
+        { id: 'christmas', name: 'Natal', price: 89.90, price_usd: 29.99, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano de Acesso', '10 Contas', '33 Jogos'] },
         { id: 'newyear', name: 'Ano Novo', price: 12.90, price_usd: 5.99, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
-        { id: 'custom', name: 'Personalizado', price: 15.00, price_usd: 5.00, days: 30, accounts: 1, games: 10, style: 'none', active: true, features: ['Personalizado'] }
+        { id: 'custom', name: 'Personalizado', price: 15.00, price_usd: 5.00, days: 30, accounts: 1, games: 10, style: 'none', active: true, features: ['Configuração Flexível'] }
     ];
 
     for (const plan of defaultPlans) {
-        const existing = await plansCollection.findOne({ id: plan.id });
-        if (!existing) {
-            await plansCollection.insertOne(plan);
-        } else if (existing.price_usd === undefined) {
-            await plansCollection.updateOne({ id: plan.id }, { $set: { price_usd: plan.price_usd } });
-        }
+        // CORREÇÃO CRÍTICA: Usar $setOnInsert para não sobrescrever edições do Admin ao reiniciar
+        await plansCollection.updateOne(
+            { id: plan.id }, 
+            { $setOnInsert: plan }, 
+            { upsert: true }
+        );
     }
     await refreshPlansCache();
 }
@@ -220,12 +251,8 @@ async function getSteamAppList() {
 }
 
 function getIpAndCountry(req) {
-    // Pega o IP real, considerando proxy (Render/Cloudflare)
     const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
-    
-    // Tratamento para localhost
     if (ip === '127.0.0.1' || ip === '::1') return { ip, country: 'BR' }; 
-    
     const geo = geoip.lookup(ip);
     return { ip, country: geo ? geo.country : 'US' };
 }
@@ -301,7 +328,7 @@ async function ensureUserPlanStatus(userId) {
         let user = await usersCollection.findOne({ _id: new ObjectId(userId) });
         if (!user) return null;
 
-        if (user.plan !== 'free' && user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) {
+        if (user.plan !== 'free' && user.plan !== 'lifetime' && user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) {
             console.log(`[SYSTEM] Plano expirado detectado para ${user.username}. Downgrading...`);
             await usersCollection.updateOne({ _id: user._id }, { 
                 $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: 0 },
@@ -444,7 +471,7 @@ async function deductFreeTime() {
 async function checkExpiredPlans() {
     const now = new Date();
     try {
-        const expired = await usersCollection.find({ plan: { $ne: 'free' }, planExpiresAt: { $lt: now } }).toArray();
+        const expired = await usersCollection.find({ plan: { $ne: 'free', $ne: 'lifetime' }, planExpiresAt: { $lt: now } }).toArray();
         for (const u of expired) {
             await usersCollection.updateOne({ _id: u._id }, { 
                 $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: 0 },
@@ -700,8 +727,6 @@ apiRouter.get('/user-info', async (req, res) => {
     let fh = 0; 
     if (user.plan === 'free') fh = Math.ceil(user.freeHoursRemaining / 60000); 
     const limits = getUserLimits(user);
-    
-    // --- NOVO: Envia o IP para o painel ---
     const { ip } = getIpAndCountry(req);
     
     res.json({ 
@@ -711,7 +736,7 @@ apiRouter.get('/user-info', async (req, res) => {
         planExpiresAt: user.planExpiresAt, 
         gameLimit: limits.games, 
         accountLimit: limits.accounts,
-        currentIP: ip // ENVIANDO O IP
+        currentIP: ip
     }); 
 });
 
@@ -720,7 +745,37 @@ apiRouter.post('/add-account', async (req, res) => { const { username, password 
 apiRouter.post('/start/:username', async (req, res) => { const u = req.params.username; const acc = liveAccounts[u]; if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({}); const user = await ensureUserPlanStatus(req.session.userId); if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem tempo." }); const limits = getUserLimits(user); if (acc.games.length > limits.games) return res.status(403).json({ message: "Limite jogos." }); let activeCount = 0; for(const k in liveAccounts) { const s = liveAccounts[k].status; if(liveAccounts[k].ownerUserID === req.session.userId && (s === 'Rodando' || s.startsWith('Iniciando') || s.startsWith('Pendente'))) { activeCount++; } } if (activeCount >= limits.accounts) return res.status(403).json({ message: "Limite contas online." }); try { const pass = decrypt(acc.encryptedPassword); if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "OK" }); } else { res.status(500).json({ message: "Erro senha." }); } } catch(e) { res.status(500).json({ message: "Erro interno." }); } });
 apiRouter.post('/stop/:username', (req, res) => { const acc = liveAccounts[req.params.username]; if (acc && acc.ownerUserID === req.session.userId) { acc.manual_logout = true; try { if (acc.worker) acc.worker.kill(); } catch(e){} acc.status = "Parado"; res.json({ message: "OK" }); } else { res.status(404).json({ message: "Erro." }); } });
 apiRouter.delete('/remove-account/:username', async (req, res) => { const u = req.params.username; if (liveAccounts[u] && liveAccounts[u].ownerUserID === req.session.userId) { liveAccounts[u].manual_logout = true; try { if (liveAccounts[u].worker) liveAccounts[u].worker.kill(); } catch(e){} delete liveAccounts[u]; } await accountsCollection.deleteOne({ username: u, ownerUserID: req.session.userId }); res.json({ message: "OK" }); });
-apiRouter.post('/save-settings/:username', async (req, res) => { const { username } = req.params; const { settings } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); if (user.plan === 'free' && (settings.appearOffline || settings.customInGameTitle)) return res.status(403).json({ message: "Premium." }); if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) { await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { settings } }); liveAccounts[username].settings = settings; try { if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings, games: liveAccounts[username].games } }); } catch(e){} res.json({ message: "OK" }); } else { res.status(404).json({ message: "Erro." }); } });
+
+// --- ROTA SAVE-SETTINGS ATUALIZADA (ESCALONAMENTO) ---
+apiRouter.post('/save-settings/:username', async (req, res) => { 
+    const { username } = req.params; 
+    const { settings } = req.body; 
+    const uid = req.session.userId; 
+    
+    // Busca usuário atual para verificar plano
+    const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); 
+    
+    // Nível atual do usuário (0 a 5)
+    const currentLevel = PLAN_LEVELS[user.plan] || 0;
+
+    // Regras de Bloqueio Baseadas no Nível
+    if (settings.appearOffline && currentLevel < 3) return res.status(403).json({ message: "Requer Plano Premium para 'Aparecer Offline'." });
+    if (settings.customInGameTitle && currentLevel < 3) return res.status(403).json({ message: "Requer Plano Premium para 'Título Personalizado'." });
+    if (settings.customAwayMessage && currentLevel < 3) return res.status(403).json({ message: "Requer Plano Premium para 'Mensagem Ausente'." });
+    if (settings.autoAcceptFriends && currentLevel < 2) return res.status(403).json({ message: "Requer Plano Plus para 'Auto Aceitar Amigos'." });
+
+    if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) { 
+        await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { settings } }); 
+        liveAccounts[username].settings = settings; 
+        try { 
+            if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings, games: liveAccounts[username].games } }); 
+        } catch(e){} 
+        res.json({ message: "OK" }); 
+    } else { 
+        res.status(404).json({ message: "Erro." }); 
+    } 
+});
+
 apiRouter.post('/set-games/:username', async (req, res) => { const { username } = req.params; const { games } = req.body; const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); const limits = getUserLimits(user); if (games.length > limits.games) return res.status(403).json({ message: "Limite excedido." }); if (liveAccounts[username] && liveAccounts[username].ownerUserID === uid) { await accountsCollection.updateOne({ username, ownerUserID: uid }, { $set: { games } }); liveAccounts[username].games = games; try { if (liveAccounts[username].worker) liveAccounts[username].worker.send({ command: 'updateSettings', data: { settings: liveAccounts[username].settings, games } }); } catch(e){} res.json({ message: "OK" }); } else { res.status(404).json({ message: "Erro." }); } });
 apiRouter.post('/submit-guard/:username', (req, res) => { const acc = liveAccounts[req.params.username]; if (acc) { try { acc.worker.send({ command: 'submitGuard', data: { code: req.body.code } }); res.json({ message: "OK" }); } catch(e){ res.status(500).json({ message: "Worker morto." }); } } else { res.status(404).json({ message: "Erro." }); } });
 apiRouter.get('/search-game', async (req, res) => { const q = (req.query.q || '').toLowerCase(); if(q.length<2) return res.json([]); const l = await getSteamAppList(); res.json(l.filter(a => a.name.toLowerCase().includes(q)).slice(0, 50)); });
@@ -741,7 +796,40 @@ adminApiRouter.post('/generate-keys', async (req, res) => { const { plan, quanti
 adminApiRouter.post('/ban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId) { try{ if(liveAccounts[u].worker) liveAccounts[u].worker.kill(); }catch(e){} } } res.json({ message: "Banido." }); });
 adminApiRouter.post('/unban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: false } }); res.json({ message: "Desbanido." }); });
 adminApiRouter.post('/delete-user', async (req, res) => { const uid = req.body.userId; await usersCollection.deleteOne({ _id: new ObjectId(uid) }); await accountsCollection.deleteMany({ ownerUserID: uid }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === uid) { try{ liveAccounts[u].worker.kill(); }catch(e){} delete liveAccounts[u]; } } res.json({ message: "Deletado." }); });
-adminApiRouter.post('/update-plan', async (req, res) => { const { userId, newPlan } = req.body; await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { plan: newPlan, planExpiresAt: null, customLimits: null } }); sendDiscordNotification("🔧 Plano Alterado (Admin)", `User: ${userId} -> ${newPlan}`, 5763719, "System", "sale"); res.json({ message: "Atualizado." }); });
+
+// --- CORREÇÃO: LÓGICA DE UPDATE DE PLANO ---
+adminApiRouter.post('/update-plan', async (req, res) => {
+    const { userId, newPlan } = req.body;
+    
+    // 1. Busca as configurações do plano escolhido
+    const planDetails = GLOBAL_PLANS[newPlan];
+    
+    // 2. Calcula a nova data de expiração
+    let newExpiry = null;
+    if (planDetails) {
+        if (planDetails.days > 0) {
+            const date = new Date();
+            date.setDate(date.getDate() + planDetails.days);
+            newExpiry = date;
+        } else if (newPlan === 'lifetime') {
+            newExpiry = null; 
+        }
+    }
+
+    // 3. Atualiza o usuário com a nova data e plano
+    await usersCollection.updateOne({ _id: new ObjectId(userId) }, { 
+        $set: { 
+            plan: newPlan, 
+            planExpiresAt: newExpiry, 
+            customLimits: null,
+            freeHoursRemaining: 0 // Remove horas grátis ao ativar plano pago
+        } 
+    });
+
+    sendDiscordNotification("🔧 Plano Alterado (Admin)", `User: ${userId} -> ${newPlan}`, 5763719, "System", "sale");
+    res.json({ message: "Atualizado com sucesso." });
+});
+
 adminApiRouter.post('/assign-key', async (req, res) => { const { licenseId, username } = req.body; const user = await usersCollection.findOne({ username }); if (!user) return res.status(404).json({ message: "User não achado." }); await licensesCollection.updateOne({ _id: new ObjectId(licenseId) }, { $set: { assignedTo: user._id, assignedToUsername: user.username } }); sendDiscordNotification("🎁 Chave Atribuída", `Para: ${username}`, 5763719, "System", "sale"); res.json({ message: "Atribuído." }); });
 adminApiRouter.post('/delete-license', async (req, res) => { await licensesCollection.deleteOne({ _id: new ObjectId(req.body.licenseId) }); res.json({ message: "Deletado." }); });
 adminApiRouter.post('/update-plan-details', async (req, res) => { const { id, name, price, days, accounts, games, style, active, features, price_usd } = req.body; await plansCollection.updateOne({ id: id }, { $set: { name, price: parseFloat(price), price_usd: parseFloat(price_usd), days: parseInt(days), accounts: parseInt(accounts), games: parseInt(games), style, active, features } }, { upsert: true }); await refreshPlansCache(); res.json({ message: "OK" }); });
