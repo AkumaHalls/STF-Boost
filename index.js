@@ -11,12 +11,25 @@ const geoip = require('geoip-lite');
 const helmet = require('helmet');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-
-// --- DEPENDÊNCIAS STEAM (UNIFICADAS) ---
 const SteamUser = require('steam-user');
 const SteamTotp = require('steam-totp');
 
 console.log("[SYSTEM] Inicializando módulos...");
+
+// --- FUNÇÃO DE NOTIFICAÇÃO (MOVIDA PARA O TOPO ABSOLUTO PARA EVITAR ERROS) ---
+function sendDiscordNotification(title, message, color, username, type = 'log') {
+    let webhookUrl = process.env.DISCORD_WEBHOOK_LOGS || process.env.DISCORD_WEBHOOK_URL; 
+    if (type === 'sale') webhookUrl = process.env.DISCORD_WEBHOOK_SALES || webhookUrl;
+    if (type === 'alert') webhookUrl = process.env.DISCORD_WEBHOOK_ALERTS || webhookUrl;
+
+    if (!webhookUrl) return;
+    const safeMessage = (message || '').replace(/`/g, "'");
+    const payload = JSON.stringify({ embeds: [{ title: title || '\u200b', description: safeMessage || '\u200b', color: color, fields: [{ name: "Conta", value: `\`${username || 'N/A'}\``, inline: true }], footer: { text: "STF Boost System" }, timestamp: new Date().toISOString() }] });
+    try {
+        const req = https.request({ hostname: new URL(webhookUrl).hostname, path: new URL(webhookUrl).pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }}, () => {});
+        req.on('error', (e) => {}); req.write(payload); req.end();
+    } catch (e) {}
+}
 
 // Proteção Global de Crash
 process.on('uncaughtException', (err) => {
@@ -24,12 +37,11 @@ process.on('uncaughtException', (err) => {
     console.error(`[CRASH PREVENIDO] Erro:`, err);
 });
 
-// --- CONFIGURAÇÃO ---
+// --- CONFIGURAÇÃO E VARIÁVEIS GLOBAIS ---
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 const ADMIN_PASSWORD = process.env.SITE_PASSWORD; 
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL; 
 const MP_ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const SITE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
@@ -58,7 +70,6 @@ let appSecretKey;
 let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timestamp: 0 }; 
 const replyCooldowns = new Map();
 
-// --- CONSTANTES ---
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; 
 const CUSTOM_PRICING_BRL = { BASE: 5.00, DAY: 0.10, ACCOUNT: 2.00, GAME: 0.10 };
 const CUSTOM_PRICING_USD = { BASE: 2.00, DAY: 0.05, ACCOUNT: 1.00, GAME: 0.05 };
@@ -67,10 +78,32 @@ const PLAN_LEVELS = { 'free': 0, 'basic': 1, 'plus': 2, 'premium': 3, 'ultimate'
 let PLAN_LIMITS = { 'free': { accounts: 1, games: 1 }, 'basic': { accounts: 2, games: 6 }, 'plus': { accounts: 4, games: 12 }, 'premium': { accounts: 6, games: 24 }, 'ultimate': { accounts: 10, games: 33 }, 'lifetime': { accounts: 10, games: 33 }, 'custom': { accounts: 1, games: 10 } };
 let GLOBAL_PLANS = {}; 
 
-// --- DADOS ---
 const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection, siteSettingsCollection, usersCollection, licensesCollection, plansCollection, couponsCollection;
 let liveAccounts = {};
+
+// --- FUNÇÕES UTILITÁRIAS ---
+const encrypt = (text) => { if (!appSecretKey) return null; const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
+const decrypt = (text) => { try { if (!appSecretKey || !text) return ""; const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { return ""; }};
+function safeCompare(a, b) { const bufA = Buffer.from(a); const bufB = Buffer.from(b); return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB); }
+
+function getIpAndCountry(req) {
+    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
+    if (ip === '127.0.0.1' || ip === '::1') return { ip, country: 'BR' }; 
+    const geo = geoip.lookup(ip);
+    return { ip, country: geo ? geo.country : 'US' };
+}
+
+function getCountryFromRequest(req) { 
+    if (req.query.test_country) return req.query.test_country.toUpperCase(); 
+    if (req.body.test_country) return req.body.test_country.toUpperCase(); 
+    return getIpAndCountry(req).country; 
+}
+
+function getUserLimits(user) { 
+    if (user.customLimits && typeof user.customLimits.accounts === 'number') { return user.customLimits; } 
+    return GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free'] || { accounts: 1, games: 1 }; 
+}
 
 // --- LÓGICA STEAM UNIFICADA ---
 function cleanupAccount(acc) {
@@ -82,6 +115,7 @@ function cleanupAccount(acc) {
     if (acc.reloginTimeout) clearTimeout(acc.reloginTimeout);
     acc.steamGuardCallback = null;
     acc.isLoggingIn = false;
+    acc.sessionStartTime = null; // <--- CORREÇÃO APLICADA AQUI: Zera o contador de tempo.
 }
 
 function farmGames(acc) {
@@ -140,7 +174,9 @@ function setupSteamListeners(acc, password) {
         acc.retryCount = 0;
         acc.status = "Rodando";
         acc.sessionStartTime = Date.now();
+        
         sendDiscordNotification("✅ Conta Online", "Farmando.", 5763719, acc.username, "log");
+        
         farmGames(acc);
 
         try {
@@ -310,92 +346,11 @@ async function initializeMasterKey() {
     }
 }
 
-const encrypt = (text) => { if (!appSecretKey) return null; const iv = crypto.randomBytes(16); const cipher = crypto.createCipheriv(ALGORITHM, appSecretKey, iv); let encrypted = cipher.update(text, 'utf8', 'hex'); encrypted += cipher.final('hex'); return `${iv.toString('hex')}:${encrypted}`; };
-const decrypt = (text) => { try { if (!appSecretKey || !text) return ""; const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { return ""; }};
-function safeCompare(a, b) { const bufA = Buffer.from(a); const bufB = Buffer.from(b); return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB); }
-
-function sendDiscordNotification(title, message, color, username, type = 'log') {
-    let webhookUrl = process.env.DISCORD_WEBHOOK_LOGS || DISCORD_WEBHOOK_URL; 
-    if (type === 'sale') webhookUrl = process.env.DISCORD_WEBHOOK_SALES || webhookUrl;
-    if (type === 'alert') webhookUrl = process.env.DISCORD_WEBHOOK_ALERTS || webhookUrl;
-
-    if (!webhookUrl) return;
-    const safeMessage = (message || '').replace(/`/g, "'");
-    const payload = JSON.stringify({ embeds: [{ title: title || '\u200b', description: safeMessage || '\u200b', color: color, fields: [{ name: "Conta", value: `\`${username || 'N/A'}\``, inline: true }], footer: { text: "STF Boost System" }, timestamp: new Date().toISOString() }] });
-    try {
-        const req = https.request({ hostname: new URL(webhookUrl).hostname, path: new URL(webhookUrl).pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }}, () => {});
-        req.on('error', (e) => {}); req.write(payload); req.end();
-    } catch (e) {}
-}
-
 async function getSteamAppList() {
     if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 1) return steamAppListCache.data;
     try { const response = await fetch('https://steamspy.com/api.php?request=all', { headers: { 'User-Agent': 'Mozilla/5.0' } }); if (response.ok) { const jsonData = await response.json(); steamAppListCache = { data: Object.values(jsonData), timestamp: Date.now() }; return steamAppListCache.data; } } catch (e) {}
     try { const response = await fetch('http://api.steampowered.com/ISteamApps/GetAppList/v0002/', { headers: { 'User-Agent': 'Mozilla/5.0' } }); if (response.ok) { const jsonData = await response.json(); if (jsonData.applist && jsonData.applist.apps) { steamAppListCache = { data: jsonData.applist.apps, timestamp: Date.now() }; return steamAppListCache.data; } } } catch (e) {}
     return steamAppListCache.data;
-}
-
-function getIpAndCountry(req) {
-    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
-    if (ip === '127.0.0.1' || ip === '::1') return { ip, country: 'BR' }; 
-    const geo = geoip.lookup(ip);
-    return { ip, country: geo ? geo.country : 'US' };
-}
-function getCountryFromRequest(req) { if (req.query.test_country) return req.query.test_country.toUpperCase(); if (req.body.test_country) return req.body.test_country.toUpperCase(); return getIpAndCountry(req).country; }
-
-function getUserLimits(user) { if (user.customLimits && typeof user.customLimits.accounts === 'number') { return user.customLimits; } return GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free'] || { accounts: 1, games: 1 }; }
-
-async function enforceUserLimits(userId) {
-    try {
-        if (!ObjectId.isValid(userId)) return;
-        const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
-        if (!user) return;
-
-        const limits = getUserLimits(user);
-        const limitAccounts = limits.accounts;
-        const limitGames = limits.games;
-
-        let runningAccounts = [];
-        for (const username in liveAccounts) {
-            const s = liveAccounts[username].status;
-            if (liveAccounts[username].ownerUserID === userId.toString() && (s === 'Rodando' || s.startsWith('Iniciando') || s.startsWith('Pendente'))) {
-                runningAccounts.push(liveAccounts[username]);
-            }
-        }
-
-        if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
-            runningAccounts.forEach(acc => { cleanupAccount(acc); acc.status = "Tempo Esgotado"; });
-            return; 
-        }
-
-        if (runningAccounts.length > limitAccounts) {
-            const toStop = runningAccounts.slice(limitAccounts); 
-            toStop.forEach(acc => { cleanupAccount(acc); acc.status = "Parado (Limite de Plano)"; });
-        }
-
-        const remainingRunning = runningAccounts.slice(0, limitAccounts);
-        remainingRunning.forEach(acc => {
-            if (acc.games.length > limitGames) { cleanupAccount(acc); acc.status = "Parado (Limite Jogos)"; }
-        });
-    } catch (e) { console.error(`[SYSTEM] Erro limites:`, e); }
-}
-
-async function ensureUserPlanStatus(userId) {
-    try {
-        if (!ObjectId.isValid(userId)) return null;
-        let user = await usersCollection.findOne({ _id: new ObjectId(userId) });
-        if (!user) return null;
-
-        if (user.plan !== 'free' && user.plan !== 'lifetime' && user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) {
-            await usersCollection.updateOne({ _id: user._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: 0 }, $unset: { customLimits: "" } });
-            await enforceUserLimits(userId);
-            for (const u in liveAccounts) {
-                if(liveAccounts[u].ownerUserID === userId.toString()) { cleanupAccount(liveAccounts[u]); liveAccounts[u].status = "Plano Expirado"; }
-            }
-            user.plan = 'free'; user.planExpiresAt = null; user.freeHoursRemaining = 0; delete user.customLimits; 
-        }
-        return user;
-    } catch (e) { return null; }
 }
 
 async function deductFreeTime() {
