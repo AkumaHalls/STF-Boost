@@ -314,6 +314,20 @@ const encrypt = (text) => { if (!appSecretKey) return null; const iv = crypto.ra
 const decrypt = (text) => { try { if (!appSecretKey || !text) return ""; const textParts = text.split(':'); const iv = Buffer.from(textParts.shift(), 'hex'); const encryptedText = Buffer.from(textParts.join(':'), 'hex'); const decipher = crypto.createDecipheriv(ALGORITHM, appSecretKey, iv); let decrypted = decipher.update(encryptedText, 'hex', 'utf8'); decrypted += decipher.final('utf8'); return decrypted; } catch (error) { return ""; }};
 function safeCompare(a, b) { const bufA = Buffer.from(a); const bufB = Buffer.from(b); return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB); }
 
+function sendDiscordNotification(title, message, color, username, type = 'log') {
+    let webhookUrl = process.env.DISCORD_WEBHOOK_LOGS || DISCORD_WEBHOOK_URL; 
+    if (type === 'sale') webhookUrl = process.env.DISCORD_WEBHOOK_SALES || webhookUrl;
+    if (type === 'alert') webhookUrl = process.env.DISCORD_WEBHOOK_ALERTS || webhookUrl;
+
+    if (!webhookUrl) return;
+    const safeMessage = (message || '').replace(/`/g, "'");
+    const payload = JSON.stringify({ embeds: [{ title: title || '\u200b', description: safeMessage || '\u200b', color: color, fields: [{ name: "Conta", value: `\`${username || 'N/A'}\``, inline: true }], footer: { text: "STF Boost System" }, timestamp: new Date().toISOString() }] });
+    try {
+        const req = https.request({ hostname: new URL(webhookUrl).hostname, path: new URL(webhookUrl).pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }}, () => {});
+        req.on('error', (e) => {}); req.write(payload); req.end();
+    } catch (e) {}
+}
+
 async function getSteamAppList() {
     if (Date.now() - steamAppListCache.timestamp < 24 * 60 * 60 * 1000 && steamAppListCache.data.length > 1) return steamAppListCache.data;
     try { const response = await fetch('https://steamspy.com/api.php?request=all', { headers: { 'User-Agent': 'Mozilla/5.0' } }); if (response.ok) { const jsonData = await response.json(); steamAppListCache = { data: Object.values(jsonData), timestamp: Date.now() }; return steamAppListCache.data; } } catch (e) {}
