@@ -136,7 +136,6 @@ async function connectToDB() {
 }
 
 async function initializePlans() {
-    // AQUI DEFINIMOS O ESCALONAMENTO DE BENEFÍCIOS E DIAS PADRÃO
     const defaultPlans = [
         { 
             id: 'free', name: 'Gratuito', price: 0, price_usd: 0, days: 0, accounts: 1, games: 1, style: 'none', active: true, 
@@ -162,7 +161,6 @@ async function initializePlans() {
             id: 'lifetime', name: 'Vitalício', price: 249.90, price_usd: 49.99, days: 0, accounts: 10, games: 33, style: 'cosmic', active: true, 
             features: ['Acesso Vitalício', '10 Contas Steam', '33 Jogos (Máx)', 'Status Cósmico no Painel', 'Todas as Funcionalidades'] 
         },
-        // Planos Sazonais (Mantidos)
         { id: 'halloween', name: 'Halloween', price: 19.90, price_usd: 7.99, days: 45, accounts: 8, games: 33, style: 'halloween', active: true, features: ['45 Dias (Promo)', '8 Contas', '33 Jogos'] },
         { id: 'christmas', name: 'Natal', price: 89.90, price_usd: 29.99, days: 365, accounts: 10, games: 33, style: 'christmas', active: true, features: ['1 Ano de Acesso', '10 Contas', '33 Jogos'] },
         { id: 'newyear', name: 'Ano Novo', price: 12.90, price_usd: 5.99, days: 30, accounts: 10, games: 33, style: 'newyear', active: true, features: ['30 Dias', '10 Contas', '33 Jogos'] },
@@ -170,7 +168,6 @@ async function initializePlans() {
     ];
 
     for (const plan of defaultPlans) {
-        // CORREÇÃO CRÍTICA: Usar $setOnInsert para não sobrescrever edições do Admin ao reiniciar
         await plansCollection.updateOne(
             { id: plan.id }, 
             { $setOnInsert: plan }, 
@@ -370,7 +367,7 @@ async function startWorkerForAccount(accountData) {
     }
 
     const worker = fork(path.join(__dirname, 'worker.js'), [], {
-        execArgv: ['--max-old-space-size=45'] 
+        execArgv: ['--max-old-space-size=80'] 
     });
     liveAccounts[username].worker = worker;
     liveAccounts[username].status = "Iniciando...";
