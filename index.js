@@ -16,7 +16,7 @@ const SteamTotp = require('steam-totp');
 
 console.log("[SYSTEM] Inicializando módulos...");
 
-// --- FUNÇÃO DE NOTIFICAÇÃO (MOVIDA PARA O TOPO ABSOLUTO PARA EVITAR ERROS) ---
+// --- FUNÇÃO DE NOTIFICAÇÃO ---
 function sendDiscordNotification(title, message, color, username, type = 'log') {
     let webhookUrl = process.env.DISCORD_WEBHOOK_LOGS || process.env.DISCORD_WEBHOOK_URL; 
     if (type === 'sale') webhookUrl = process.env.DISCORD_WEBHOOK_SALES || webhookUrl;
@@ -88,10 +88,14 @@ const decrypt = (text) => { try { if (!appSecretKey || !text) return ""; const t
 function safeCompare(a, b) { const bufA = Buffer.from(a); const bufB = Buffer.from(b); return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB); }
 
 function getIpAndCountry(req) {
-    const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
-    if (ip === '127.0.0.1' || ip === '::1') return { ip, country: 'BR' }; 
-    const geo = geoip.lookup(ip);
-    return { ip, country: geo ? geo.country : 'US' };
+    try {
+        const ip = (req.headers && req.headers['x-forwarded-for']) ? req.headers['x-forwarded-for'].split(',')[0].trim() : (req.socket ? req.socket.remoteAddress : '127.0.0.1');
+        if (!ip || ip === '127.0.0.1' || ip === '::1') return { ip: '127.0.0.1', country: 'BR' };
+        const geo = geoip.lookup(ip);
+        return { ip: ip, country: geo ? geo.country : 'US' };
+    } catch(e) {
+        return { ip: 'Desconhecido', country: 'BR' };
+    }
 }
 
 function getCountryFromRequest(req) { 
@@ -105,6 +109,61 @@ function getUserLimits(user) {
     return GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free'] || { accounts: 1, games: 1 }; 
 }
 
+// --- FUNÇÕES DE LIMITES E PLANOS (AS QUE FALTAVAM) ---
+async function enforceUserLimits(userId) {
+    try {
+        if (!ObjectId.isValid(userId)) return;
+        const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+        if (!user) return;
+
+        const limits = getUserLimits(user);
+        const limitAccounts = limits.accounts;
+        const limitGames = limits.games;
+
+        let runningAccounts = [];
+        for (const username in liveAccounts) {
+            const s = liveAccounts[username].status;
+            if (liveAccounts[username].ownerUserID === userId.toString() && (s === 'Rodando' || s.startsWith('Iniciando') || s.startsWith('Pendente'))) {
+                runningAccounts.push(liveAccounts[username]);
+            }
+        }
+
+        if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
+            runningAccounts.forEach(acc => { cleanupAccount(acc); acc.status = "Tempo Esgotado"; });
+            return; 
+        }
+
+        if (runningAccounts.length > limitAccounts) {
+            const toStop = runningAccounts.slice(limitAccounts); 
+            toStop.forEach(acc => { cleanupAccount(acc); acc.status = "Parado (Limite de Plano)"; });
+        }
+
+        const remainingRunning = runningAccounts.slice(0, limitAccounts);
+        remainingRunning.forEach(acc => {
+            if (acc.games.length > limitGames) { cleanupAccount(acc); acc.status = "Parado (Limite Jogos)"; }
+        });
+    } catch (e) { console.error(`[SYSTEM] Erro limites:`, e); }
+}
+
+async function ensureUserPlanStatus(userId) {
+    try {
+        if (!ObjectId.isValid(userId)) return null;
+        let user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+        if (!user) return null;
+
+        if (user.plan !== 'free' && user.plan !== 'lifetime' && user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) {
+            await usersCollection.updateOne({ _id: user._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: 0 }, $unset: { customLimits: "" } });
+            await enforceUserLimits(userId);
+            for (const u in liveAccounts) {
+                if(liveAccounts[u].ownerUserID === userId.toString()) { cleanupAccount(liveAccounts[u]); liveAccounts[u].status = "Plano Expirado"; }
+            }
+            user.plan = 'free'; user.planExpiresAt = null; user.freeHoursRemaining = 0; delete user.customLimits; 
+        }
+        return user;
+    } catch (e) { return null; }
+}
+
+
 // --- LÓGICA STEAM UNIFICADA ---
 function cleanupAccount(acc) {
     if (acc.client) {
@@ -115,7 +174,7 @@ function cleanupAccount(acc) {
     if (acc.reloginTimeout) clearTimeout(acc.reloginTimeout);
     acc.steamGuardCallback = null;
     acc.isLoggingIn = false;
-    acc.sessionStartTime = null; // <--- CORREÇÃO APLICADA AQUI: Zera o contador de tempo.
+    acc.sessionStartTime = null; 
 }
 
 function farmGames(acc) {
