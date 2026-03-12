@@ -12,7 +12,7 @@ process.on('uncaughtException', (err) => {
 
 // Estado interno
 let account = {
-    client: new SteamUser(),
+    client: new SteamUser({ enablePicsCache: false }),
     username: null,
     password: null,
     games: [],
@@ -233,7 +233,7 @@ process.on('message', (message) => {
         account.games = Array.isArray(data.games) ? data.games : [];
 
         // Garante que o cliente é novo ou limpo
-        if (!account.client) account.client = new SteamUser();
+        if (!account.client) account.client = new SteamUser({ enablePicsCache: false });
         account.client.removeAllListeners();
         
         setupListeners();
