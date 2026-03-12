@@ -369,7 +369,9 @@ async function startWorkerForAccount(accountData) {
         await accountsCollection.updateOne({ username: username }, { $set: { machineId: accountData.machineId } });
     }
 
-    const worker = fork(path.join(__dirname, 'worker.js'));
+    const worker = fork(path.join(__dirname, 'worker.js'), [], {
+        execArgv: ['--max-old-space-size=45'] 
+    });
     liveAccounts[username].worker = worker;
     liveAccounts[username].status = "Iniciando...";
     liveAccounts[username].manual_logout = false;
