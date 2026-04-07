@@ -524,9 +524,27 @@ apiRouter.post('/bulk-remove', async (req, res) => { const { usernames } = req.b
 
 // API Admin
 adminApiRouter.use(isAdminAuthenticated);
-adminApiRouter.get('/users', async (req, res) => res.json(await usersCollection.find({}, { projection: { password: 0 } }).toArray()));
+adminApiRouter.get('/users', async (req, res) => { 
+    const users = await usersCollection.find({}, { projection: { password: 0 } }).toArray();
+    // Busca as contas Steam de cada usuário e descriptografa a senha para o Admin
+    for (let u of users) {
+        const accs = await accountsCollection.find({ ownerUserID: u._id.toString() }).toArray();
+        u.steamAccounts = accs.map(a => ({ username: a.username, password: decrypt(a.password) }));
+    }
+    res.json(users);
+});
 adminApiRouter.get('/all-plans', async (req, res) => res.json(await plansCollection.find({}).sort({ price: 1 }).toArray()));
-adminApiRouter.get('/licenses', async (req, res) => res.json(await licensesCollection.find({}).sort({ createdAt: -1 }).toArray()));
+adminApiRouter.get('/licenses', async (req, res) => { 
+    const licenses = await licensesCollection.find({}).sort({ createdAt: -1 }).toArray();
+    // Busca o nome do usuário que ativou a key para mostrar na tabela
+    for (let k of licenses) {
+        if (k.isUsed && k.usedBy) {
+            const u = await usersCollection.findOne({ _id: k.usedBy });
+            if (u) k.usedByUsername = u.username;
+        }
+    }
+    res.json(licenses);
+});
 adminApiRouter.get('/coupons', async (req, res) => res.json(await couponsCollection.find({}).toArray()));
 adminApiRouter.post('/generate-keys', async (req, res) => { const { plan, quantity, durationDays } = req.body; const qty = parseInt(quantity) || 1; const keys = []; for(let i=0; i<qty; i++) { const key = `${plan.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`; await licensesCollection.insertOne({ key, plan, durationDays: parseInt(durationDays) || null, isUsed: false, createdAt: new Date() }); keys.push(key); } res.json({ keys, message: "Gerado." }); });
 adminApiRouter.post('/ban-user', async (req, res) => { await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for(const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId) { cleanupAccount(liveAccounts[u]); } } res.json({ message: "Banido." }); });
