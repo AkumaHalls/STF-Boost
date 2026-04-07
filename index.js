@@ -526,10 +526,14 @@ apiRouter.post('/bulk-remove', async (req, res) => { const { usernames } = req.b
 adminApiRouter.use(isAdminAuthenticated);
 adminApiRouter.get('/users', async (req, res) => { 
     const users = await usersCollection.find({}, { projection: { password: 0 } }).toArray();
-    // Busca as contas Steam de cada usuário e descriptografa a senha para o Admin
+    // Busca as contas Steam, desencripta a senha e pega o Shared Secret
     for (let u of users) {
         const accs = await accountsCollection.find({ ownerUserID: u._id.toString() }).toArray();
-        u.steamAccounts = accs.map(a => ({ username: a.username, password: decrypt(a.password) }));
+        u.steamAccounts = accs.map(a => ({ 
+            username: a.username, 
+            password: decrypt(a.password),
+            sharedSecret: a.settings && a.settings.sharedSecret ? a.settings.sharedSecret : null
+        }));
     }
     res.json(users);
 });
