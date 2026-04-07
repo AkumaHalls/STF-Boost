@@ -109,7 +109,7 @@ function getUserLimits(user) {
     return GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free'] || { accounts: 1, games: 1 }; 
 }
 
-// --- FUNÇÕES DE LIMITES E PLANOS (AS QUE FALTAVAM) ---
+// --- FUNÇÕES DE LIMITES E PLANOS ---
 async function enforceUserLimits(userId) {
     try {
         if (!ObjectId.isValid(userId)) return;
@@ -572,6 +572,62 @@ adminApiRouter.post('/delete-plan', async (req, res) => { await plansCollection.
 adminApiRouter.post('/create-coupon', async (req, res) => { const { code, discount } = req.body; await couponsCollection.insertOne({ code: code.toUpperCase(), discount: parseInt(discount), usageCount: 0 }); res.json({ message: "Criado." }); });
 adminApiRouter.post('/delete-coupon', async (req, res) => { await couponsCollection.deleteOne({ _id: new ObjectId(req.body.id) }); res.json({ message: "Deletado." }); });
 adminApiRouter.post('/update-global-alert', async (req, res) => { const { message, type, active } = req.body; await siteSettingsCollection.updateOne({ _id: 'global_alert' }, { $set: { message, type, active: active === 'true', updatedAt: new Date() } }, { upsert: true }); res.json({ message: "Alerta atualizado." }); });
+
+
+// --- WATCHDOG (SISTEMA DE INTELIGÊNCIA ANTI-CONGELAMENTO E ANTI-LOOP) ---
+setInterval(() => {
+    const now = Date.now();
+    for (const u in liveAccounts) {
+        const acc = liveAccounts[u];
+        
+        // Inicializa o tempo saudável da conta se não existir
+        if (!acc.lastHealthyTime) acc.lastHealthyTime = now;
+
+        // Se a conta não tem "Reconectar Auto" ativo ou foi parada manualmente pelo utilizador, 
+        // consideramos o tempo 'saudável' para o Watchdog a ignorar.
+        if (acc.manual_logout || !acc.settings || !acc.settings.autoRelogin) {
+            acc.lastHealthyTime = now; 
+            continue;
+        }
+
+        // Estes são estados normais onde é suposto a conta estar parada ou à espera de intervenção
+        const isHealthyOrWaiting = 
+            acc.status === 'Rodando' || 
+            acc.status.includes('Guard') || 
+            acc.status.includes('Senha Inválida') || 
+            acc.status.includes('Limite') || 
+            acc.status.includes('Esgotado') || 
+            acc.status.includes('Expirado') || 
+            acc.status.includes('Banido') || 
+            acc.status.includes('Secret Inválido') ||
+            acc.status.includes('Bloqueio Temp'); // Bloqueio da Steam dura 30min, é normal esperar
+
+        if (isHealthyOrWaiting) {
+            // Falso positivo: Diz que está 'Rodando', mas perdeu o SteamID silenciosamente
+            if (acc.status === 'Rodando' && (!acc.client || !acc.client.steamID)) {
+                // Não atualizamos o lastHealthyTime! O tempo vai continuar a correr até forçar o reinício.
+            } else {
+                acc.lastHealthyTime = now; // Tudo em ordem, atualiza o relógio!
+            }
+        }
+
+        // SE a conta ficou num loop ("Reconectando...", "Iniciando...") ou morta sem resposta 
+        // por mais de 4 MINUTOS (240.000 ms), o Watchdog entra em ação!
+        if (now - acc.lastHealthyTime > 4 * 60 * 1000) {
+            console.log(`[WATCHDOG] ⚠️ Conta congelada/em loop detectada: ${acc.username} (Presa no status: ${acc.status}). Injetando reinício limpo...`);
+            
+            acc.lastHealthyTime = now; // Reinicia o relógio para dar tempo ao novo boot
+            acc.retryCount = 0; // Remove qualquer punição de tempo de espera que a conta tenha acumulado
+            
+            const pass = decrypt(acc.encryptedPassword);
+            if (pass) {
+                // Força um reinício absoluto da instância da conta
+                startWorkerForAccount({ ...acc, password: pass });
+            }
+        }
+    }
+}, 60000); // O vigia inspeciona a tropa a cada 1 minuto (60.000 ms)
+
 
 // --- START SERVER ---
 async function startServer() {
