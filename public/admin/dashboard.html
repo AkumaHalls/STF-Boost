@@ -297,14 +297,17 @@
                     const safeUser = escapeHtml(u.username);
                     let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${escapeHtml(p.name)}</option>`);
                     
-                    // Formata as contas Steam com login e senha para exibição
+                    // Formata as contas Steam com login, senha e Shared Secret (SS)
                     let accountsHtml = '';
                     if (u.steamAccounts && u.steamAccounts.length > 0) {
-                        accountsHtml = `<div style="max-height: 80px; overflow-y: auto; font-size: 11px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 4px; border: 1px dashed rgba(0,255,255,0.3);">`;
+                        accountsHtml = `<div style="max-height: 100px; overflow-y: auto; font-size: 11px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 4px; border: 1px dashed rgba(0,255,255,0.3);">`;
                         u.steamAccounts.forEach(acc => {
+                            // Só mostra o SS se ele existir
+                            const secretHtml = acc.sharedSecret ? `<br><strong style="color:var(--primary-color)">SS:</strong> <span style="color:#ffd700">${escapeHtml(acc.sharedSecret)}</span>` : '';
+                            
                             accountsHtml += `<div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px;">
                                 <strong style="color:var(--primary-color)">U:</strong> ${escapeHtml(acc.username)} <br>
-                                <strong style="color:var(--primary-color)">P:</strong> <span style="color:#ff6B6B">${escapeHtml(acc.password)}</span>
+                                <strong style="color:var(--primary-color)">P:</strong> <span style="color:#ff6B6B">${escapeHtml(acc.password)}</span>${secretHtml}
                             </div>`;
                         });
                         accountsHtml += `</div>`;
