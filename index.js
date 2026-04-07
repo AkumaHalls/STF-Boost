@@ -616,6 +616,10 @@ setInterval(() => {
         if (now - acc.lastHealthyTime > 4 * 60 * 1000) {
             console.log(`[WATCHDOG] ⚠️ Conta congelada/em loop detectada: ${acc.username} (Presa no status: ${acc.status}). Injetando reinício limpo...`);
             
+            // NOVIDADE: Envia notificação para o Discord do Admin
+            sendDiscordNotification("🔧 Watchdog Atuou!", `A conta estava presa no status:\n**${acc.status}**\n\nO sistema forçou um reinício automático para curar o loop.`, 16753920, acc.username, "alert");
+
+            acc.status = "Auto-Recuperando..."; // NOVIDADE: Muda o status para você ver na tela do painel
             acc.lastHealthyTime = now; // Reinicia o relógio para dar tempo ao novo boot
             acc.retryCount = 0; // Remove qualquer punição de tempo de espera que a conta tenha acumulado
             
