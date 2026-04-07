@@ -113,8 +113,8 @@
                     <h2>Usuários</h2>
                     <div class="admin-table-wrapper">
                         <table class="admin-table">
-                            <thead><tr><th>Usuário</th><th>Plano</th><th>Status</th><th>Ações</th></tr></thead>
-                            <tbody id="usersTableBody"><tr><td colspan="4" style="text-align: center;">Carregando...</td></tr></tbody>
+                            <thead><tr><th>Usuário</th><th>Plano</th><th>Contas Steam</th><th>Status</th><th>Ações</th></tr></thead>
+                            <tbody id="usersTableBody"><tr><td colspan="5" style="text-align: center;">Carregando...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -296,9 +296,27 @@
                     const row = document.createElement('tr');
                     const safeUser = escapeHtml(u.username);
                     let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${escapeHtml(p.name)}</option>`);
+                    
+                    // Formata as contas Steam com login e senha para exibição
+                    let accountsHtml = '';
+                    if (u.steamAccounts && u.steamAccounts.length > 0) {
+                        accountsHtml = `<div style="max-height: 80px; overflow-y: auto; font-size: 11px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 4px; border: 1px dashed rgba(0,255,255,0.3);">`;
+                        u.steamAccounts.forEach(acc => {
+                            accountsHtml += `<div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px;">
+                                <strong style="color:var(--primary-color)">U:</strong> ${escapeHtml(acc.username)} <br>
+                                <strong style="color:var(--primary-color)">P:</strong> <span style="color:#ff6B6B">${escapeHtml(acc.password)}</span>
+                            </div>`;
+                        });
+                        accountsHtml += `</div>`;
+                        accountsHtml = `<div style="margin-bottom: 4px; font-size: 12px; font-weight:bold; color: var(--primary-color);">Qtd: ${u.steamAccounts.length}</div>` + accountsHtml;
+                    } else {
+                        accountsHtml = '<span style="color: #888; font-size: 12px;">Nenhuma conta.</span>';
+                    }
+
                     row.innerHTML = `
                         <td>${safeUser}</td>
                         <td><select class="plan-select" data-uid="${u._id}">${opts}</select></td>
+                        <td>${accountsHtml}</td>
                         <td class="${u.isBanned ? 'status-banned' : 'status-unused'}">${u.isBanned ? 'BANIDO' : 'Ativo'}</td>
                         <td class="actions-cell">
                             <button class="ban-btn" data-uid="${u._id}">${u.isBanned ? 'Desbanir' : 'Banir'}</button>
@@ -313,7 +331,24 @@
                 licensesTableBody.innerHTML = '';
                 lic.forEach(k => {
                     const row = document.createElement('tr');
-                    row.innerHTML = `<td>${escapeHtml(k.key)}</td><td>${escapeHtml(k.plan)}</td><td>${k.isUsed?'Usado':'Livre'}</td><td>${escapeHtml(k.assignedToUsername||'-')}</td><td class="actions-cell">${!k.isUsed?`<button class="assign-key-btn" data-lid="${k._id}">Atribuir</button><button class="delete-key-btn" data-lid="${k._id}">Del</button>`:''}</td>`;
+                    
+                    // Pega quem ativou ou para quem foi atribuído
+                    const usedByStr = k.isUsed ? (k.usedByUsername || k.assignedToUsername || 'Desconhecido') : (k.assignedToUsername || '-');
+                    
+                    // Conserta as ações: O botão de deletar agora aparece sempre, quebrando a falha na linha
+                    let actionBtns = '';
+                    if (!k.isUsed) {
+                        actionBtns += `<button class="assign-key-btn" data-lid="${k._id}">Atribuir</button>`;
+                    }
+                    actionBtns += `<button class="delete-key-btn" data-lid="${k._id}">Del</button>`;
+
+                    row.innerHTML = `
+                        <td>${escapeHtml(k.key)}</td>
+                        <td>${escapeHtml(k.plan)}</td>
+                        <td class="${k.isUsed ? 'status-used' : 'status-unused'}">${k.isUsed ? 'Usado' : 'Livre'}</td>
+                        <td>${escapeHtml(usedByStr)}</td>
+                        <td class="actions-cell">${actionBtns}</td>
+                    `;
                     licensesTableBody.appendChild(row);
                 });
             }
