@@ -65,7 +65,6 @@
     </div>
 
     <script>
-        // Encapsulamento para dificultar acesso direto via console
         (function() {
             let captchaResult = 0;
             
@@ -90,7 +89,6 @@
                 const submitButton = document.getElementById('submitButton');
                 const message = document.getElementById('message');
 
-                // Validação Local
                 if (parseInt(captchaInput) !== captchaResult) {
                     message.textContent = 'Matemática incorreta.';
                     message.className = 'p-3 rounded-md bg-red-900 border border-red-500 text-white block text-center';
@@ -115,13 +113,16 @@
                         throw new Error(result.message || 'Erro ao registrar');
                     }
 
-                    message.textContent = 'Sucesso! Redirecionando...';
-                    message.className = 'p-3 rounded-md bg-green-600 border border-green-400 text-white block text-center shadow-lg';
+                    // AQUI É A PARTE DA CHAVE DE RECUPERAÇÃO NO FRONTEND
+                    message.innerHTML = `Sucesso! Guarde sua Chave de Recuperação: <br> 
+                    <strong style="color:#ffd700; font-size:24px; letter-spacing: 2px;">${result.recoveryKey}</strong><br>
+                    <span style="font-size: 12px; color: #ffdddd;">Copie e guarde em segurança. Sem ela você nunca poderá recuperar sua conta! Redirecionando...</span>`;
+                    message.className = 'p-3 rounded-md bg-green-900 border border-green-400 text-white block text-center shadow-lg';
                     message.classList.remove('hidden');
                     
                     setTimeout(() => {
                         window.location.href = '/login';
-                    }, 1500);
+                    }, 8000); // 8 segundos para dar tempo de ele ler e copiar a chave!
 
                 } catch (error) {
                     message.textContent = error.message;
