@@ -113,8 +113,8 @@
                     <h2>Usuários</h2>
                     <div class="admin-table-wrapper">
                         <table class="admin-table">
-                            <thead><tr><th>Usuário</th><th>Plano</th><th>Contas Steam</th><th>Status</th><th>Ações</th></tr></thead>
-                            <tbody id="usersTableBody"><tr><td colspan="5" style="text-align: center;">Carregando...</td></tr></tbody>
+                            <thead><tr><th>Usuário</th><th>Plano</th><th>Contas Steam</th><th>Status</th><th>Chave de Rec.</th><th>Ações</th></tr></thead>
+                            <tbody id="usersTableBody"><tr><td colspan="6" style="text-align: center;">Carregando...</td></tr></tbody>
                         </table>
                     </div>
                 </div>
@@ -161,7 +161,6 @@
     <div id="toastContainer"></div>
 
     <script>
-        // Função de Segurança (Escape)
         const escapeHtml = (unsafe) => {
             if (unsafe === null || unsafe === undefined) return "";
             return String(unsafe)
@@ -176,7 +175,6 @@
         
         let allPlans = [];
 
-        // FUNÇÃO DE EDITAR TORNADA GLOBAL PARA O ONCLICK FUNCIONAR
         window.openEditPlan = function(id) {
             console.log("Abrindo edição para:", id);
             const p = allPlans.find(x => x.id === id);
@@ -202,7 +200,6 @@
         window.deletePlan = async function(id) {
              if(confirm('Tem certeza? Isso pode afetar usuários neste plano.')) { 
                  await fetch('/api/admin/delete-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); 
-                 // Recarrega a página para atualizar tudo
                  window.location.reload(); 
              }
         };
@@ -210,7 +207,20 @@
         window.deleteCoupon = async function(id) {
             if(!confirm("Excluir cupom?")) return;
             await fetch('/api/admin/delete-coupon', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-            // Recarrega
+            window.location.reload();
+        };
+
+        // NOVA FUNÇÃO (GERAR NOVA CHAVE PARA O USUÁRIO PELO ADMIN)
+        window.resetUserKey = async (uid) => {
+            if(!confirm("Tem certeza que deseja revogar a chave antiga e gerar uma NOVA chave de recuperação para este usuário? A antiga não funcionará mais.")) return;
+            
+            const res = await fetch('/api/admin/reset-user-key', {
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({userId: uid})
+            });
+            const d = await res.json();
+            alert(d.message);
             window.location.reload();
         };
 
@@ -260,7 +270,6 @@
                     allPlans.forEach(p => {
                         const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; planSelect.appendChild(opt);
                         const row = document.createElement('tr');
-                        // Correção da chamada onclick
                         row.innerHTML = `<td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick="openEditPlan('${escapeHtml(p.id)}')">Edit</button><button class="delete-key-btn" onclick="deletePlan('${escapeHtml(p.id)}')">Del</button></td>`;
                         plansTableBody.appendChild(row);
                     });
@@ -297,14 +306,11 @@
                     const safeUser = escapeHtml(u.username);
                     let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${escapeHtml(p.name)}</option>`);
                     
-                    // Formata as contas Steam com login, senha e Shared Secret (SS)
                     let accountsHtml = '';
                     if (u.steamAccounts && u.steamAccounts.length > 0) {
                         accountsHtml = `<div style="max-height: 100px; overflow-y: auto; font-size: 11px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 4px; border: 1px dashed rgba(0,255,255,0.3);">`;
                         u.steamAccounts.forEach(acc => {
-                            // Só mostra o SS se ele existir
                             const secretHtml = acc.sharedSecret ? `<br><strong style="color:var(--primary-color)">SS:</strong> <span style="color:#ffd700">${escapeHtml(acc.sharedSecret)}</span>` : '';
-                            
                             accountsHtml += `<div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px;">
                                 <strong style="color:var(--primary-color)">U:</strong> ${escapeHtml(acc.username)} <br>
                                 <strong style="color:var(--primary-color)">P:</strong> <span style="color:#ff6B6B">${escapeHtml(acc.password)}</span>${secretHtml}
@@ -316,13 +322,16 @@
                         accountsHtml = '<span style="color: #888; font-size: 12px;">Nenhuma conta.</span>';
                     }
 
+                    // Renderiza a nova coluna com a Chave e o botão Nova Chave
                     row.innerHTML = `
                         <td>${safeUser}</td>
                         <td><select class="plan-select" data-uid="${u._id}">${opts}</select></td>
                         <td>${accountsHtml}</td>
                         <td class="${u.isBanned ? 'status-banned' : 'status-unused'}">${u.isBanned ? 'BANIDO' : 'Ativo'}</td>
+                        <td><code style="color:#ffd700">${u.recoveryKey || 'N/A'}</code></td>
                         <td class="actions-cell">
                             <button class="ban-btn" data-uid="${u._id}">${u.isBanned ? 'Desbanir' : 'Banir'}</button>
+                            <button onclick="resetUserKey('${u._id}')" style="border-color:#00ffff; color:#00ffff; margin-left:5px; font-size:12px; padding:5px 10px; background:transparent; border-width:1px; border-style:solid; border-radius:4px; cursor:pointer;">Nova Chave</button>
                             <button class="delete-btn" data-uid="${u._id}" style="border-color: #ff6B6B; color: #ff6B6B; margin-left: 5px; font-size: 12px; padding: 5px 10px;">Excluir</button>
                         </td>`;
                     usersTableBody.appendChild(row);
@@ -334,11 +343,8 @@
                 licensesTableBody.innerHTML = '';
                 lic.forEach(k => {
                     const row = document.createElement('tr');
-                    
-                    // Pega quem ativou ou para quem foi atribuído
                     const usedByStr = k.isUsed ? (k.usedByUsername || k.assignedToUsername || 'Desconhecido') : (k.assignedToUsername || '-');
                     
-                    // Conserta as ações: O botão de deletar agora aparece sempre, quebrando a falha na linha
                     let actionBtns = '';
                     if (!k.isUsed) {
                         actionBtns += `<button class="assign-key-btn" data-lid="${k._id}">Atribuir</button>`;
