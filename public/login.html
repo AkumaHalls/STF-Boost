@@ -11,7 +11,6 @@
     <style>
         .tech-font { font-family: 'Share Tech Mono', monospace; }
         .global-alert { position: absolute; top: 0; left: 0; width: 100%; }
-        /* Correção para garantir que o estilo do style.css não quebre o Tailwind */
         .login-box input { margin-bottom: 0; } 
     </style>
     <script async defer src="https://akuma-labs.duckdns.org/tracker.js" data-website-id="cmnf7gbzi000c45uwzu1aio1m"></script>
@@ -55,15 +54,34 @@
             Não tem uma conta? 
             <a href="/register" class="font-medium text-blue-400 hover:underline">Registre-se aqui</a>
         </p>
+
+        <p class="text-sm text-center text-gray-400 mt-2">
+            Esqueceu a senha? 
+            <a href="#" id="forgotPasswordBtn" class="font-medium text-yellow-400 hover:underline">Recuperar acesso</a>
+        </p>
+    </div>
+
+    <div id="recoveryModal" class="modal" style="display: none; position: fixed; z-index: 60; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); backdrop-filter: blur(3px);">
+        <div style="background-color: rgba(27, 40, 56, 0.95); border: 1px solid #00ffff; margin: 15% auto; padding: 25px; width: 90%; max-width: 400px; border-radius: 8px; box-shadow: 0 0 25px rgba(0,255,255,0.3);">
+            <h2 class="text-xl text-cyan-400 mb-2 tech-font">Recuperação de Senha</h2>
+            <p class="text-sm text-gray-300 mb-4">Insira seu usuário do STF Boost e sua Chave de Recuperação.</p>
+            
+            <input type="text" id="recUsername" placeholder="Usuário STF" class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white mb-3 focus:outline-none focus:border-cyan-400 font-mono">
+            <input type="text" id="recKey" placeholder="Chave (STF-XXXX)" class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white mb-3 focus:outline-none focus:border-cyan-400 font-mono text-center tracking-widest uppercase">
+            <input type="password" id="recNewPassword" placeholder="Nova Senha" class="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded text-white mb-5 focus:outline-none focus:border-cyan-400 font-mono">
+            
+            <div class="flex gap-3">
+                <button id="sendRecoveryBtn" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded transition-colors tech-font uppercase">Recuperar</button>
+                <button id="closeRecoveryBtn" class="w-full py-2 bg-gray-600 hover:bg-gray-700 text-white font-bold rounded transition-colors tech-font uppercase">Cancelar</button>
+            </div>
+        </div>
     </div>
 
     <script>
-        // --- LÓGICA DO ALERTA GLOBAL ---
         async function checkGlobalAlert() {
             try {
                 const res = await fetch('/api/global-alert');
                 const data = await res.json();
-                
                 if (data && data.active) {
                     const lastClosed = localStorage.getItem('globalAlertClosed');
                     if (lastClosed !== data.updatedAt) {
@@ -74,7 +92,7 @@
                         el.dataset.updatedAt = data.updatedAt; 
                     }
                 }
-            } catch(e) { console.error("Erro ao carregar alerta:", e); }
+            } catch(e) {}
         }
 
         window.closeGlobalAlert = function() {
@@ -85,7 +103,6 @@
             }
         };
 
-        // --- LÓGICA DE LOGIN ---
         document.addEventListener('DOMContentLoaded', () => {
             checkGlobalAlert();
 
@@ -125,6 +142,60 @@
                     submitButton.textContent = 'ENTRAR';
                 }
             });
+
+            // LÓGICA DO MODAL DE RECUPERAÇÃO (CHAVE)
+            const forgotPasswordBtn = document.getElementById('forgotPasswordBtn');
+            const recoveryModal = document.getElementById('recoveryModal');
+            const closeRecoveryBtn = document.getElementById('closeRecoveryBtn');
+            const sendRecoveryBtn = document.getElementById('sendRecoveryBtn');
+
+            if(forgotPasswordBtn) forgotPasswordBtn.onclick = (e) => { e.preventDefault(); recoveryModal.style.display = 'block'; };
+            if(closeRecoveryBtn) closeRecoveryBtn.onclick = () => recoveryModal.style.display = 'none';
+
+            if(sendRecoveryBtn) sendRecoveryBtn.onclick = async () => {
+                const u = document.getElementById('recUsername').value.trim();
+                const k = document.getElementById('recKey').value.trim();
+                const p = document.getElementById('recNewPassword').value.trim();
+                
+                if(!u || !k || !p) {
+                    const msg = document.getElementById('errorMessage');
+                    msg.textContent = "Preencha o Usuário, Chave e a Nova Senha.";
+                    msg.style.display = 'block';
+                    recoveryModal.style.display = 'none';
+                    return;
+                }
+                
+                sendRecoveryBtn.disabled = true;
+                sendRecoveryBtn.textContent = 'ENVIANDO...';
+                
+                try {
+                    const res = await fetch('/api/recover-password', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({username: u, recoveryKey: k, newPassword: p})
+                    });
+                    const data = await res.json();
+                    
+                    const msg = document.getElementById('errorMessage');
+                    msg.textContent = data.message;
+                    msg.style.display = 'block';
+                    msg.style.borderColor = res.ok ? '#00ffff' : '#ff4444';
+                    msg.style.backgroundColor = res.ok ? 'rgba(0,255,255,0.1)' : 'rgba(255,0,0,0.1)';
+                    msg.style.color = res.ok ? '#00ffff' : '#ff4444';
+                    
+                    if(res.ok) {
+                        recoveryModal.style.display = 'none';
+                        // Limpa os campos para ele logar normal
+                        document.getElementById('username').value = u;
+                        document.getElementById('password').value = p;
+                    }
+                } catch(e) {
+                    alert("Erro de conexão.");
+                } finally {
+                    sendRecoveryBtn.disabled = false;
+                    sendRecoveryBtn.textContent = 'RECUPERAR';
+                }
+            };
         });
     </script>
 </body>
