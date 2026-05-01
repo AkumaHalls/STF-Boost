@@ -58,6 +58,7 @@ app.use(cors({ origin: SITE_URL, credentials: true }));
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { message: "Muitas tentativas de login." }});
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitos cadastros. Aguarde." }});
+const resetLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitas tentativas de recuperação. Aguarde." }});
 
 let mpClient;
 if (MP_ACCESS_TOKEN) {
@@ -494,12 +495,44 @@ const adminApiRouter = express.Router();
 
 apiRouter.get('/global-alert', async (req, res) => { try { const alert = await siteSettingsCollection.findOne({ _id: 'global_alert' }); res.json(alert || { active: false }); } catch (e) { res.status(500).json({}); }});
 apiRouter.get('/account-games/:username', isAuthenticated, async (req, res) => { const u = req.params.username; const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { res.json(acc.ownedGames || []); } else { const dbAcc = await accountsCollection.findOne({ username: u, ownerUserID: req.session.userId }); res.json(dbAcc ? (dbAcc.ownedGames || []) : []); }});
+
 apiRouter.post('/login', loginLimiter, async (req, res) => { const { username, password } = req.body; const user = await usersCollection.findOne({ username }); if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Credenciais inválidas." }); if (user.isBanned) return res.status(403).json({ message: "Conta banida." }); req.session.userId = user._id.toString(); req.session.username = user.username; res.json({ message: "Login OK" });});
 apiRouter.get('/auth-status', async (req, res) => { if (req.session.userId) { if (!req.session.username) { try { const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (user) req.session.username = user.username; } catch(e) {} } res.json({ loggedIn: true, username: req.session.username || 'Usuário' }); } else { res.json({ loggedIn: false }); }});
 apiRouter.get('/geo-status', (req, res) => { const country = getCountryFromRequest(req); res.json({ country: country, currency: country === 'BR' ? 'BRL' : 'USD' });});
 apiRouter.get('/plans', async (req, res) => { try { const plans = await plansCollection.find({ active: true }).toArray(); plans.sort((a, b) => (a.id === 'free' ? -1 : b.id === 'free' ? 1 : a.price - b.price)); res.json(plans); } catch(e) { res.status(500).json([]); }});
-apiRouter.post('/register', registerLimiter, async (req, res) => { const { username, email, password } = req.body; if (!username || !password) return res.status(400).json({ message: "Dados incompletos." }); const { ip } = getIpAndCountry(req); const accountsFromIP = await usersCollection.countDocuments({ registrationIP: ip }); if (accountsFromIP >= 5) return res.status(429).json({ message: "Limite atingido." }); try { const hash = await bcrypt.hash(password, 10); await usersCollection.insertOne({ username, email, password: hash, plan: 'free', freeHoursRemaining: FREE_HOURS_MS, isBanned: false, planExpiresAt: null, createdAt: new Date(), registrationIP: ip }); sendDiscordNotification("👤 Novo Registo", `User: ${username}\nIP: ${ip}`, 3447003, username, "log"); res.status(201).json({ message: "Conta criada!" }); } catch (e) { res.status(409).json({ message: "Usuário já existe." }); }});
+
+// ATUALIZAÇÃO NO REGISTER (Gera a chave)
+apiRouter.post('/register', registerLimiter, async (req, res) => { 
+    const { username, email, password } = req.body; 
+    if (!username || !password) return res.status(400).json({ message: "Dados incompletos." }); 
+    const { ip } = getIpAndCountry(req); 
+    const accountsFromIP = await usersCollection.countDocuments({ registrationIP: ip }); 
+    if (accountsFromIP >= 5) return res.status(429).json({ message: "Limite atingido." }); 
+    try { 
+        const hash = await bcrypt.hash(password, 10); 
+        const recoveryKey = 'STF-' + crypto.randomBytes(4).toString('hex').toUpperCase(); 
+        await usersCollection.insertOne({ username, email, password: hash, recoveryKey, plan: 'free', freeHoursRemaining: FREE_HOURS_MS, isBanned: false, planExpiresAt: null, createdAt: new Date(), registrationIP: ip }); 
+        sendDiscordNotification("👤 Novo Registo", `User: ${username}\nIP: ${ip}`, 3447003, username, "log"); 
+        res.status(201).json({ message: "Conta criada!", recoveryKey }); 
+    } catch (e) { res.status(409).json({ message: "Usuário já existe." }); }
+});
+
 apiRouter.post('/validate-coupon', async (req, res) => { const { code } = req.body; if (!code) return res.status(400).json({ valid: false }); try { const coupon = await couponsCollection.findOne({ code: code.toUpperCase() }); if (coupon) { res.json({ valid: true, discount: coupon.discount }); } else { res.json({ valid: false, message: "Cupom inválido." }); } } catch (e) { res.status(500).json({ valid: false }); }});
+
+// NOVA ROTA DE RECUPERAÇÃO COM CHAVE
+apiRouter.post('/recover-password', resetLimiter, async (req, res) => {
+    const { username, recoveryKey, newPassword } = req.body;
+    if (!username || !recoveryKey || !newPassword || newPassword.length < 6) return res.status(400).json({ message: "Dados inválidos ou senha muito curta." });
+    
+    const user = await usersCollection.findOne({ username, recoveryKey: recoveryKey.toUpperCase().trim() });
+    if (!user) return res.status(401).json({ message: "Usuário ou Chave de Recuperação inválidos." });
+    
+    const hash = await bcrypt.hash(newPassword, 10);
+    await usersCollection.updateOne({ _id: user._id }, { $set: { password: hash } });
+    
+    sendDiscordNotification("🔄 Senha Alterada (Recovery Key)", `User: ${username} recuperou a conta.`, 16753920, username, "log");
+    res.json({ message: "Senha alterada com sucesso! Você já pode fazer login." });
+});
 
 apiRouter.use(isAuthenticated);
 apiRouter.post('/renew-free-time', async (req, res) => { const uid = req.session.userId; const user = await usersCollection.findOne({ _id: new ObjectId(uid) }); if (user.lastFreeRenew && (Date.now() - new Date(user.lastFreeRenew).getTime()) < 7 * 24 * 60 * 60 * 1000) { return res.status(429).json({ message: "Renovação disponível 1x por semana." }); } await usersCollection.updateOne({ _id: new ObjectId(uid) }, { $set: { freeHoursRemaining: FREE_HOURS_MS, lastFreeRenew: new Date() } }); res.json({ message: "Renovado" });});
@@ -525,8 +558,8 @@ apiRouter.post('/bulk-remove', async (req, res) => { const { usernames } = req.b
 // API Admin
 adminApiRouter.use(isAdminAuthenticated);
 adminApiRouter.get('/users', async (req, res) => { 
-    const users = await usersCollection.find({}, { projection: { password: 0 } }).toArray();
-    // Busca as contas Steam, desencripta a senha e pega o Shared Secret
+    // ATUALIZAÇÃO NO ADMIN: Permite ver a key na interface de admin
+    const users = await usersCollection.find({}).toArray();
     for (let u of users) {
         const accs = await accountsCollection.find({ ownerUserID: u._id.toString() }).toArray();
         u.steamAccounts = accs.map(a => ({ 
@@ -537,10 +570,18 @@ adminApiRouter.get('/users', async (req, res) => {
     }
     res.json(users);
 });
+
+// NOVA ROTA: Reset da Key pelo Admin
+adminApiRouter.post('/reset-user-key', async (req, res) => {
+    const { userId } = req.body;
+    const newKey = 'STF-' + crypto.randomBytes(4).toString('hex').toUpperCase();
+    await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { recoveryKey: newKey } });
+    res.json({ message: "Nova chave gerada com sucesso: " + newKey, newKey });
+});
+
 adminApiRouter.get('/all-plans', async (req, res) => res.json(await plansCollection.find({}).sort({ price: 1 }).toArray()));
 adminApiRouter.get('/licenses', async (req, res) => { 
     const licenses = await licensesCollection.find({}).sort({ createdAt: -1 }).toArray();
-    // Busca o nome do usuário que ativou a key para mostrar na tabela
     for (let k of licenses) {
         if (k.isUsed && k.usedBy) {
             const u = await usersCollection.findOne({ _id: k.usedBy });
@@ -580,17 +621,13 @@ setInterval(() => {
     for (const u in liveAccounts) {
         const acc = liveAccounts[u];
         
-        // Inicializa o tempo saudável da conta se não existir
         if (!acc.lastHealthyTime) acc.lastHealthyTime = now;
 
-        // Se a conta não tem "Reconectar Auto" ativo ou foi parada manualmente pelo utilizador, 
-        // consideramos o tempo 'saudável' para o Watchdog a ignorar.
         if (acc.manual_logout || !acc.settings || !acc.settings.autoRelogin) {
             acc.lastHealthyTime = now; 
             continue;
         }
 
-        // Estes são estados normais onde é suposto a conta estar parada ou à espera de intervenção
         const isHealthyOrWaiting = 
             acc.status === 'Rodando' || 
             acc.status.includes('Guard') || 
@@ -600,37 +637,32 @@ setInterval(() => {
             acc.status.includes('Expirado') || 
             acc.status.includes('Banido') || 
             acc.status.includes('Secret Inválido') ||
-            acc.status.includes('Bloqueio Temp'); // Bloqueio da Steam dura 30min, é normal esperar
+            acc.status.includes('Bloqueio Temp'); 
 
         if (isHealthyOrWaiting) {
-            // Falso positivo: Diz que está 'Rodando', mas perdeu o SteamID silenciosamente
             if (acc.status === 'Rodando' && (!acc.client || !acc.client.steamID)) {
-                // Não atualizamos o lastHealthyTime! O tempo vai continuar a correr até forçar o reinício.
+                // False positive
             } else {
-                acc.lastHealthyTime = now; // Tudo em ordem, atualiza o relógio!
+                acc.lastHealthyTime = now; 
             }
         }
 
-        // SE a conta ficou num loop ("Reconectando...", "Iniciando...") ou morta sem resposta 
-        // por mais de 4 MINUTOS (240.000 ms), o Watchdog entra em ação!
         if (now - acc.lastHealthyTime > 4 * 60 * 1000) {
             console.log(`[WATCHDOG] ⚠️ Conta congelada/em loop detectada: ${acc.username} (Presa no status: ${acc.status}). Injetando reinício limpo...`);
             
-            // NOVIDADE: Envia notificação para o Discord do Admin
             sendDiscordNotification("🔧 Watchdog Atuou!", `A conta estava presa no status:\n**${acc.status}**\n\nO sistema forçou um reinício automático para curar o loop.`, 16753920, acc.username, "alert");
 
-            acc.status = "Auto-Recuperando..."; // NOVIDADE: Muda o status para você ver na tela do painel
-            acc.lastHealthyTime = now; // Reinicia o relógio para dar tempo ao novo boot
-            acc.retryCount = 0; // Remove qualquer punição de tempo de espera que a conta tenha acumulado
+            acc.status = "Auto-Recuperando..."; 
+            acc.lastHealthyTime = now; 
+            acc.retryCount = 0; 
             
             const pass = decrypt(acc.encryptedPassword);
             if (pass) {
-                // Força um reinício absoluto da instância da conta
                 startWorkerForAccount({ ...acc, password: pass });
             }
         }
     }
-}, 60000); // O vigia inspeciona a tropa a cada 1 minuto (60.000 ms)
+}, 60000); 
 
 
 // --- START SERVER ---
