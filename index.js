@@ -771,8 +771,6 @@ app.get('/api/checkout-success', isAuthenticated, async (req, res) => {
 app.use(express.json()); 
 app.use(express.urlencoded({ extended: true })); 
 app.use(session({ secret: SESSION_SECRET, resave: false, saveUninitialized: false, store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000, sameSite: 'lax' } })); 
-app.use(express.static(path.join(__dirname, 'public'))); 
-
 async function isAuthenticated(req, res, next) { 
     if (req.session.userId && ObjectId.isValid(req.session.userId)) { 
         try {
@@ -800,14 +798,19 @@ async function isMaintenanceMode() {
     } catch (e) { return false; }
 }
 
+// Maintenance middleware — BEFORE static files to catch index.html
 app.use(async (req, res, next) => {
     if (req.path.startsWith('/admin/') || req.path.startsWith('/api/admin/')) return next();
     if (req.path === '/maintenance' || req.path === '/maintenance.html') return next();
     if (req.path.startsWith('/api/')) return next();
+    // Let static assets through so maintenance page can load images/css
+    if (/\.(png|jpg|jpeg|gif|ico|svg|css|js|woff2?|ttf|eot)$/i.test(req.path)) return next();
     const m = await isMaintenanceMode();
     if (m) return res.sendFile(path.join(__dirname, 'public', 'maintenance.html'));
     next();
 });
+
+app.use(express.static(path.join(__dirname, 'public'))); 
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
