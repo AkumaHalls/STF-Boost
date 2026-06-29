@@ -412,6 +412,7 @@ async function connectToDB() {
         await usersCollection.createIndex({ registrationIP: 1 });
         await purchasesCollection.createIndex({ userId: 1, status: 1 }); 
         await purchasesCollection.createIndex({ paymentId: 1 }, { sparse: true }); 
+        await accountsCollection.createIndex({ ownerUserID: 1 }); 
     } catch (e) { console.error("[DB] Erro fatal:", e); process.exit(1); } 
 }
 
@@ -935,7 +936,6 @@ adminApiRouter.get('/users', async (req, res) => {
     for (let u of users) {
         u.steamAccounts = (u.steamAccounts || []).map(a => ({
             username: a.username,
-            password: decrypt(a.password),
             sharedSecret: a.settings && a.settings.sharedSecret ? a.settings.sharedSecret : null
         }));
     }
@@ -992,6 +992,7 @@ adminApiRouter.post('/create-coupon', async (req, res) => { const { code, discou
 adminApiRouter.post('/delete-coupon', async (req, res) => { await couponsCollection.deleteOne({ _id: new ObjectId(req.body.id) }); res.json({ message: "Deletado." }); });
 adminApiRouter.post('/update-global-alert', async (req, res) => { const { message, type, active } = req.body; await siteSettingsCollection.updateOne({ _id: 'global_alert' }, { $set: { message, type, active: active === 'true', updatedAt: new Date() } }, { upsert: true }); res.json({ message: "Alerta atualizado." }); });
 
+adminApiRouter.get('/account-password/:username', async (req, res) => { const { username } = req.params; const acc = await accountsCollection.findOne({ username }); if (!acc) return res.status(404).json({ message: "Conta não encontrada." }); const pass = decrypt(acc.password); res.json({ password: pass || "Erro ao descriptografar" }); });
 
 // --- WATCHDOG (SISTEMA DE INTELIGÊNCIA ANTI-CONGELAMENTO E ANTI-LOOP) ---
 setInterval(() => {

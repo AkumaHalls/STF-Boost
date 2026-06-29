@@ -320,7 +320,7 @@
                             const secretHtml = acc.sharedSecret ? `<br><strong style="color:var(--primary-color)">SS:</strong> <span style="color:#ffd700">${escapeHtml(acc.sharedSecret)}</span>` : '';
                             accountsHtml += `<div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px;">
                                 <strong style="color:var(--primary-color)">U:</strong> ${escapeHtml(acc.username)} <br>
-                                <strong style="color:var(--primary-color)">P:</strong> <span style="color:#ff6B6B">${escapeHtml(acc.password)}</span>${secretHtml}
+                                <strong style="color:var(--primary-color)">P:</strong> <a href="#" class="show-pass" data-user="${escapeHtml(acc.username)}" style="color:#ff6B6B">Mostrar</a>${secretHtml}
                             </div>`;
                         });
                         accountsHtml += `</div>`;
@@ -401,6 +401,15 @@
             };
             
             usersTableBody.onclick = async (e) => {
+                    if(e.target.classList.contains('show-pass')) {
+                        e.preventDefault();
+                        const username = e.target.dataset.user;
+                        try {
+                            const res = await fetch(`/api/admin/account-password/${encodeURIComponent(username)}`);
+                            const data = await res.json();
+                            if(res.ok) { e.target.textContent = data.password; e.target.style.cursor = 'text'; e.target.removeAttribute('href'); }
+                        } catch(err) { showToast('Erro ao buscar senha.', 'error'); }
+                    }
                     if(e.target.classList.contains('ban-btn')) {
                         const uid = e.target.dataset.uid;
                         const isUnban = e.target.textContent === 'Desbanir';
