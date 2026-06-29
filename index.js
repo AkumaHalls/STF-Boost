@@ -793,6 +793,22 @@ const isAdminAuthenticated = (req, res, next) => {
     next(); 
 };
 
+async function isMaintenanceMode() {
+    try {
+        const setting = await siteSettingsCollection.findOne({ _id: 'maintenance' });
+        return setting && setting.active === true;
+    } catch (e) { return false; }
+}
+
+app.use(async (req, res, next) => {
+    if (req.path.startsWith('/admin/') || req.path.startsWith('/api/admin/')) return next();
+    if (req.path === '/maintenance' || req.path === '/maintenance.html') return next();
+    if (req.path.startsWith('/api/')) return next();
+    const m = await isMaintenanceMode();
+    if (m) return res.sendFile(path.join(__dirname, 'public', 'maintenance.html'));
+    next();
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/login', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'login.html')));
 app.get('/register', (req, res) => req.session.userId ? res.redirect('/dashboard') : res.sendFile(path.join(__dirname, 'public', 'register.html')));
@@ -992,6 +1008,20 @@ adminApiRouter.post('/create-coupon', async (req, res) => { const { code, discou
 adminApiRouter.post('/delete-coupon', async (req, res) => { await couponsCollection.deleteOne({ _id: new ObjectId(req.body.id) }); res.json({ message: "Deletado." }); });
 adminApiRouter.post('/update-global-alert', async (req, res) => { const { message, type, active } = req.body; await siteSettingsCollection.updateOne({ _id: 'global_alert' }, { $set: { message, type, active: active === 'true', updatedAt: new Date() } }, { upsert: true }); res.json({ message: "Alerta atualizado." }); });
 
+adminApiRouter.post('/toggle-maintenance', async (req, res) => {
+    const setting = await siteSettingsCollection.findOne({ _id: 'maintenance' });
+    const nowActive = setting && setting.active === true;
+    await siteSettingsCollection.updateOne(
+        { _id: 'maintenance' },
+        { $set: { active: !nowActive, updatedAt: new Date() } },
+        { upsert: true }
+    );
+    res.json({ active: !nowActive, message: nowActive ? 'Manutenção desligada' : 'Manutenção ligada' });
+});
+adminApiRouter.get('/maintenance-status', async (req, res) => {
+    const setting = await siteSettingsCollection.findOne({ _id: 'maintenance' });
+    res.json({ active: setting && setting.active === true });
+});
 adminApiRouter.get('/account-password/:username', async (req, res) => { const { username } = req.params; const acc = await accountsCollection.findOne({ username }); if (!acc) return res.status(404).json({ message: "Conta não encontrada." }); const pass = decrypt(acc.password); res.json({ password: pass || "Erro ao descriptografar" }); });
 
 // --- WATCHDOG (SISTEMA DE INTELIGÊNCIA ANTI-CONGELAMENTO E ANTI-LOOP) ---
