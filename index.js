@@ -54,7 +54,7 @@ if (!MONGODB_URI || !ADMIN_PASSWORD || !MP_ACCESS_TOKEN || !SITE_URL) {
 }
 
 app.set('trust proxy', 1);
-app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", "cdn.tailwindcss.com", "fonts.googleapis.com", "akuma-labs.duckdns.org", "https://*.mercadopago.com"], styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.tailwindcss.com"], fontSrc: ["'self'", "fonts.gstatic.com"], imgSrc: ["'self'", "data:", "https:"], connectSrc: ["'self'", "https://api.mercadopago.com", "https://api.ipify.org", "akuma-labs.duckdns.org"], frameSrc: ["'self'", "https://*.mercadopago.com.br", "https://*.mercadopago.com"] } } }));
+app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", "'unsafe-inline'", "cdn.tailwindcss.com", "fonts.googleapis.com", "akuma-labs.duckdns.org", "https://*.mercadopago.com"], styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.tailwindcss.com"], fontSrc: ["'self'", "fonts.gstatic.com"], imgSrc: ["'self'", "data:", "https:"], connectSrc: ["'self'", "https://api.mercadopago.com", "https://api.ipify.org", "akuma-labs.duckdns.org"], frameSrc: ["'self'", "https://*.mercadopago.com.br", "https://*.mercadopago.com"] } } }));
 app.use(cors({ origin: SITE_URL, credentials: true }));
 
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { message: "Muitas tentativas de login." }});
