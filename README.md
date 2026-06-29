@@ -1,5 +1,8 @@
 # STF Steam Boost - O Seu Exército de Horas Pessoal! 🚀
 
+> **Licença:** Uso privado — Todos os direitos reservados.
+> Este software é propriedade exclusiva do seu desenvolvedor. Não é permitida a cópia, distribuição, modificação ou uso comercial sem autorização expressa.
+
 ![Painel do STF Steam Boost em Ação!](https://i.imgur.com/KPGG1fJ.png)
 
 Bem-vindo, Comandante, ao painel de controlo da sua operação de boosting de horas na Steam! 🤯
@@ -97,6 +100,15 @@ Usar o painel é a parte mais fácil e divertida!
 5.  **Configurações:** Clique no botão "Config." (a engrenagem) para abrir um mundo de opções: jogos, título personalizado, modo offline e muito mais!
 
 ---
+
+---
+
+## 🔒 Segurança e Pagamentos (v1.1+)
+
+* **Mercado Pago:** Integração completa com checkout via Preference API, webhook com validação HMAC e verificação de pagamento via API oficial.
+* **Entrega por Email:** Planos podem ser entregues via chave de licença gerada automaticamente, sem ativação direta na conta.
+* **Criptografia AES-256-GCM:** Senhas Steam protegidas com o padrão mais seguro; fallback automático para CBC legado.
+* **Proteções:** Rate limiting por endpoint, CSP restritivo, validação de senha forte, sessão admin com timeout, confirmação em ações administrativas e muito mais.
 
 ## A Jornada Épica ✨
 
