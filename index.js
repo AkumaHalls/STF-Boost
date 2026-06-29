@@ -820,13 +820,11 @@ apiRouter.get('/auth-status', async (req, res) => { if (req.session.userId) { if
 apiRouter.get('/geo-status', (req, res) => { const country = getCountryFromRequest(req); res.json({ country: country, currency: country === 'BR' ? 'BRL' : 'USD' });});
 apiRouter.get('/stats', async (req, res) => {
     try {
-        const [totalUsers, totalAccounts, usageAgg] = await Promise.all([
-            usersCollection.countDocuments({}),
+        const [totalAccounts, totalPurchases] = await Promise.all([
             accountsCollection.countDocuments({}),
-            purchasesCollection.aggregate([{ $group: { _id: null, total: { $sum: '$usageCount' } } }]).toArray()
+            purchasesCollection.countDocuments({})
         ]);
-        const totalBoostSessions = usageAgg.length > 0 ? usageAgg[0].total : 0;
-        res.json({ totalUsers, totalAccounts, totalBoostSessions });
+        res.json({ totalAccounts, totalPurchases });
     } catch(e) {
         res.status(500).json({ totalUsers: 0, totalAccounts: 0, totalBoostSessions: 0 });
     }

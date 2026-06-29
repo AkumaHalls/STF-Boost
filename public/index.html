@@ -59,12 +59,8 @@
     <section id="stats" class="container mx-auto px-4 py-16">
         <div class="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto text-center">
             <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                <p class="text-3xl md:text-4xl font-bold text-blue-400 tech-font" id="statUsers">0</p>
-                <p class="text-gray-400 text-sm mt-1">Usuários</p>
-            </div>
-            <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                <p class="text-3xl md:text-4xl font-bold text-green-400 tech-font" id="statSessions">0</p>
-                <p class="text-gray-400 text-sm mt-1">Sessões de Boost</p>
+                <p class="text-3xl md:text-4xl font-bold text-green-400 tech-font" id="statPurchases">0</p>
+                <p class="text-gray-400 text-sm mt-1">Compras Realizadas</p>
             </div>
             <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
                 <p class="text-3xl md:text-4xl font-bold text-purple-400 tech-font" id="statAccounts">0</p>
@@ -214,8 +210,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             // Carrega estatísticas
             fetch('/api/stats').then(r => r.json()).then(data => {
-                animateCounter(document.getElementById('statUsers'), data.totalUsers);
-                animateCounter(document.getElementById('statSessions'), data.totalBoostSessions);
+                animateCounter(document.getElementById('statPurchases'), data.totalPurchases);
                 animateCounter(document.getElementById('statAccounts'), data.totalAccounts);
             }).catch(() => {});
 
