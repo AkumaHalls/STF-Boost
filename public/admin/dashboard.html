@@ -197,8 +197,9 @@
         let totalPages = 1;
 
         window.openEditPlan = function(id) {
+            if (!allPlans || allPlans.length === 0) { showToast("Planos nao carregados.", 'error'); return; }
             const p = allPlans.find(x => x.id === id);
-            if (!p) return;
+            if (!p) { showToast("Plano nao encontrado: " + id, 'error'); return; }
 
             document.getElementById('editPlanId').value = p.id;
             document.getElementById('editPlanIdDisplay').value = p.id;
