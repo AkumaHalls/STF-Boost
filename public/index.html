@@ -14,10 +14,10 @@
         body { font-family: 'Inter', sans-serif; }
         .tech-font { font-family: 'Share Tech Mono', monospace; }
         .gradient-bg { background: linear-gradient(90deg, #0a0a14, #1E3A8A); }
-        /* Ajuste para slider */
         .custom-plan-slider { width: 100%; accent-color: #06b6d4; cursor: pointer; }
         .custom-label { display: flex; justify-content: space-between; font-size: 0.875rem; color: #cbd5e1; margin-bottom: 0.25rem; }
         .custom-val { font-weight: bold; color: #fff; }
+        .step-number { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; border-radius: 50%; font-size: 1.25rem; font-weight: 700; }
     </style>
     <script async defer src="https://akuma-labs.duckdns.org/tracker.js" data-website-id="cmnf7gbzi000c45uwzu1aio1m"></script>
 </head>
@@ -29,7 +29,7 @@
             <span class="text-2xl tech-font">STF Boost</span>
         </div>
         <nav class="hidden md:flex items-center gap-6">
-            <a href="#features" class="hover:text-blue-400 transition-colors">Funcionalidades</a>
+            <a href="#how-it-works" class="hover:text-blue-400 transition-colors">Como Funciona</a>
             <a href="#pricing" class="hover:text-blue-400 transition-colors">Preços</a>
             <a href="#faq" class="hover:text-blue-400 transition-colors">FAQ</a>
         </nav>
@@ -41,60 +41,83 @@
 
     <main class="gradient-bg">
         <section class="container mx-auto px-4 py-20 text-center flex flex-col items-center">
-            <h1 class="text-5xl md:text-7xl font-bold mb-6 tech-font">AUMENTE SUAS HORAS STEAM</h1>
-            <p class="text-xl text-gray-300 mb-8 max-w-2xl">
-                O serviço de boost de horas mais estável e seguro. Ganhe 50 horas grátis ao se registar e domine o seu perfil.
+            <div class="inline-flex items-center gap-2 bg-blue-900/40 border border-blue-700/50 rounded-full px-4 py-1.5 text-sm text-blue-300 mb-6">
+                <span class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                Serviço 100% online — nada de download
+            </div>
+            <h1 class="text-5xl md:text-7xl font-bold mb-6 tech-font leading-tight">
+                AUMENTE SUAS <span class="text-blue-400">HORAS STEAM</span>
+            </h1>
+            <p class="text-xl text-gray-300 mb-10 max-w-2xl">
+                Horas reais no seu perfil sem deixar o PC ligado. Seguro, rápido e sem risco de banimento (VAC-Free).<br>
+                <span class="text-blue-300 font-semibold">Ganhe 50 horas grátis ao criar sua conta.</span>
             </p>
-            <div class="flex gap-4">
-                <a href="/register" class="bg-blue-600 px-8 py-3 rounded-md text-lg font-semibold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-900/50">
+            <div class="flex flex-col sm:flex-row gap-4 mb-12">
+                <a href="/register" class="bg-blue-600 px-10 py-4 rounded-md text-lg font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-900/50">
                     Começar de Graça
                 </a>
-                <a href="#pricing" class="bg-gray-700 px-8 py-3 rounded-md text-lg font-semibold hover:bg-gray-600 transition-colors">
+                <a href="#pricing" class="bg-gray-700 px-10 py-4 rounded-md text-lg font-semibold hover:bg-gray-600 transition-colors">
                     Ver Planos
                 </a>
+            </div>
+            <div class="flex flex-wrap justify-center gap-8 text-sm text-gray-400">
+                <span class="flex items-center gap-2"><span class="text-green-400 text-lg">✓</span> Zero VAC</span>
+                <span class="flex items-center gap-2"><span class="text-green-400 text-lg">✓</span> 50h Grátis</span>
+                <span class="flex items-center gap-2"><span class="text-green-400 text-lg">✓</span> Suporte 24/7</span>
+                <span class="flex items-center gap-2"><span class="text-green-400 text-lg">✓</span> Pagamento Seguro</span>
             </div>
         </section>
     </main>
 
-    <section id="stats" class="container mx-auto px-4 py-16">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-4xl mx-auto text-center">
-            <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                <p class="text-3xl md:text-4xl font-bold text-green-400 tech-font" id="statPurchases">0</p>
-                <p class="text-gray-400 text-sm mt-1">Compras Realizadas</p>
+    <section id="how-it-works" class="container mx-auto px-4 py-24">
+        <h2 class="text-4xl font-bold text-center mb-4 tech-font">Como <span class="text-blue-400">Funciona</span></h2>
+        <p class="text-gray-400 text-center mb-12 max-w-xl mx-auto">3 passos simples para começar a acumular horas no seu perfil Steam</p>
+        <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+            <div class="text-center">
+                <div class="step-number bg-blue-600 text-white mx-auto mb-4">1</div>
+                <h3 class="text-xl font-semibold mb-2">Crie sua Conta</h3>
+                <p class="text-gray-400 text-sm">Registre-se gratuitamente e ganhe <strong class="text-white">50 horas de boost</strong> sem pagar nada.</p>
             </div>
-            <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                <p class="text-3xl md:text-4xl font-bold text-purple-400 tech-font" id="statAccounts">0</p>
-                <p class="text-gray-400 text-sm mt-1">Contas Adicionadas</p>
+            <div class="text-center">
+                <div class="step-number bg-blue-600 text-white mx-auto mb-4">2</div>
+                <h3 class="text-xl font-semibold mb-2">Adicione sua Steam</h3>
+                <p class="text-gray-400 text-sm">Informe login e senha da conta que deseja boostar. Seus dados ficam <strong class="text-white">criptografados</strong>.</p>
             </div>
-            <div class="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
-                <p class="text-3xl md:text-4xl font-bold text-cyan-400 tech-font">24/7</p>
-                <p class="text-gray-400 text-sm mt-1">Suporte</p>
-            </div>
-        </div>
-    </section>
-
-    <section id="features" class="container mx-auto px-4 py-24">
-        <h2 class="text-4xl font-bold text-center mb-12 tech-font">Porquê escolher o <span class="text-blue-400">STF Boost</span>?</h2>
-        <div class="grid md:grid-cols-3 gap-8">
-            <div class="feature-card p-6 rounded-lg text-center bg-gray-800 border border-gray-700 hover:border-blue-500 transition-colors">
-                <h3 class="text-2xl font-semibold mb-3 text-blue-300">50 Horas Grátis</h3>
-                <p class="text-gray-300">Crie sua conta e receba 50 horas de boost totalmente grátis, renováveis.</p>
-            </div>
-            <div class="feature-card p-6 rounded-lg text-center bg-gray-800 border border-gray-700 hover:border-blue-500 transition-colors">
-                <h3 class="text-2xl font-semibold mb-3 text-blue-300">Seguro</h3>
-                <p class="text-gray-300">Nossa tecnologia simula que você está a jogar, garantindo zero risco (No-VAC).</p>
-            </div>
-            <div class="feature-card p-6 rounded-lg text-center bg-gray-800 border border-gray-700 hover:border-blue-500 transition-colors">
-                <h3 class="text-2xl font-semibold mb-3 text-blue-300">Painel Completo</h3>
-                <p class="text-gray-300">Controle total sobre suas contas. Adicione jogos, defina status e muito mais.</p>
+            <div class="text-center">
+                <div class="step-number bg-blue-600 text-white mx-auto mb-4">3</div>
+                <h3 class="text-xl font-semibold mb-2">Pronto!</h3>
+                <p class="text-gray-400 text-sm">Nossos servidores mantêm sua conta online 24/7. As horas acumulam na Steam <strong class="text-white">automagicamente</strong>.</p>
             </div>
         </div>
     </section>
 
-    <section id="pricing" class="bg-gray-800 py-24">
+    <section id="features" class="bg-gray-800 py-24">
         <div class="container mx-auto px-4">
-            <h2 class="text-4xl font-bold text-center mb-12 tech-font">Planos Simples e Justos</h2>
-            
+            <h2 class="text-4xl font-bold text-center mb-12 tech-font">Porquê escolher o <span class="text-blue-400">STF Boost</span>?</h2>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-gray-900 p-8 rounded-xl border border-gray-700 hover:border-blue-500 transition-colors text-center">
+                    <div class="text-5xl mb-4">🎮</div>
+                    <h3 class="text-2xl font-semibold mb-3 text-blue-300">50 Horas Grátis</h3>
+                    <p class="text-gray-400">Crie sua conta agora e receba 50 horas de boost sem custo. Horas renováveis todo mês no plano Free.</p>
+                </div>
+                <div class="bg-gray-900 p-8 rounded-xl border border-gray-700 hover:border-blue-500 transition-colors text-center">
+                    <div class="text-5xl mb-4">🛡️</div>
+                    <h3 class="text-2xl font-semibold mb-3 text-blue-300">Zero VAC / Seguro</h3>
+                    <p class="text-gray-400">Não mexemos em arquivos de jogo nem memória. Apenas simulamos presença na Steam via protocolos oficiais. Milhares de horas boostadas sem banimentos.</p>
+                </div>
+                <div class="bg-gray-900 p-8 rounded-xl border border-gray-700 hover:border-blue-500 transition-colors text-center">
+                    <div class="text-5xl mb-4">⚙️</div>
+                    <h3 class="text-2xl font-semibold mb-3 text-blue-300">Painel Completo</h3>
+                    <p class="text-gray-400">Adicione jogos, defina status, veja horas em tempo real. Tudo pelo navegador, direto do celular ou PC.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="pricing" class="py-24">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold text-center mb-4 tech-font">Planos <span class="text-blue-400">Simples</span> e Justos</h2>
+            <p class="text-gray-400 text-center mb-12 max-w-xl mx-auto">Escolha o plano ideal para você. Cancele quando quiser, sem multa.</p>
             <div id="plansContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 max-w-[1600px] mx-auto">
                 <div class="text-center col-span-full text-gray-400 animate-pulse">A carregar planos...</div>
             </div>
@@ -103,7 +126,8 @@
 
     <section id="testimonials" class="bg-gray-800 py-24">
         <div class="container mx-auto px-4">
-            <h2 class="text-4xl font-bold text-center mb-12 tech-font">O Que Nossos <span class="text-blue-400">Usuários</span> Dizem</h2>
+            <h2 class="text-4xl font-bold text-center mb-4 tech-font">O Que Nossos <span class="text-blue-400">Usuários</span> Dizem</h2>
+            <p class="text-gray-400 text-center mb-12 max-w-xl mx-auto">Quem usa recomenda — e não é por acaso.</p>
             <div class="grid md:grid-cols-3 gap-8">
                 <div class="bg-gray-900 p-6 rounded-xl border border-gray-700">
                     <div class="flex items-center gap-3 mb-4">
@@ -140,7 +164,8 @@
     </section>
 
     <section id="faq" class="container mx-auto px-4 py-24 max-w-3xl">
-        <h2 class="text-4xl font-bold text-center mb-12 tech-font">Perguntas Frequentes (FAQ)</h2>
+        <h2 class="text-4xl font-bold text-center mb-4 tech-font">Perguntas Frequentes</h2>
+        <p class="text-gray-400 text-center mb-12 max-w-xl mx-auto">Tire suas dúvidas antes de começar</p>
         <div class="space-y-4">
             <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
                 <h3 class="text-lg font-semibold text-white">Posso levar banimento (VAC)?</h3>
@@ -167,9 +192,22 @@
                 <p class="text-gray-300 pt-2">O perfil Steam atualiza as horas de jogo algumas horas após a sessão ser encerrada. Normalmente as horas aparecem no seu perfil em até 24 horas após o boost ser concluído.</p>
             </div>
             <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
-                <h3 class="text-lg font-semibold text-white">Posso cancelar a assinatura?</h3>
-                <p class="text-gray-300 pt-2">Sim, você pode cancelar quando quiser pelo painel de controle. Seu acesso ao serviço continua até o final do período já pago. Não oferecemos reembolso após a ativação do plano (consulte os Termos de Serviço).</p>
+                <h3 class="text-lg font-semibold text-white">Quais formas de pagamento?</h3>
+                <p class="text-gray-300 pt-2">Aceitamos PIX, cartão de crédito e boleto via Mercado Pago. Tudo processado de forma segura e instantânea.</p>
             </div>
+        </div>
+    </section>
+
+    <section class="gradient-bg py-20 text-center">
+        <div class="container mx-auto px-4">
+            <h2 class="text-4xl font-bold mb-4 tech-font">Pronto para <span class="text-blue-300">Turbinar</span> seu Perfil?</h2>
+            <p class="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+                Crie sua conta grátis agora e ganhe 50 horas de boost. Sem compromisso, sem cartão de crédito.
+            </p>
+            <a href="/register" class="inline-block bg-blue-600 px-12 py-4 rounded-md text-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-900/50">
+                Começar de Graça
+            </a>
+            <p class="text-gray-500 text-sm mt-4">Não precisa de cartão de crédito • cancela quando quiser</p>
         </div>
     </section>
 
@@ -186,7 +224,6 @@
     </footer>
     
     <script>
-        // --- FUNÇÃO DE SEGURANÇA (XSS) ---
         const escapeHtml = (unsafe) => {
             if (unsafe === null || unsafe === undefined) return "";
             return String(unsafe)
@@ -197,24 +234,7 @@
                  .replace(/'/g, "&#039;");
         }
 
-        function animateCounter(el, target, suffix = '') {
-            let current = 0;
-            const step = Math.max(1, Math.floor(target / 60));
-            const interval = setInterval(() => {
-                current += step;
-                if (current >= target) { current = target; clearInterval(interval); }
-                el.textContent = current.toLocaleString('pt-BR') + suffix;
-            }, 20);
-        }
-
         document.addEventListener('DOMContentLoaded', () => {
-            // Carrega estatísticas
-            fetch('/api/stats').then(r => r.json()).then(data => {
-                animateCounter(document.getElementById('statPurchases'), data.totalPurchases);
-                animateCounter(document.getElementById('statAccounts'), data.totalAccounts);
-            }).catch(() => {});
-
-            // Verifica Login
             const authButtons = document.getElementById('header-auth-buttons');
             if (authButtons) {
                 fetch('/api/auth-status').then(res => res.json()).then(data => {
@@ -231,12 +251,10 @@
                 .then(plans => {
                     plansContainer.innerHTML = '';
                     
-                    // 1. Renderiza Planos Padrão
                     plans.forEach(p => {
                         if (p.id === 'custom') return; 
 
-                        // Configurações de Estilo (Badges)
-                        let highlightClass = 'bg-gray-800 border border-gray-700'; // Padrão
+                        let highlightClass = 'bg-gray-800 border border-gray-700';
                         let badge = '';
                         let titleColor = 'text-white';
                         const safeId = escapeHtml(p.id);
@@ -273,7 +291,6 @@
                             "bg-gray-700 hover:bg-gray-600 text-gray-200" : 
                             "bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/30";
 
-                        // Sanitização das Features
                         let featuresHtml = '';
                         if (Array.isArray(p.features)) {
                             p.features.forEach(f => { 
@@ -300,7 +317,6 @@
                         plansContainer.insertAdjacentHTML('beforeend', cardHtml);
                     });
 
-                    // 2. Renderiza Plano Personalizado
                     const customPlan = plans.find(p => p.id === 'custom');
                     if (customPlan) {
                         const customHtml = `
@@ -347,7 +363,6 @@
                 const priceDisp = document.getElementById('customPriceDisplay');
                 const btn = document.getElementById('customBuyButton');
                 
-                // PREÇOS BASE (Devem refletir o index.js)
                 const PRICING = { BASE: 5.00, DAY: 0.10, ACCOUNT: 2.00, GAME: 0.10 };
 
                 function calc() {
@@ -357,7 +372,6 @@
                     const total = PRICING.BASE + (d * PRICING.DAY) + (a * PRICING.ACCOUNT) + (g * PRICING.GAME);
                     priceDisp.textContent = `R$ ${total.toFixed(2).replace('.',',')}`;
                     
-                    // Link seguro
                     btn.href = `/checkout?plan=custom&days=${d}&accounts=${a}&games=${g}`;
                 }
 
