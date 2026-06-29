@@ -197,9 +197,8 @@
         let totalPages = 1;
 
         window.openEditPlan = function(id) {
-            if (!allPlans || allPlans.length === 0) { showToast("Planos nao carregados.", 'error'); return; }
             const p = allPlans.find(x => x.id === id);
-            if (!p) { showToast("Plano nao encontrado: " + id, 'error'); return; }
+            if (!p) return;
 
             document.getElementById('editPlanId').value = p.id;
             document.getElementById('editPlanIdDisplay').value = p.id;
@@ -292,7 +291,7 @@
                     allPlans.forEach(p => {
                         const opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name; planSelect.appendChild(opt);
                         const row = document.createElement('tr');
-                        row.innerHTML = `<td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="assign-key-btn" onclick="openEditPlan('${escapeHtml(p.id)}')">Edit</button><button class="delete-key-btn" onclick="deletePlan('${escapeHtml(p.id)}')">Del</button></td>`;
+                        row.innerHTML = `<td>${escapeHtml(p.id)}</td><td>${escapeHtml(p.name)}</td><td>R$ ${p.price}</td><td>${p.days}</td><td class="actions-cell"><button class="edit-plan-btn" data-pid="${escapeHtml(p.id)}">Edit</button><button class="delete-plan-btn" data-pid="${escapeHtml(p.id)}">Del</button></td>`;
                         plansTableBody.appendChild(row);
                     });
                 } catch(e) { console.error(e); }
@@ -305,7 +304,7 @@
                     if(coupons.length===0) couponsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center">Sem cupons.</td></tr>';
                     coupons.forEach(c => {
                         const row = document.createElement('tr');
-                        row.innerHTML = `<td><code style="color:var(--primary-color)">${escapeHtml(c.code)}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-key-btn" onclick="deleteCoupon('${c._id}')">Excluir</button></td>`;
+                        row.innerHTML = `<td><code style="color:var(--primary-color)">${escapeHtml(c.code)}</code></td><td>${c.discount}%</td><td>${c.usageCount || 0}</td><td class="actions-cell"><button class="delete-coupon-btn" data-cid="${c._id}">Excluir</button></td>`;
                         couponsTableBody.appendChild(row);
                     });
                 } catch(e) {}
@@ -349,7 +348,7 @@
                         <td><code style="color:#ffd700">${u.recoveryKey || 'N/A'}</code></td>
                         <td class="actions-cell">
                             <button class="ban-btn" data-uid="${u._id}">${u.isBanned ? 'Desbanir' : 'Banir'}</button>
-                            <button onclick="resetUserKey('${u._id}')" style="border-color:#00ffff; color:#00ffff; margin-left:5px; font-size:12px; padding:5px 10px; background:transparent; border-width:1px; border-style:solid; border-radius:4px; cursor:pointer;">Nova Chave</button>
+                            <button class="reset-key-btn" data-uid="${u._id}" style="border-color:#00ffff; color:#00ffff; margin-left:5px; font-size:12px; padding:5px 10px; background:transparent; border-width:1px; border-style:solid; border-radius:4px; cursor:pointer;">Nova Chave</button>
                             <button class="delete-btn" data-uid="${u._id}" style="border-color: #ff6B6B; color: #ff6B6B; margin-left: 5px; font-size: 12px; padding: 5px 10px;">Excluir</button>
                         </td>`;
                     usersTableBody.appendChild(row);
@@ -522,6 +521,12 @@
                 }
             };
 
+            document.addEventListener('click', (e) => {
+                if (e.target.classList.contains('edit-plan-btn')) { e.preventDefault(); openEditPlan(e.target.dataset.pid); }
+                if (e.target.classList.contains('delete-plan-btn')) { e.preventDefault(); deletePlan(e.target.dataset.pid); }
+                if (e.target.classList.contains('delete-coupon-btn')) { e.preventDefault(); deleteCoupon(e.target.dataset.cid); }
+                if (e.target.classList.contains('reset-key-btn')) { e.preventDefault(); resetUserKey(e.target.dataset.uid); }
+            });
             fetchAll();
         });
     </script>
