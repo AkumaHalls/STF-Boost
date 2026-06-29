@@ -818,6 +818,19 @@ apiRouter.get('/account-games/:username', isAuthenticated, async (req, res) => {
 apiRouter.post('/login', loginLimiter, async (req, res) => { const { username, password } = req.body; const user = await usersCollection.findOne({ username }); if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Credenciais inválidas." }); if (user.isBanned) return res.status(403).json({ message: "Conta banida." }); req.session.userId = user._id.toString(); req.session.username = user.username; res.json({ message: "Login OK" });});
 apiRouter.get('/auth-status', async (req, res) => { if (req.session.userId) { if (!req.session.username) { try { const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (user) req.session.username = user.username; } catch(e) {} } res.json({ loggedIn: true, username: req.session.username || 'Usuário' }); } else { res.json({ loggedIn: false }); }});
 apiRouter.get('/geo-status', (req, res) => { const country = getCountryFromRequest(req); res.json({ country: country, currency: country === 'BR' ? 'BRL' : 'USD' });});
+apiRouter.get('/stats', async (req, res) => {
+    try {
+        const [totalUsers, totalAccounts, usageAgg] = await Promise.all([
+            usersCollection.countDocuments({}),
+            accountsCollection.countDocuments({}),
+            purchasesCollection.aggregate([{ $group: { _id: null, total: { $sum: '$usageCount' } } }]).toArray()
+        ]);
+        const totalBoostSessions = usageAgg.length > 0 ? usageAgg[0].total : 0;
+        res.json({ totalUsers, totalAccounts, totalBoostSessions });
+    } catch(e) {
+        res.status(500).json({ totalUsers: 0, totalAccounts: 0, totalBoostSessions: 0 });
+    }
+});
 apiRouter.get('/plans', async (req, res) => { try { const plans = await plansCollection.find({ active: true }).toArray(); plans.sort((a, b) => (a.id === 'free' ? -1 : b.id === 'free' ? 1 : a.price - b.price)); res.json(plans); } catch(e) { res.status(500).json([]); }});
 
 // ATUALIZAÇÃO NO REGISTER (Gera a chave)
