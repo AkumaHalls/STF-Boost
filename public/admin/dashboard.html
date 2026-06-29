@@ -6,7 +6,6 @@
     <title>Admin - STF Boost</title>
     <link rel="icon" type="image/png" href="/logo.png?v=1.1">
     <link rel="stylesheet" href="/style.css?v=2.2"> 
-    <script async defer src="https://akuma-labs.duckdns.org/tracker.js" data-website-id="cmnf7gbzi000c45uwzu1aio1m"></script>
 </head>
 <body class="panel-page">
     <div class="dashboard-layout">
@@ -174,11 +173,12 @@
         function showToast(msg, type='info') { const c=document.getElementById('toastContainer'), t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; c.appendChild(t); setTimeout(()=>t.classList.add('show'),10); setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),500)},4000); }
         
         let allPlans = [];
+        let currentPage = 1;
+        let totalPages = 1;
 
         window.openEditPlan = function(id) {
-            console.log("Abrindo edição para:", id);
             const p = allPlans.find(x => x.id === id);
-            if (!p) { console.error("Plano não encontrado"); return; }
+            if (!p) return;
 
             document.getElementById('editPlanId').value = p.id;
             document.getElementById('editPlanIdDisplay').value = p.id;
@@ -200,17 +200,18 @@
         window.deletePlan = async function(id) {
              if(confirm('Tem certeza? Isso pode afetar usuários neste plano.')) { 
                  await fetch('/api/admin/delete-plan', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})}); 
-                 window.location.reload(); 
+                 fetchPlans();
+                 showToast("Plano removido.");
              }
         };
 
         window.deleteCoupon = async function(id) {
             if(!confirm("Excluir cupom?")) return;
             await fetch('/api/admin/delete-coupon', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
-            window.location.reload();
+            fetchCoupons();
+            showToast("Cupom excluído.");
         };
 
-        // NOVA FUNÇÃO (GERAR NOVA CHAVE PARA O USUÁRIO PELO ADMIN)
         window.resetUserKey = async (uid) => {
             if(!confirm("Tem certeza que deseja revogar a chave antiga e gerar uma NOVA chave de recuperação para este usuário? A antiga não funcionará mais.")) return;
             
@@ -220,8 +221,8 @@
                 body:JSON.stringify({userId: uid})
             });
             const d = await res.json();
-            alert(d.message);
-            window.location.reload();
+            showToast(d.message);
+            fetchUsers();
         };
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -297,10 +298,16 @@
                 if(res.ok) { showToast("Cupom criado!"); fetchCoupons(); document.getElementById('couponCodeInput').value=''; }
             };
 
-            async function fetchUsers() { const res = await fetch('/api/admin/users'); const users = await res.json(); renderUsers(users); }
+            async function fetchUsers() {
+                const res = await fetch(`/api/admin/users?page=${currentPage}&limit=20`);
+                const data = await res.json();
+                totalPages = data.totalPages;
+                renderUsers(data);
+            }
             
-            function renderUsers(users) { 
+            function renderUsers(data) { 
                 usersTableBody.innerHTML = '';
+                const users = data.users;
                 users.forEach(u => {
                     const row = document.createElement('tr');
                     const safeUser = escapeHtml(u.username);
@@ -322,7 +329,6 @@
                         accountsHtml = '<span style="color: #888; font-size: 12px;">Nenhuma conta.</span>';
                     }
 
-                    // Renderiza a nova coluna com a Chave e o botão Nova Chave
                     row.innerHTML = `
                         <td>${safeUser}</td>
                         <td><select class="plan-select" data-uid="${u._id}">${opts}</select></td>
@@ -335,6 +341,21 @@
                             <button class="delete-btn" data-uid="${u._id}" style="border-color: #ff6B6B; color: #ff6B6B; margin-left: 5px; font-size: 12px; padding: 5px 10px;">Excluir</button>
                         </td>`;
                     usersTableBody.appendChild(row);
+                });
+
+                const paginationRow = document.createElement('tr');
+                paginationRow.innerHTML = `<td colspan="6" style="text-align:center; padding:10px;">
+                    <button id="prevPageBtn" ${currentPage <= 1 ? 'disabled' : ''} style="margin-right:10px;">&laquo; Anterior</button>
+                    <span style="color:var(--primary-color);">P\u00e1gina ${currentPage} de ${totalPages} (${data.total} usu\u00e1rios)</span>
+                    <button id="nextPageBtn" ${currentPage >= totalPages ? 'disabled' : ''} style="margin-left:10px;">Pr\u00f3ximo &raquo;</button>
+                </td>`;
+                usersTableBody.appendChild(paginationRow);
+
+                document.getElementById('prevPageBtn')?.addEventListener('click', () => {
+                    if (currentPage > 1) { currentPage--; fetchUsers(); }
+                });
+                document.getElementById('nextPageBtn')?.addEventListener('click', () => {
+                    if (currentPage < totalPages) { currentPage++; fetchUsers(); }
                 });
             }
             
@@ -380,26 +401,26 @@
             };
             
             usersTableBody.onclick = async (e) => {
-                if(e.target.classList.contains('ban-btn')) {
-                    const uid = e.target.dataset.uid;
-                    const isUnban = e.target.textContent === 'Desbanir';
-                    const endpoint = isUnban ? '/api/admin/unban-user' : '/api/admin/ban-user';
-                    try {
-                        const res = await fetch(endpoint, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
-                        const data = await res.json();
-                        if(res.ok) { showToast(data.message, 'info'); fetchUsers(); }
-                    } catch(err) { showToast('Erro de conexão.', 'error'); }
-                }
-                if(e.target.classList.contains('delete-btn')) {
-                    const uid = e.target.dataset.uid;
-                    if(confirm('TEM CERTEZA? Isso apagará o usuário, todas as contas Steam associadas e encerrará os processos ativos. Esta ação é irreversível.')) {
+                    if(e.target.classList.contains('ban-btn')) {
+                        const uid = e.target.dataset.uid;
+                        const isUnban = e.target.textContent === 'Desbanir';
+                        const endpoint = isUnban ? '/api/admin/unban-user' : '/api/admin/ban-user';
                         try {
-                            const res = await fetch('/api/admin/delete-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid})});
+                            const res = await fetch(endpoint, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid, confirm:true})});
                             const data = await res.json();
                             if(res.ok) { showToast(data.message, 'info'); fetchUsers(); }
                         } catch(err) { showToast('Erro de conexão.', 'error'); }
                     }
-                }
+                    if(e.target.classList.contains('delete-btn')) {
+                        const uid = e.target.dataset.uid;
+                        if(confirm('TEM CERTEZA? Isso apagará o usuário, todas as contas Steam associadas e encerrará os processos ativos. Esta ação é irreversível.')) {
+                            try {
+                                const res = await fetch('/api/admin/delete-user', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId:uid, confirm:true})});
+                                const data = await res.json();
+                                if(res.ok) { showToast(data.message, 'info'); fetchUsers(); }
+                            } catch(err) { showToast('Erro de conexão.', 'error'); }
+                        }
+                    }
             };
 
             usersTableBody.onchange = async (e) => {

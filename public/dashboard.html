@@ -246,8 +246,10 @@
                         const lastClosed = localStorage.getItem('globalAlertClosed');
                         if (lastClosed !== data.updatedAt) {
                             const el = document.getElementById('globalAlert');
-                            el.className = `global-alert alert-${escapeHtml(data.type)}`; 
-                            document.getElementById('globalAlertMessage').textContent = data.message; 
+                            const safeTypes = ['danger', 'warning', 'info', 'success'];
+                            const safeType = safeTypes.includes(data.type) ? data.type : 'info';
+                            el.className = `global-alert alert-${safeType}`;
+                            document.getElementById('globalAlertMessage').textContent = data.message;
                             el.style.display = 'block';
                             el.dataset.updatedAt = data.updatedAt;
                         }
