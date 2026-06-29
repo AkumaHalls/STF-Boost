@@ -19,7 +19,7 @@
 
     <div id="globalAlert" class="global-alert" style="display: none;">
         <span id="globalAlertMessage"></span>
-        <button class="alert-close" onclick="closeGlobalAlert()">×</button>
+        <button class="alert-close">×</button>
     </div>
 
     <div class="login-box" style="margin-top: 60px;"> 
@@ -97,13 +97,13 @@
             } catch(e) {}
         }
 
-        window.closeGlobalAlert = function() {
-            const el = document.getElementById('globalAlert');
-            el.style.display = 'none';
-            if (el.dataset.updatedAt) {
-                localStorage.setItem('globalAlertClosed', el.dataset.updatedAt);
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('alert-close')) {
+                const el = document.getElementById('globalAlert');
+                el.style.display = 'none';
+                if (el.dataset.updatedAt) localStorage.setItem('globalAlertClosed', el.dataset.updatedAt);
             }
-        };
+        });
 
         document.addEventListener('DOMContentLoaded', () => {
             checkGlobalAlert();
