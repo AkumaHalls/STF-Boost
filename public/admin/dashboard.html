@@ -5,7 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin - STF Boost</title>
     <link rel="icon" type="image/png" href="/logo.png?v=1.1">
-    <link rel="stylesheet" href="/style.css?v=2.2"> 
+    <link rel="stylesheet" href="/style.css?v=2.2">
+    <style>
+        /* Override performance killers no admin */
+        .admin-card { backdrop-filter: none !important; }
+        .glitch-title::before, .glitch-title::after { display: none !important; }
+        #effectsContainer { display: none !important; }
+        body.panel-page { background-image: none !important; background-color: #0a0e17 !important; }
+        .premium-highlight, .lifetime-highlight, .halloween-highlight, .christmas-highlight, .newyear-highlight { animation: none !important; box-shadow: none !important; }
+        .admin-card, .modal-content, .sidebar { box-shadow: 0 0 10px rgba(0,255,255,0.15) !important; }
+        button, .assign-key-btn, .delete-key-btn, .ban-btn { transition: none !important; }
+    </style>
 </head>
 <body class="panel-page">
     <div class="dashboard-layout">
@@ -418,16 +428,18 @@
                             </div>`;
                         });
                         document.getElementById('accountsModalBody').innerHTML = html;
+                        document.getElementById('accountsModalBody').onclick = async (ev) => {
+                            if (ev.target.classList.contains('show-pass')) {
+                                ev.preventDefault();
+                                const username = ev.target.dataset.user;
+                                try {
+                                    const res = await fetch(`/api/admin/account-password/${encodeURIComponent(username)}`);
+                                    const data = await res.json();
+                                    if(res.ok) { ev.target.textContent = data.password; ev.target.style.cursor = 'text'; ev.target.removeAttribute('href'); }
+                                } catch(err) { showToast('Erro ao buscar senha.', 'error'); }
+                            }
+                        };
                         document.getElementById('accountsModal').style.display = 'block';
-                    }
-                    if(e.target.classList.contains('show-pass')) {
-                        e.preventDefault();
-                        const username = e.target.dataset.user;
-                        try {
-                            const res = await fetch(`/api/admin/account-password/${encodeURIComponent(username)}`);
-                            const data = await res.json();
-                            if(res.ok) { e.target.textContent = data.password; e.target.style.cursor = 'text'; e.target.removeAttribute('href'); }
-                        } catch(err) { showToast('Erro ao buscar senha.', 'error'); }
                     }
                     if(e.target.classList.contains('ban-btn')) {
                         const uid = e.target.dataset.uid;
