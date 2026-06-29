@@ -157,7 +157,17 @@
         </div>
     </div>
 
-    <div id="toastContainer"></div>
+    <div id="toastContainer">    </div>
+
+    <div id="accountsModal" class="modal">
+        <div class="modal-content">
+            <h2 id="accountsModalTitle">Contas Steam</h2>
+            <div id="accountsModalBody" style="max-height:400px;overflow-y:auto;font-size:13px;"></div>
+            <div style="display:flex;justify-content:flex-end;margin-top:15px;">
+                <button id="closeAccountsModal" class="remove-btn">Fechar</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         const escapeHtml = (unsafe) => {
@@ -298,10 +308,12 @@
                 if(res.ok) { showToast("Cupom criado!"); fetchCoupons(); document.getElementById('couponCodeInput').value=''; }
             };
 
+            let _usersData = [];
             async function fetchUsers() {
                 const res = await fetch(`/api/admin/users?page=${currentPage}&limit=20`);
                 const data = await res.json();
                 totalPages = data.totalPages;
+                _usersData = data.users;
                 renderUsers(data);
             }
             
@@ -313,21 +325,10 @@
                     const safeUser = escapeHtml(u.username);
                     let opts = ''; allPlans.forEach(p => opts += `<option value="${p.id}" ${u.plan===p.id?'selected':''}>${escapeHtml(p.name)}</option>`);
                     
-                    let accountsHtml = '';
-                    if (u.steamAccounts && u.steamAccounts.length > 0) {
-                        accountsHtml = `<div style="max-height: 100px; overflow-y: auto; font-size: 11px; background: rgba(0,0,0,0.3); padding: 5px; border-radius: 4px; border: 1px dashed rgba(0,255,255,0.3);">`;
-                        u.steamAccounts.forEach(acc => {
-                            const secretHtml = acc.sharedSecret ? `<br><strong style="color:var(--primary-color)">SS:</strong> <span style="color:#ffd700">${escapeHtml(acc.sharedSecret)}</span>` : '';
-                            accountsHtml += `<div style="margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 2px;">
-                                <strong style="color:var(--primary-color)">U:</strong> ${escapeHtml(acc.username)} <br>
-                                <strong style="color:var(--primary-color)">P:</strong> <a href="#" class="show-pass" data-user="${escapeHtml(acc.username)}" style="color:#ff6B6B">Mostrar</a>${secretHtml}
-                            </div>`;
-                        });
-                        accountsHtml += `</div>`;
-                        accountsHtml = `<div style="margin-bottom: 4px; font-size: 12px; font-weight:bold; color: var(--primary-color);">Qtd: ${u.steamAccounts.length}</div>` + accountsHtml;
-                    } else {
-                        accountsHtml = '<span style="color: #888; font-size: 12px;">Nenhuma conta.</span>';
-                    }
+                    const accCount = u.steamAccounts ? u.steamAccounts.length : 0;
+                    const accountsHtml = accCount > 0
+                        ? `<a href="#" class="view-accounts" data-uid="${u._id}" data-user="${safeUser}" style="color:var(--primary-color);font-weight:bold;font-size:13px;">${accCount} conta(s) — Ver</a>`
+                        : '<span style="color:#888;font-size:12px;">Nenhuma</span>';
 
                     row.innerHTML = `
                         <td>${safeUser}</td>
@@ -401,6 +402,24 @@
             };
             
             usersTableBody.onclick = async (e) => {
+                    if(e.target.classList.contains('view-accounts')) {
+                        e.preventDefault();
+                        const uid = e.target.dataset.uid;
+                        const username = e.target.dataset.user;
+                        const user = _usersData.find(u => u._id === uid);
+                        if (!user || !user.steamAccounts || user.steamAccounts.length === 0) { showToast('Nenhuma conta.', 'info'); return; }
+                        document.getElementById('accountsModalTitle').textContent = `Contas de ${username}`;
+                        let html = '';
+                        user.steamAccounts.forEach(acc => {
+                            const ss = acc.sharedSecret ? `<br><strong style="color:var(--primary-color)">SS:</strong> <span style="color:#ffd700">${escapeHtml(acc.sharedSecret)}</span>` : '';
+                            html += `<div style="padding:8px;margin-bottom:6px;background:rgba(0,0,0,0.3);border-radius:4px;border:1px solid rgba(0,255,255,0.2);">
+                                <strong style="color:var(--primary-color)">U:</strong> ${escapeHtml(acc.username)}<br>
+                                <strong style="color:var(--primary-color)">P:</strong> <a href="#" class="show-pass" data-user="${escapeHtml(acc.username)}" style="color:#ff6B6B">Mostrar</a>${ss}
+                            </div>`;
+                        });
+                        document.getElementById('accountsModalBody').innerHTML = html;
+                        document.getElementById('accountsModal').style.display = 'block';
+                    }
                     if(e.target.classList.contains('show-pass')) {
                         e.preventDefault();
                         const username = e.target.dataset.user;
@@ -453,6 +472,7 @@
                 }
             };
 
+            document.getElementById('closeAccountsModal').onclick = () => document.getElementById('accountsModal').style.display = 'none';
             const editModal = document.getElementById('editPlanModal');
             document.getElementById('savePlanButton').onclick = async () => {
                 const data = {
