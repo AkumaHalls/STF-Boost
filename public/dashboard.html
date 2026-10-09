@@ -44,6 +44,7 @@
             <div class="sidebar-nav">
                 <span class="nav-title">Panel</span>
                 <a href="/dashboard" class="active"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Painel de Controle</a>
+                <a href="#" id="referralButton"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v10H4V12"></path><path d="M2 7h20v5H2z"></path><path d="M12 22V7"></path><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path></svg> Indicações &amp; Stats</a>
             </div>
             <div class="sidebar-nav">
                 <span class="nav-title">Account</span>
@@ -87,34 +88,6 @@
                     </table>
                 </div>
             </div>
-
-            <aside class="sidebar-right" style="margin-left: 20px; width: 320px; display: flex; flex-direction: column; gap: 20px;">
-                <div class="panel-card" style="background: rgba(10,10,20,0.8); border: 1px solid #00ffff; border-radius: 8px; padding: 16px;">
-                    <h3 style="color: #00ffff; margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase;">Indicações</h3>
-                    <div style="font-size: 12px; color: #bbb; margin-bottom: 8px;">Seu código</div>
-                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                        <input id="refCodeInput" type="text" readonly style="flex:1; background:#000; border:1px solid #333; color:#00ffff; padding:6px; border-radius:4px; font-family:monospace; font-size:12px;">
-                        <button id="copyRefBtn" class="start-btn" style="font-size:12px; padding:6px 10px;">Copiar</button>
-                    </div>
-                    <div style="font-size: 12px; color: #bbb; margin-bottom: 6px;">Link</div>
-                    <input id="refLinkInput" type="text" readonly style="width:100%; background:#000; border:1px solid #333; color:#bbb; padding:6px; border-radius:4px; font-family:monospace; font-size:11px; margin-bottom:10px;">
-                    <div style="display:flex; justify-content:space-between; font-size:12px; color:#ccc;">
-                        <span>Indicações: <span id="refCount">0</span></span>
-                        <span>Bônus: <span id="refBonus">+10h</span> por indicação</span>
-                    </div>
-                </div>
-                <div class="panel-card" style="background: rgba(10,10,20,0.8); border: 1px solid #00ffff; border-radius: 8px; padding: 16px;">
-                    <h3 style="color: #00ffff; margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase;">Estatísticas</h3>
-                    <div style="font-size: 12px; color: #ccc; display:flex; justify-content:space-between; margin-bottom: 8px;">
-                        <span>Farmado (total)</span>
-                        <span id="statsTotal">0h 0m</span>
-                    </div>
-                    <div style="font-size: 12px; color: #666; display:flex; justify-content:space-between; margin-bottom: 8px;">
-                        <span>Uptime contas</span>
-                        <span id="statsUptime">0h 0m</span>
-                    </div>
-                </div>
-            </aside>
         </main> 
     </div> 
 
@@ -199,6 +172,38 @@
             <h2>Minhas Chaves</h2>
             <div id="myKeysList" class="my-keys-list">A carregar...</div>
             <button id="closeMyKeysModalButton" class="remove-btn">Fechar</button>
+        </div>
+    </div>
+
+    <div id="referralModal" class="modal">
+        <div class="modal-content" style="width: 90%; max-width: 420px;">
+            <h2>Indicações &amp; Estatísticas</h2>
+            <div class="panel-card" style="background: rgba(10,10,20,0.8); border: 1px solid #00ffff; border-radius: 8px; padding: 16px; margin-bottom: 15px;">
+                <h3 style="color: #00ffff; margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase;">Indicações</h3>
+                <div style="font-size: 12px; color: #bbb; margin-bottom: 8px;">Seu código</div>
+                <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                    <input id="refCodeInput" type="text" readonly style="flex:1; background:#000; border:1px solid #333; color:#00ffff; padding:6px; border-radius:4px; font-family:monospace; font-size:12px;">
+                    <button id="copyRefBtn" class="start-btn" style="font-size:12px; padding:6px 10px;">Copiar</button>
+                </div>
+                <div style="font-size: 12px; color: #bbb; margin-bottom: 6px;">Link</div>
+                <input id="refLinkInput" type="text" readonly style="width:100%; background:#000; border:1px solid #333; color:#bbb; padding:6px; border-radius:4px; font-family:monospace; font-size:11px; margin-bottom:10px;">
+                <div style="display:flex; justify-content:space-between; font-size:12px; color:#ccc;">
+                    <span>Indicações: <span id="refCount">0</span></span>
+                    <span>Bônus: <span id="refBonus">+10h</span> por indicação</span>
+                </div>
+            </div>
+            <div class="panel-card" style="background: rgba(10,10,20,0.8); border: 1px solid #00ffff; border-radius: 8px; padding: 16px; margin-bottom: 15px;">
+                <h3 style="color: #00ffff; margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase;">Estatísticas</h3>
+                <div style="font-size: 12px; color: #ccc; display:flex; justify-content:space-between; margin-bottom: 8px;">
+                    <span>Farmado (total)</span>
+                    <span id="statsTotal">0h 0m</span>
+                </div>
+                <div style="font-size: 12px; color: #666; display:flex; justify-content:space-between; margin-bottom: 8px;">
+                    <span>Uptime contas</span>
+                    <span id="statsUptime">0h 0m</span>
+                </div>
+            </div>
+            <button id="closeReferralModalButton" class="remove-btn">Fechar</button>
         </div>
     </div>
 
@@ -463,7 +468,8 @@
                             document.getElementById('appearOfflineToggle').checked = s.appearOffline;
                             document.getElementById('autoAcceptFriendsToggle').checked = s.autoAcceptFriends;
                             document.getElementById('autoReloginToggle').checked = s.autoRelogin;
-                            document.getElementById('sharedSecretInput').value = s.sharedSecret || '';
+                            document.getElementById('sharedSecretInput').value = '';
+                            document.getElementById('sharedSecretInput').placeholder = s.hasSharedSecret ? 'Salvo ✓ (deixe vazio para manter)' : 'Shared Secret (2FA)';
                             const cf = document.getElementById('cardFarmerToggle');
                             if (cf) cf.checked = !!s.cardFarmer;
                             
@@ -490,28 +496,8 @@
                                 if (elAway) { elAway.disabled = true; elAway.placeholder = "Requer Premium"; }
                                 if (elOffline) elOffline.disabled = true;
                                 document.getElementById('upgradeHint').style.display = 'block';
-            async function loadReferralAndStats(){
-                try {
-                    const [r1, r2] = await Promise.all([fetch('/api/referral-info'), fetch('/api/stats')]);
-                    if (r1.ok){
-                        const d = await r1.json();
-                        const c = document.getElementById('refCodeInput'); const l = document.getElementById('refLinkInput'); const n = document.getElementById('refCount'); const b = document.getElementById('refBonus');
-                        if (c) c.value = d.code || '';
-                        if (l) l.value = d.referralUrl || '';
-                        if (n) n.textContent = d.referralCount || 0;
-                        if (b) b.textContent = `+${d.bonusHours || 10}h`;
-                    }
-                    if (r2.ok){
-                        const d = await r2.json();
-                        const st = document.getElementById('statsTotal'); const su = document.getElementById('statsUptime');
-                        let tot = d.totalFarmedMs || 0; let upt = 0;
-                        if (d.accounts) for (const k in d.accounts) upt += d.accounts[k].uptime||0;
-                        const fmt = (ms)=>{ if(ms<=0) return '0h 0m'; const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000); return h+'h '+m+'m'; };
-                        if (st) st.textContent = fmt(tot); if (su) su.textContent = fmt(upt);
-                    }
-                } catch(e){}
-            }
-                            
+                            }
+
                             if (!isPlus) {
                                 if (elFriends) elFriends.disabled = true;
                                 if (elCardFarmer) elCardFarmer.disabled = true;
@@ -534,6 +520,28 @@
                     updateBulkButtons();
                     loadReferralAndStats();
                 } catch(e){ console.error(e); }
+            }
+
+            async function loadReferralAndStats(){
+                try {
+                    const [r1, r2] = await Promise.all([fetch('/api/referral-info'), fetch('/api/stats')]);
+                    if (r1.ok){
+                        const d = await r1.json();
+                        const c = document.getElementById('refCodeInput'); const l = document.getElementById('refLinkInput'); const n = document.getElementById('refCount'); const b = document.getElementById('refBonus');
+                        if (c) c.value = d.code || '';
+                        if (l) l.value = d.referralUrl || '';
+                        if (n) n.textContent = d.referralCount || 0;
+                        if (b) b.textContent = `+${d.bonusHours || 10}h`;
+                    }
+                    if (r2.ok){
+                        const d = await r2.json();
+                        const st = document.getElementById('statsTotal'); const su = document.getElementById('statsUptime');
+                        let tot = d.totalFarmedMs || 0; let upt = 0;
+                        if (d.accounts) for (const k in d.accounts) upt += d.accounts[k].uptime||0;
+                        const fmt = (ms)=>{ if(ms<=0) return '0h 0m'; const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000); return h+'h '+m+'m'; };
+                        if (st) st.textContent = fmt(tot); if (su) su.textContent = fmt(upt);
+                    }
+                } catch(e){}
             }
 
             // ... (Restante do código igual) ...
@@ -647,7 +655,7 @@
                 if (elFriends && !elFriends.disabled) s.autoAcceptFriends = !!elFriends.checked;
                 s.autoRelogin = !!document.getElementById('autoReloginToggle').checked;
                 const ss = document.getElementById('sharedSecretInput').value.trim();
-                s.sharedSecret = ss.slice(0, 64);
+                if (ss) s.sharedSecret = ss.slice(0, 64);
                 const cf = document.getElementById('cardFarmerToggle');
                 if (cf) s.cardFarmer = !!cf.checked;
                 fetch(`/api/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: s }) })
@@ -734,15 +742,24 @@
                 } catch(e) { myKeysList.innerHTML = '<p>Erro.</p>'; }
             };
             closeMyKeysModalButton.onclick = () => myKeysModal.style.display = 'none';
-            window.onclick = (e) => { if ([gamesModal, settingsModal, licenseModal, passwordModal, myKeysModal].includes(e.target)) e.target.style.display='none'; };
+
+            const referralModal = document.getElementById('referralModal');
+            const referralButton = document.getElementById('referralButton');
+            if (referralButton) referralButton.onclick = (e) => {
+                e.preventDefault();
+                referralModal.style.display = 'block';
+                loadReferralAndStats();
+            };
+            document.getElementById('closeReferralModalButton').onclick = () => referralModal.style.display = 'none';
+
+            window.onclick = (e) => { if ([gamesModal, settingsModal, licenseModal, passwordModal, myKeysModal, referralModal].includes(e.target)) e.target.style.display='none'; };
 
             fetchUserInfo();
             updateUI();
-            loadReferralAndStats();
             checkGlobalAlert(); 
             setInterval(updateUI, 5000);
             setInterval(fetchUserInfo, 60000);
-            setInterval(loadReferralAndStats, 10000);
+            setInterval(() => { if (referralModal && referralModal.style.display === 'block') loadReferralAndStats(); }, 10000);
             const copyRefBtn = document.getElementById('copyRefBtn');
             if (copyRefBtn) copyRefBtn.onclick = () => {
                 const c = document.getElementById('refCodeInput'); if (c) { navigator.clipboard.writeText(c.value).then(()=>showToast('Código copiado!','info')); }

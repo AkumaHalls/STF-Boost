@@ -447,7 +447,7 @@
                         document.getElementById('accountsModalTitle').textContent = `Contas de ${username}`;
                         let html = '';
                         user.steamAccounts.forEach(acc => {
-                            const ss = acc.sharedSecret ? `<br><strong style="color:var(--primary-color)">SS:</strong> <span style="color:#ffd700">${escapeHtml(acc.sharedSecret)}</span>` : '';
+                            const ss = acc.hasSharedSecret ? ` <br><strong style="color:var(--primary-color)">2FA:</strong> <span style="color:#ffd700">Salvo ✓</span>` : '';
                             html += `<div style="padding:8px;margin-bottom:6px;background:rgba(0,0,0,0.3);border-radius:4px;border:1px solid rgba(0,255,255,0.2);">
                                 <strong style="color:var(--primary-color)">U:</strong> ${escapeHtml(acc.username)}<br>
                                 <strong style="color:var(--primary-color)">P:</strong> <a href="#" class="show-pass" data-user="${escapeHtml(acc.username)}" style="color:#ff6B6B">Mostrar</a>${ss}

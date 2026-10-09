@@ -36,6 +36,9 @@ process.on('uncaughtException', (err) => {
     if (err.message && (err.message.includes('Already attempting') || err.message.includes('Already logged on'))) return;
     console.error(`[CRASH PREVENIDO] Erro:`, err);
 });
+process.on('unhandledRejection', (err) => {
+    console.error('[UNHANDLED REJECTION] Erro:', err);
+});
 
 // --- CONFIGURAÇÃO E VARIÁVEIS GLOBAIS ---
 const app = express();
@@ -65,6 +68,7 @@ const apiLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 300, message: { mes
 const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: { message: "Muitas ações sensíveis. Aguarde." }});
 const addAccountLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitas adições de conta por hora." }});
 const checkoutLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, message: { message: "Muitas verificações de pagamento. Aguarde." }});
+const webhookLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 60, message: { message: "Muitas tentativas de webhook." }});
 
 let mpClient;
 if (MP_ACCESS_TOKEN) {
@@ -133,6 +137,46 @@ const decrypt = (text) => {
 };
 function safeCompare(a, b) { if (typeof a !== 'string' || typeof b !== 'string') return false; const bufA = Buffer.from(a); const bufB = Buffer.from(b); return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB); }
 
+// Settings expostos ao cliente: sharedSecret NUNCA sai do servidor.
+// O cliente recebe apenas hasSharedSecret (para exibir "salvo" na UI).
+function publicSettings(settings) {
+    const s = { ...(settings || {}) };
+    if (s.sharedSecret) { s.hasSharedSecret = true; delete s.sharedSecret; }
+    return s;
+}
+
+function isEncryptedSecret(value) {
+    // Formato do encrypt: iv:authTag:payload (três partes hex, sem ':' dentro de secrets Steam base32)
+    return typeof value === 'string' && value.split(':').length === 3 && /^[0-9a-f]+:[0-9a-f]+:[0-9a-f]+$/i.test(value);
+}
+
+function accountTotalFarmedMs(a) {
+    return (a.totalFarmedMs || 0) + (a.farmedMs || 0) + (a.farmStartTime ? Math.max(0, Date.now() - a.farmStartTime) : 0);
+}
+
+// Libera cupom reservado no checkout (falha de pagamento/região/compra abandonada).
+// Guardado por couponReserved:true + $unset, então nunca libera duas vezes.
+async function releaseCouponReservation(purchaseId, couponCode) {
+    if (!couponCode || !purchaseId) return;
+    try {
+        const p = await purchasesCollection.findOne({ _id: purchaseId, couponReserved: true });
+        if (!p) return;
+        await couponsCollection.updateOne({ code: couponCode }, { $inc: { usageCount: -1 } });
+        await purchasesCollection.updateOne({ _id: purchaseId }, { $set: { couponReleased: true }, $unset: { couponReserved: "" } });
+    } catch (e) { console.error("[COUPOM] Erro ao liberar reserva:", e.message); }
+}
+
+// Varredura de compras abandonadas: libera reservas de cupom com >24h pendentes.
+async function releaseStaleCouponReservations() {
+    try {
+        const stale = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const stalePurchases = await (await purchasesCollection.find({ status: 'pending', couponReserved: true, createdAt: { $lt: stale } })).toArray();
+        for (const p of stalePurchases) {
+            await releaseCouponReservation(p._id, p.couponCode);
+        }
+    } catch (e) { console.error("[COUPOM] Erro na varredura de reservas:", e.message); }
+}
+
 // --- VALIDAÇÃO DE ENTRADA & ERROR HANDLER ASYNC (Express 4 não captura rejeições) ---
 const ah = (fn) => (req, res, next) => { Promise.resolve(fn(req, res, next)).catch(next); };
 function apiErrorHandler(err, req, res, next) {
@@ -189,6 +233,7 @@ async function sanitizeGatedSettingsForOwner(acc) {
         }
         if (level < 2) {
             if (s.autoAcceptFriends) { s.autoAcceptFriends = false; dirty = true; }
+            if (s.cardFarmer) { s.cardFarmer = false; dirty = true; }
         }
         if (dirty) {
             acc.settings = s;
@@ -217,7 +262,7 @@ async function enforceUserLimits(userId) {
             }
         }
 
-        if (user.plan === 'free' && user.freeHoursRemaining <= 0) {
+        if (user.plan === 'free' && user.freeHoursRemaining <= 0 && (user.bonusHoursRemaining || 0) <= 0) {
             runningAccounts.forEach(acc => { cleanupAccount(acc); acc.status = "Tempo Esgotado"; });
             return; 
         }
@@ -283,16 +328,21 @@ async function applyReferralBonus(referrerUsername, referredByCode) {
     try {
         const referrer = await usersCollection.findOne({ referralCode: String(referredByCode).trim().toUpperCase() });
         if (!referrer || referrer.username === referrerUsername) return;
-        await usersCollection.updateOne(
+        // Incremento atômico: evita corrida no contador usado no código do cupom (REF-<código>-<n>).
+        // O bônus vai para bonusHoursRemaining (campo separado) — compras/rebaixamentos NÃO zeram mais.
+        const updated = await usersCollection.findOneAndUpdate(
             { _id: referrer._id },
-            { $inc: { referralCount: 1, freeHoursRemaining: REFERRAL_BONUS_MS } }
+            { $inc: { referralCount: 1, bonusHoursRemaining: REFERRAL_BONUS_MS } },
+            { returnDocument: 'after', includeResultMetadata: true }
         );
+        const newCount = (updated && updated.value && updated.value.referralCount) ? updated.value.referralCount : ((referrer.referralCount || 0) + 1);
         // Cupom automático por indicação concluída (1 uso, 60 dias)
-        const code = 'REF-' + String(referredByCode).trim().toUpperCase() + '-' + String(((referrer.referralCount || 0)) + 1).padStart(3, '0');
-        const existingCoupon = await couponsCollection.findOne({ code });
-        if (!existingCoupon) {
+        const code = 'REF-' + String(referredByCode).trim().toUpperCase() + '-' + String(newCount).padStart(3, '0');
+        try {
             const expiresAt = new Date(Date.now() + REFERRAL_COUPON_DAYS * 24 * 60 * 60 * 1000);
             await couponsCollection.insertOne({ code, discount: REFERRAL_COUPON_DISCOUNT, usageCount: 0, maxUses: 1, expiresAt, createdAt: new Date(), source: 'referral', ownerUserId: referrer._id.toString() });
+        } catch (dup) {
+            if (!dup || dup.code !== 11000) throw dup;
         }
         sendDiscordNotification("🎁 Nova Indicação", `O usuário "${referrerUsername}" se cadastrou usando o código ${String(referredByCode).trim().toUpperCase()} do(a) ${referrer.username}.\nBônus: +${REFERRAL_HOURS}h e cupom REF-${String(referredByCode).trim().toUpperCase()}-...`, 15844367, referrer.username, "log");
     } catch (e) { console.error("[REFERRAL] Erro ao aplicar bônus:", e.message); }
@@ -398,7 +448,7 @@ function setupSteamListeners(acc, password) {
                 else if (response && Array.isArray(response.apps)) validApps = response.apps;
                 if (validApps.length > 0) {
                     acc.ownedGames = validApps.map(app => ({ appid: app.appid, name: app.name }));
-                    accountsCollection.updateOne({ username: acc.username }, { $set: { ownedGames: acc.ownedGames } });
+                    accountsCollection.updateOne({ username: acc.username }, { $set: { ownedGames: acc.ownedGames } }).catch(() => {});
                 }
             });
         } catch (e) {}
@@ -425,9 +475,14 @@ function setupSteamListeners(acc, password) {
         acc.isLoggingIn = false;
         if (acc.settings.sharedSecret) {
             try {
-                const code = SteamTotp.generateAuthCode(acc.settings.sharedSecret);
+                const secret = decrypt(acc.settings.sharedSecret);
+                if (!secret) throw new Error('decrypt-failed');
+                const code = SteamTotp.generateAuthCode(secret);
                 callback(code);
-            } catch (e) { acc.status = "Erro: Secret Inválido"; }
+            } catch (e) {
+                acc.status = "Erro: Secret Inválido";
+                cleanupAccount(acc);
+            }
         } else {
             acc.status = "Pendente: Steam Guard";
             acc.steamGuardCallback = callback;
@@ -451,7 +506,7 @@ function setupSteamListeners(acc, password) {
         
         if (!acc.manual_logout && acc.settings.autoRelogin) {
             ensureUserPlanStatus(acc.ownerUserID).then(user => {
-                const isFreeExpired = user && user.plan === 'free' && user.freeHoursRemaining <= 0;
+                const isFreeExpired = user && user.plan === 'free' && user.freeHoursRemaining <= 0 && (user.bonusHoursRemaining || 0) <= 0;
                 if (!user || user.isBanned || isFreeExpired) {
                     acc.status = user?.isBanned ? "Banido" : "Tempo Esgotado";
                     acc.sessionStartTime = null;
@@ -476,7 +531,7 @@ function setupSteamListeners(acc, password) {
 
     acc.client.on('sentry', (sentryHash) => {
         acc.sentryFileHash = sentryHash.toString('base64');
-        accountsCollection.updateOne({ username: acc.username }, { $set: { sentryFileHash: acc.sentryFileHash } });
+        accountsCollection.updateOne({ username: acc.username }, { $set: { sentryFileHash: acc.sentryFileHash } }).catch(() => {});
     });
 
     acc.client.on('friendRelationship', (steamID, relationship) => {
@@ -528,6 +583,7 @@ async function connectToDB() {
         await licensesCollection.createIndex({ key: 1 }, { unique: true }); 
         await couponsCollection.createIndex({ code: 1 }, { unique: true }); 
         await usersCollection.createIndex({ registrationIP: 1 });
+        await usersCollection.createIndex({ referralCode: 1 }, { unique: true, partialFilterExpression: { referralCode: { $type: 'string' } } });
         await purchasesCollection.createIndex({ userId: 1, status: 1 }); 
         await purchasesCollection.createIndex({ paymentId: 1 }, { sparse: true }); 
         await accountsCollection.createIndex({ ownerUserID: 1 }); 
@@ -585,8 +641,11 @@ async function deductFreeTime() {
     if (updates.size === 0) return;
     const ids = Array.from(updates).map(id => new ObjectId(id));
     try {
-        await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free' }, { $inc: { freeHoursRemaining: -60000 } });
-        const expired = await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 } }).toArray();
+        // Consome bônus apenas de quem JÁ esgotou as horas grátis ANTES desta rodada;
+        // depois decrementa o grátis de quem ainda tem. Ordem impede duplo consumo no mesmo minuto.
+        await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 }, bonusHoursRemaining: { $gt: 0 } }, { $inc: { bonusHoursRemaining: -60000 } });
+        await usersCollection.updateMany({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $gt: 0 } }, { $inc: { freeHoursRemaining: -60000 } });
+        const expired = await (await usersCollection.find({ _id: { $in: ids }, plan: 'free', freeHoursRemaining: { $lte: 0 }, bonusHoursRemaining: { $lte: 0 } })).toArray();
         expired.forEach(u => { enforceUserLimits(u._id.toString()); });
     } catch(e) { console.error("[SYSTEM] Erro deductFreeTime:", e.message); }
 }
@@ -604,7 +663,8 @@ async function checkExpiredPlans() {
                 if (s.appearOffline) { s.appearOffline = false; dirty = true; }
                 if (s.customInGameTitle) { s.customInGameTitle = ''; dirty = true; }
                 if (s.customAwayMessage) { s.customAwayMessage = ''; dirty = true; }
-                if (s.autoAcceptFriends) { s.autoAcceptFriends = false; dirty = true; }
+if (s.autoAcceptFriends) { s.autoAcceptFriends = false; dirty = true; }
+                if (s.cardFarmer) { s.cardFarmer = false; dirty = true; }
                 if (dirty) {
                     await accountsCollection.updateOne({ _id: a._id }, { $set: { settings: s } });
                     if (liveAccounts[a.username]) liveAccounts[a.username].settings = s;
@@ -616,9 +676,18 @@ async function checkExpiredPlans() {
 }
 
 async function loadAccountsIntoMemory() {
-    const savedAccounts = await accountsCollection.find({}).toArray(); 
+    const savedAccounts = await accountsCollection.find({}).toArray();
     savedAccounts.forEach((acc) => {
-        liveAccounts[acc.username] = { ...acc, encryptedPassword: acc.password, settings: { ...(acc.settings || {}) }, status: 'Parado', sessionStartTime: null, manual_logout: false, ownedGames: acc.ownedGames || [], machineId: acc.machineId };
+        const settings = { ...(acc.settings || {}) };
+        // Migração preguiçosa: secrets legados em texto puro passam a ser cifrados.
+        if (settings.sharedSecret && !isEncryptedSecret(settings.sharedSecret)) {
+            const encSecret = encrypt(settings.sharedSecret);
+            if (encSecret) {
+                settings.sharedSecret = encSecret;
+                accountsCollection.updateOne({ username: acc.username }, { $set: { settings } }).catch(() => {});
+            }
+        }
+        liveAccounts[acc.username] = { ...acc, encryptedPassword: acc.password, settings, status: 'Parado', sessionStartTime: null, manual_logout: false, ownedGames: acc.ownedGames || [], machineId: acc.machineId };
     });
     console.log(`[SYSTEM] ${savedAccounts.length} contas carregadas.`);
 
@@ -713,33 +782,32 @@ async function claimPendingPurchase(userId, preferenceId, paymentId) {
     const staleAt = new Date(Date.now() - 10 * 60 * 1000);
     const now = new Date();
 
+    const tryClaim = async (filter, sort) => {
+        const res = await purchasesCollection.findOneAndUpdate(
+            filter,
+            { $set: { status: 'processing', claimedAt: now, paymentId: paymentId || null } },
+            { returnDocument: 'after', sort, includeResultMetadata: true }
+        );
+        return (res && res.value) ? res.value : null;
+    };
+
     // 1º: claim atômico em 'pending', priorizando a preferência correta
-    let purchase = await purchasesCollection.findOneAndUpdate(
+    let purchase = await tryClaim(
         preferenceId
             ? { userId: userId, status: 'pending', preferenceId: preferenceId }
             : { userId: userId, status: 'pending' },
-        { $set: { status: 'processing', claimedAt: now, paymentId: paymentId || null } },
-        { sort: { createdAt: 1 } }
+        { createdAt: 1 }
     );
-
     if (purchase) return purchase;
 
     // 2º: fallback para purchases legadas sem preferenceId (só pendente)
     if (preferenceId) {
-        purchase = await purchasesCollection.findOneAndUpdate(
-            { userId: userId, status: 'pending' },
-            { $set: { status: 'processing', claimedAt: now, paymentId: paymentId || null } },
-            { sort: { createdAt: 1 } }
-        );
+        purchase = await tryClaim({ userId: userId, status: 'pending' }, { createdAt: 1 });
         if (purchase) return purchase;
     }
 
     // 3º: recupera compra travada em 'processing' há >10min (crash/rede) — nunca um claim fresco
-    return purchasesCollection.findOneAndUpdate(
-        { userId: userId, status: 'processing', claimedAt: { $lt: staleAt } },
-        { $set: { status: 'processing', claimedAt: now, paymentId: paymentId || null } },
-        { sort: { claimedAt: 1 } }
-    );
+    return tryClaim({ userId: userId, status: 'processing', claimedAt: { $lt: staleAt } }, { claimedAt: 1 });
 }
 
 // --- WEBHOOK MERCADO PAGO ---
@@ -757,6 +825,10 @@ function verifyMpSignature(req, bodyRaw) {
 
         if (!parts.ts || !parts.v1) return false;
 
+        // Frescor: recusa assinaturas com mais de 10 minutos (anti-replay).
+        const ts = parseInt(parts.ts, 10);
+        if (!Number.isFinite(ts) || Math.abs(Math.floor(Date.now() / 1000) - ts) > 600) return false;
+
         const manifest = `id:${bodyRaw.data.id};request-id:${requestId};ts:${parts.ts};`;
         const secret = MP_WEBHOOK_SECRET || MP_ACCESS_TOKEN;
         const hmac = crypto.createHmac('sha256', secret).update(manifest).digest('hex');
@@ -766,7 +838,7 @@ function verifyMpSignature(req, bodyRaw) {
     }
 }
 
-app.post('/api/mercadopago-webhook', express.json(), ah(async (req, res) => {
+app.post('/api/mercadopago-webhook', webhookLimiter, express.json(), ah(async (req, res) => {
     res.status(200).send('OK');
 
     try {
@@ -809,6 +881,7 @@ app.post('/api/mercadopago-webhook', express.json(), ah(async (req, res) => {
                 if (paid + 0.01 < expected) {
                     console.warn(`[WEBHOOK MP] Valor divergente: esperado ${expected}, recebido ${paid}. Marcando como failed.`);
                     await purchasesCollection.updateOne({ _id: purchase._id }, { $set: { status: 'failed', paymentId: paymentId, paidAt: new Date() } });
+                    await releaseCouponReservation(purchase._id, purchase.couponCode);
                     sendDiscordNotification("⚠️ Pagamento com valor divergente", `MP ID: ${paymentId}\nEsperado: R$ ${expected}\nRecebido: R$ ${paid}`, 16753920, "System", "alert");
                     return;
                 }
@@ -834,7 +907,7 @@ app.post('/api/mercadopago-webhook', express.json(), ah(async (req, res) => {
                     completed = activated;
                 }
 
-                if (completed && purchase.couponCode) {
+                if (completed && purchase.couponCode && !purchase.couponReserved) {
                     await couponsCollection.updateOne(
                         { code: purchase.couponCode },
                         { $inc: { usageCount: 1 } }
@@ -1008,6 +1081,7 @@ app.get('/api/checkout-success', checkoutLimiter, isAuthenticated, ah(async (req
     const paid = typeof payment.transaction_amount === 'number' ? payment.transaction_amount : 0;
     if (paid + 0.01 < expected) {
         await purchasesCollection.updateOne({ _id: purchase._id }, { $set: { status: 'failed', paymentId: String(payment_id), paidAt: new Date() } });
+        await releaseCouponReservation(purchase._id, purchase.couponCode);
         return res.json({ success: false, message: "Valor do pagamento não corresponde à compra." });
     }
 
@@ -1019,7 +1093,7 @@ app.get('/api/checkout-success', checkoutLimiter, isAuthenticated, ah(async (req
         completed = await activateUserPlan(uid, purchase.planId, purchase.customConfig);
     }
 
-    if (completed && purchase.couponCode) {
+    if (completed && purchase.couponCode && !purchase.couponReserved) {
         await couponsCollection.updateOne({ code: purchase.couponCode }, { $inc: { usageCount: 1 } });
     }
 
@@ -1059,7 +1133,7 @@ apiRouter.post('/register', registerLimiter, ah(async (req, res) => {
     if (!isEmail(email)) return res.status(400).json({ message: "E-mail válido é obrigatório." }); 
     const pwError = validatePasswordStrength(password);
     if (pwError) return res.status(400).json({ message: pwError });
-    if (ref !== undefined && ref !== null && ref !== '' && !isStr(ref, 4, 32)) return res.status(400).json({ message: "Código de indicação inválido." });
+    if (ref !== undefined && ref !== null && ref !== '' && !REFERRAL_CODE_RE.test(String(ref).trim().toUpperCase())) return res.status(400).json({ message: "Código de indicação inválido." });
     const ip = String(req.ip || '').replace(/^::ffff:/, '') || 'unknown'; 
     const accountsFromIP = await usersCollection.countDocuments({ registrationIP: ip }); 
     if (accountsFromIP >= 5) return res.status(429).json({ message: "Limite atingido." }); 
@@ -1068,21 +1142,20 @@ apiRouter.post('/register', registerLimiter, ah(async (req, res) => {
         const recoveryKey = 'STF-' + crypto.randomBytes(8).toString('hex').toUpperCase(); 
         const referralCode = await findReferralCode();
         const invitedBy = (ref !== undefined && ref !== null && ref !== '') ? String(ref).trim().toUpperCase() : null;
-        let bonusHours = 0;
+        let referrerValid = false;
         if (invitedBy) {
             const referrer = await usersCollection.findOne({ referralCode: invitedBy });
-            if (referrer && referrer.username !== username.trim()) {
-                bonusHours = REFERRAL_HOURS;
-                await applyReferralBonus(username.trim(), invitedBy);
-            }
+            if (referrer && referrer.username !== username.trim()) referrerValid = true;
         }
-        await usersCollection.insertOne({ username: username.trim(), email: email.trim().toLowerCase(), password: hash, recoveryKey, plan: 'free', freeHoursRemaining: FREE_HOURS_MS + (bonusHours * 60 * 60 * 1000), referralCode, referredBy: invitedBy, referralCount: 0, isBanned: false, planExpiresAt: null, createdAt: new Date(), registrationIP: ip }); 
+        const bonusHours = referrerValid ? REFERRAL_HOURS : 0;
+        await usersCollection.insertOne({ username: username.trim(), email: email.trim().toLowerCase(), password: hash, recoveryKey, plan: 'free', freeHoursRemaining: FREE_HOURS_MS, bonusHoursRemaining: (bonusHours * 60 * 60 * 1000), referralCode, referredBy: invitedBy, referralCount: 0, isBanned: false, planExpiresAt: null, createdAt: new Date(), registrationIP: ip }); 
+        if (referrerValid) await applyReferralBonus(username.trim(), invitedBy);
         sendDiscordNotification("👤 Novo Registo", `User: ${username.trim()}\nIP: ${ip}${bonusHours > 0 ? `\nIndicado por: ${invitedBy}` : ''}`, 3447003, username.trim(), "log"); 
         res.status(201).json({ message: "Conta criada!", recoveryKey, referralCode, bonusHours }); 
     } catch (e) { res.status(409).json({ message: "Erro ao criar conta. Tente outro nome ou email." }); }
 }));
 
-apiRouter.post('/validate-coupon', apiLimiter, ah(async (req, res) => { const { code } = req.body || {}; if (!isStr(code, 1, 64)) return res.status(400).json({ valid: false }); try { const coupon = await couponsCollection.findOne({ code: code.toUpperCase() }); if (coupon) { const expired = coupon.expiresAt && new Date(coupon.expiresAt) < new Date(); const exhausted = coupon.maxUses && (coupon.usageCount || 0) >= coupon.maxUses; if (expired || exhausted) return res.json({ valid: false, message: "Cupom expirado ou esgotado." }); res.json({ valid: true, discount: coupon.discount }); } else { res.json({ valid: false, message: "Cupom inválido." }); } } catch (e) { res.status(500).json({ valid: false }); }}));
+apiRouter.post('/validate-coupon', apiLimiter, ah(async (req, res) => { const { code } = req.body || {}; if (!isStr(code, 1, 64)) return res.status(400).json({ valid: false }); try { const coupon = await couponsCollection.findOne({ code: code.toUpperCase() }); if (coupon) { const expired = coupon.expiresAt && new Date(coupon.expiresAt) < new Date(); const exhausted = coupon.maxUses && (coupon.usageCount || 0) >= coupon.maxUses; if (coupon.ownerUserId && coupon.ownerUserId !== (req.session.userId || '')) return res.json({ valid: false, message: "Este cupom não é seu." }); if (expired || exhausted) return res.json({ valid: false, message: "Cupom expirado ou esgotado." }); res.json({ valid: true, discount: coupon.discount }); } else { res.json({ valid: false, message: "Cupom inválido." }); } } catch (e) { res.status(500).json({ valid: false }); }}));
 
 // NOVA ROTA DE RECUPERAÇÃO COM CHAVE
 apiRouter.post('/recover-password', resetLimiter, ah(async (req, res) => {
@@ -1140,25 +1213,49 @@ apiRouter.post('/create-checkout', ah(async (req, res) => {
         title = `STF Boost - ${plan.name}`;
         metadata = { plan_id: planId };
     }
-    let appliedCoupon = null;
+let appliedCoupon = null;
     if (couponCode) {
         if (!isStr(couponCode, 1, 64)) return res.status(400).json({ message: "Cupom inválido." });
-        const coupon = await couponsCollection.findOne({ code: couponCode.toUpperCase().trim() });
-        if (coupon) {
-            const expired = coupon.expiresAt && new Date(coupon.expiresAt) < new Date();
-            const exhausted = coupon.maxUses && (coupon.usageCount || 0) >= coupon.maxUses;
-            if (expired || exhausted) return res.status(400).json({ message: "Cupom expirado ou esgotado." });
-            let discount = coupon.discount;
-            if (typeof discount !== 'number' || !isFinite(discount)) discount = 0;
-            discount = Math.min(100, Math.max(0, discount));
-            price = Math.max(0, price - ((price * discount) / 100));
-            appliedCoupon = couponCode.toUpperCase().trim();
-            metadata.coupon_code = appliedCoupon;
+        const normalized = couponCode.toUpperCase().trim();
+        const now = new Date();
+        // Reserva atômica no checkout (corrida de usos encerrada): só casa se NÃO expirou,
+        // NÃO excedeu maxUses e NÃO foi esgotado por outro checkout concorrente.
+        const reserveRes = await couponsCollection.findOneAndUpdate(
+            {
+                code: normalized,
+                $expr: {
+                    $and: [
+                        { $or: [ { $eq: [{ $ifNull: ['$expiresAt', null] }, null] }, { $gt: ['$expiresAt', now] } ] },
+                        { $or: [ { $eq: [{ $ifNull: ['$maxUses', null] }, null] }, { $lt: [ { $ifNull: ['$usageCount', 0] }, '$maxUses' ] } ] }
+                    ]
+                }
+            },
+            { $inc: { usageCount: 1 } },
+            { returnDocument: 'after', includeResultMetadata: true }
+        );
+        const coupon = (reserveRes && reserveRes.value) ? reserveRes.value : null;
+        if (!coupon) return res.status(400).json({ message: "Cupom expirado, esgotado ou não disponível." });
+        if (coupon.ownerUserId && coupon.ownerUserId !== userId) {
+            await couponsCollection.updateOne({ code: normalized }, { $inc: { usageCount: -1 } });
+            return res.status(400).json({ message: "Cupom não é seu." });
         }
+        let discount = coupon.discount;
+        if (typeof discount !== 'number' || !isFinite(discount)) discount = 0;
+        discount = Math.min(100, Math.max(0, discount));
+        price = Math.max(0, price - ((price * discount) / 100));
+        appliedCoupon = normalized;
+        metadata.coupon_code = normalized;
     }
     metadata.delivery_method = delivery;
-    const purchase = { userId, username, planId, price: parseFloat(price.toFixed(2)), deliveryMethod: delivery, couponCode: appliedCoupon, customConfig: purchaseCustomConfig, status: 'pending', preferenceId: null, paymentId: null, createdAt: new Date() };
-    const purchaseResult = await purchasesCollection.insertOne(purchase);
+const purchase = { userId, username, planId, price: parseFloat(price.toFixed(2)), deliveryMethod: delivery, couponCode: appliedCoupon, couponReserved: !!appliedCoupon, customConfig: purchaseCustomConfig, status: 'pending', preferenceId: null, paymentId: null, createdAt: new Date() };
+    let purchaseResult;
+    try {
+        purchaseResult = await purchasesCollection.insertOne(purchase);
+    } catch (e) {
+        // Reserva foi incrementada, mas não há purchase registrada para liberar depois — reverte já.
+        if (appliedCoupon) await couponsCollection.updateOne({ code: appliedCoupon }, { $inc: { usageCount: -1 } }).catch(() => {});
+        throw e;
+    }
     const userDoc = await usersCollection.findOne({ _id: new ObjectId(userId) });
     const userEmail = (userDoc && userDoc.email) ? userDoc.email : username + "@stfboost.com";
     if (isBrazil && mpClient) {
@@ -1166,14 +1263,15 @@ apiRouter.post('/create-checkout', ah(async (req, res) => {
         const result = await preference.create({ body: { items: [{ title: title, quantity: 1, unit_price: purchase.price, currency_id: 'BRL' }], payer: { email: userEmail }, back_urls: { success: `${SITE_URL}/dashboard`, failure: `${SITE_URL}/checkout` }, auto_return: "approved", notification_url: `${SITE_URL}/api/mercadopago-webhook`, external_reference: userId, metadata: metadata } });
         await purchasesCollection.updateOne({ _id: purchaseResult.insertedId }, { $set: { preferenceId: result.id } });
         res.json({ url: result.init_point, provider: 'mercadopago' });
-    } else {
+} else {
         await purchasesCollection.updateOne({ _id: purchaseResult.insertedId }, { $set: { status: 'failed' } });
+        if (appliedCoupon) await releaseCouponReservation(purchaseResult.insertedId, appliedCoupon);
         res.status(400).json({ message: "Método de pagamento não disponível para sua região." });
     }
-}));apiRouter.get('/user-info', ah(async (req, res) => { const user = await ensureUserPlanStatus(req.session.userId); if (!user) return res.status(404).json({ message: "Erro." }); let fh = user.plan === 'free' ? Math.ceil(user.freeHoursRemaining / 60000) : 0; const limits = getUserLimits(user); res.json({ username: user.username, plan: user.plan, freeHoursRemaining: fh, planExpiresAt: user.planExpiresAt, gameLimit: limits.games, accountLimit: limits.accounts, currentIP: getIpAndCountry(req).ip }); }));
-apiRouter.get('/status', (req, res) => { const accs = {}; for(const u in liveAccounts) { if(liveAccounts[u].ownerUserID === req.session.userId) { const a = liveAccounts[u]; accs[u] = { username: a.username, status: a.status, games: a.games, settings: a.settings, uptime: a.sessionStartTime ? Date.now() - a.sessionStartTime : 0 }; } } res.json({ accounts: accs }); });
+}));apiRouter.get('/user-info', ah(async (req, res) => { const user = await ensureUserPlanStatus(req.session.userId); if (!user) return res.status(404).json({ message: "Erro." }); let fh = user.plan === 'free' ? Math.ceil((user.freeHoursRemaining + (user.bonusHoursRemaining || 0)) / 60000) : 0; const limits = getUserLimits(user); res.json({ username: user.username, plan: user.plan, freeHoursRemaining: fh, planExpiresAt: user.planExpiresAt, gameLimit: limits.games, accountLimit: limits.accounts, currentIP: getIpAndCountry(req).ip }); }));
+apiRouter.get('/status', (req, res) => { const accs = {}; for(const u in liveAccounts) { if(liveAccounts[u].ownerUserID === req.session.userId) { const a = liveAccounts[u]; accs[u] = { username: a.username, status: a.status, games: a.games, settings: publicSettings(a.settings), uptime: a.sessionStartTime ? Date.now() - a.sessionStartTime : 0 }; } } res.json({ accounts: accs }); });
 apiRouter.post('/add-account', addAccountLimiter, ah(async (req, res) => { const { username, password } = req.body || {}; if (!isUsername(username)) return res.status(400).json({ message: "Usuário deve ter 3-32 caracteres (letras, números, . _ -)." }); if (!isStr(password, 1, 128)) return res.status(400).json({ message: "Usuário ou senha inválidos." }); const uname = username.trim(); const uid = req.session.userId; const user = await ensureUserPlanStatus(uid); if (!user) return res.status(401).json({ message: "Sessão inválida." }); if (user.isBanned) return res.status(403).json({ message: "Conta banida." }); const count = await accountsCollection.countDocuments({ ownerUserID: uid }); const limits = getUserLimits(user); if (count >= limits.accounts) return res.status(403).json({ message: `Limite atingido.` }); if (await accountsCollection.findOne({ username: uname })) return res.status(400).json({ message: "Já existe." }); const ep = encrypt(password); if (!ep) return res.status(500).json({ message: "Erro interno. Tente novamente." }); await accountsCollection.insertOne({ username: uname, password: ep, games: [730], settings: {}, ownerUserID: uid }); liveAccounts[uname] = { username: uname, encryptedPassword: ep, games: [730], settings: {}, status: 'Parado', ownerUserID: uid }; res.json({ message: "OK" }); }));
-apiRouter.post('/start/:username', ah(async (req, res) => { const u = req.params.username; if (!isStr(u, 1, 64)) return res.status(404).json({ message: "Erro." }); const acc = liveAccounts[u]; if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({ message: "Erro." }); const user = await ensureUserPlanStatus(req.session.userId); if (!user) return res.status(401).json({ message: "Sessão inválida." }); if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem tempo." }); const limits = getUserLimits(user); if (acc.games.length > limits.games) return res.status(403).json({ message: "Limite jogos." }); let activeCount = 0; for (const k in liveAccounts) { const s = liveAccounts[k].status; if (liveAccounts[k].ownerUserID === req.session.userId && (s === 'Rodando' || s.startsWith('Iniciando') || s.startsWith('Pendente'))) activeCount++; } if (activeCount >= limits.accounts) return res.status(403).json({ message: "Limite contas online." }); try { const pass = decrypt(acc.encryptedPassword); if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "OK" }); } else res.status(500).json({ message: "Erro senha." }); } catch (e) { res.status(500).json({ message: "Erro interno." }); } }));
+apiRouter.post('/start/:username', ah(async (req, res) => { const u = req.params.username; if (!isStr(u, 1, 64)) return res.status(404).json({ message: "Erro." }); const acc = liveAccounts[u]; if (!acc || acc.ownerUserID !== req.session.userId) return res.status(404).json({ message: "Erro." }); const user = await ensureUserPlanStatus(req.session.userId); if (!user) return res.status(401).json({ message: "Sessão inválida." }); if (user.plan === 'free' && user.freeHoursRemaining <= 0 && (user.bonusHoursRemaining || 0) <= 0) return res.status(403).json({ message: "Sem tempo." }); const limits = getUserLimits(user); if (acc.games.length > limits.games) return res.status(403).json({ message: "Limite jogos." }); let activeCount = 0; for (const k in liveAccounts) { const s = liveAccounts[k].status; if (liveAccounts[k].ownerUserID === req.session.userId && (s === 'Rodando' || s.startsWith('Iniciando') || s.startsWith('Pendente'))) activeCount++; } if (activeCount >= limits.accounts) return res.status(403).json({ message: "Limite contas online." }); try { const pass = decrypt(acc.encryptedPassword); if (pass) { startWorkerForAccount({ ...acc, password: pass }); res.json({ message: "OK" }); } else res.status(500).json({ message: "Erro senha." }); } catch (e) { res.status(500).json({ message: "Erro interno." }); } }));
 apiRouter.post('/stop/:username', (req, res) => { const u = req.params.username; if (!isStr(u, 1, 64)) return res.status(404).json({ message: "Erro." }); const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { acc.manual_logout = true; cleanupAccount(acc); acc.status = "Parado"; res.json({ message: "OK" }); } else res.status(404).json({ message: "Erro." }); });
 apiRouter.delete('/remove-account/:username', ah(async (req, res) => { const u = req.params.username; if (!isStr(u, 1, 64)) return res.status(404).json({ message: "Erro." }); if (liveAccounts[u] && liveAccounts[u].ownerUserID === req.session.userId) { liveAccounts[u].manual_logout = true; cleanupAccount(liveAccounts[u]); delete liveAccounts[u]; } await accountsCollection.deleteOne({ username: u, ownerUserID: req.session.userId }); res.json({ message: "OK" }); }));
 
@@ -1194,7 +1292,11 @@ apiRouter.post('/save-settings/:username', ah(async (req, res) => {
     if ('cardFarmer' in settings) { if (typeof settings.cardFarmer !== 'boolean') return res.status(400).json({ message: "cardFarmer deve ser booleano." }); if (settings.cardFarmer && currentLevel < 2) return res.status(403).json({ message: "Requer Plano Plus ou superior." }); sanitized.cardFarmer = settings.cardFarmer; }
     if ('customInGameTitle' in settings) { if (typeof settings.customInGameTitle !== 'string' || settings.customInGameTitle.length > 128) return res.status(400).json({ message: "Título inválido." }); if (settings.customInGameTitle.trim().length > 0 && currentLevel < 3) return res.status(403).json({ message: "Requer Plano Premium." }); sanitized.customInGameTitle = settings.customInGameTitle; }
     if ('customAwayMessage' in settings) { if (typeof settings.customAwayMessage !== 'string' || settings.customAwayMessage.length > 128) return res.status(400).json({ message: "Mensagem inválida." }); if (settings.customAwayMessage.trim().length > 0 && currentLevel < 3) return res.status(403).json({ message: "Requer Plano Premium." }); sanitized.customAwayMessage = settings.customAwayMessage; }
-    if ('sharedSecret' in settings) { if (settings.sharedSecret !== '' && (typeof settings.sharedSecret !== 'string' || settings.sharedSecret.length < 8 || settings.sharedSecret.length > 64)) return res.status(400).json({ message: "Shared Secret inválido." }); sanitized.sharedSecret = settings.sharedSecret; }
+    if ('sharedSecret' in settings) {
+        if (settings.sharedSecret !== '' && (typeof settings.sharedSecret !== 'string' || settings.sharedSecret.length < 8 || settings.sharedSecret.length > 64)) return res.status(400).json({ message: "Shared Secret inválido." });
+        // Cifra antes de persistir; string vazia = manter o secret existente (não entra no $set).
+        if (settings.sharedSecret !== '') sanitized.sharedSecret = encrypt(settings.sharedSecret) || settings.sharedSecret;
+    }
     if (liveAccounts[u] && liveAccounts[u].ownerUserID === uid) {
         const merged = { ...(liveAccounts[u].settings || {}), ...sanitized };
         await accountsCollection.updateOne({ username: u, ownerUserID: uid }, { $set: { settings: merged } });
@@ -1247,13 +1349,14 @@ apiRouter.get('/referral-info', ah(async (req, res) => {
     }
     const referralUrl = `${SITE_URL}/register?ref=${encodeURIComponent(code)}`;
     const bonusHours = REFERRAL_HOURS;
-    res.json({ code, referralUrl, bonusHours, referralCount: user.referralCount || 0, bonusHoursTotalMs: user.freeHoursRemainingBonus || 0 });
+    res.json({ code, referralUrl, bonusHours, referralCount: user.referralCount || 0, bonusHoursTotalMs: user.bonusHoursRemaining || 0 });
 }));
 apiRouter.get('/stats', ah(async (req, res) => {
     const uid = req.session.userId;
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     if (!user) return res.status(401).json({ message: "Sessão inválida." });
     const stats = {};
+    let liveUnflushed = 0;
     for (const u in liveAccounts) {
         if (liveAccounts[u].ownerUserID === uid) {
             const a = liveAccounts[u];
@@ -1261,11 +1364,13 @@ apiRouter.get('/stats', ah(async (req, res) => {
                 username: a.username,
                 uptime: a.sessionStartTime ? Date.now() - a.sessionStartTime : 0,
                 farmedMs: a.farmedMs || 0,
-                totalFarmedMs: (a.totalFarmedMs || 0) + (a.farmedMs || 0)
+                totalFarmedMs: accountTotalFarmedMs(a)
             };
+            if (a.farmStartTime) liveUnflushed += Math.max(0, Date.now() - a.farmStartTime);
         }
     }
-    res.json({ accounts: stats, totalFarmedMs: user.totalFarmedMs || 0 });
+    // totalFarmedMs do usuário já guarda as sessões encerradas; soma a sessão ativa ainda não persistida.
+    res.json({ accounts: stats, totalFarmedMs: (user.totalFarmedMs || 0) + liveUnflushed });
 }));
 apiRouter.post('/change-password', sensitiveLimiter, ah(async (req, res) => {
     const { currentPassword, newPassword, confirmPassword } = req.body || {};
@@ -1286,7 +1391,7 @@ apiRouter.post('/bulk-start', ah(async (req, res) => {
     const uid = req.session.userId;
     const user = await ensureUserPlanStatus(uid);
     if (!user) return res.status(401).json({ message: "Sessão inválida." });
-    if (user.plan === 'free' && user.freeHoursRemaining <= 0) return res.status(403).json({ message: "Sem horas." });
+    if (user.plan === 'free' && user.freeHoursRemaining <= 0 && (user.bonusHoursRemaining || 0) <= 0) return res.status(403).json({ message: "Sem horas." });
     const limits = getUserLimits(user);
     let active = 0;
     for (const k in liveAccounts) { if (liveAccounts[k].ownerUserID === uid && (liveAccounts[k].status === 'Rodando' || liveAccounts[k].status.startsWith('Iniciando') || liveAccounts[k].status.startsWith('Pendente'))) active++; }
@@ -1358,7 +1463,7 @@ adminApiRouter.get('/users', ah(async (req, res) => {
     for (let u of users) {
         u.steamAccounts = (u.steamAccounts || []).map(a => ({
             username: a.username,
-            sharedSecret: a.settings && a.settings.sharedSecret ? a.settings.sharedSecret : null
+            hasSharedSecret: !!(a.settings && a.settings.sharedSecret)
         }));
     }
 
@@ -1420,6 +1525,7 @@ adminApiRouter.post('/update-plan', ah(async (req, res) => {
                 if (s.customAwayMessage) { s.customAwayMessage = ''; dirty = true; }
             }
             if (nowLevel < 2 && s.autoAcceptFriends) { s.autoAcceptFriends = false; dirty = true; }
+            if (nowLevel < 2 && s.cardFarmer) { s.cardFarmer = false; dirty = true; }
             if (dirty) {
                 await accountsCollection.updateOne({ _id: a._id }, { $set: { settings: s } });
                 if (liveAccounts[a.username]) liveAccounts[a.username].settings = s;
@@ -1544,6 +1650,7 @@ async function startServer() {
         await loadAccountsIntoMemory();
         setInterval(deductFreeTime, 60000);
         setInterval(checkExpiredPlans, 60000);
+        setInterval(releaseStaleCouponReservations, 10 * 60 * 1000);
         app.use('/api/admin', adminApiRouter);
         app.use('/api', apiRouter);
         app.use(apiErrorHandler);
@@ -1561,14 +1668,18 @@ if (process.env.NODE_ENV === 'test') {
         siteSettingsCollection = cols.siteSettings || siteSettingsCollection;
         return true;
     };
+    const __setAppSecretKey = (key) => { appSecretKey = key; return true; };
     module.exports = {
-        app, apiRouter, adminApiRouter, __setCollections,
+        app, apiRouter, adminApiRouter, __setCollections, __setAppSecretKey,
         GLOBAL_PLANS, PLAN_LEVELS, PLAN_LIMITS, hasPlan, getUserLimits,
         encrypt, decrypt, safeCompare, isStr, isUsername, isEmail, isObjId,
         isStrArray, validatePasswordStrength,
         claimPendingPurchase, activateUserPlan, sanitizeGatedSettingsForOwner,
         generateLicenseForPurchase, refreshPlansCache, isMaintenanceMode,
         checkExpiredPlans, enforceUserLimits, verifyMpSignature,
+        applyReferralBonus, deductFreeTime, findReferralCode, generateReferralCode,
+        releaseCouponReservation, releaseStaleCouponReservations,
+        publicSettings, accountTotalFarmedMs, isEncryptedSecret,
         isAuthenticated, isAdminAuthenticated, apiErrorHandler,
         liveAccounts,
     };

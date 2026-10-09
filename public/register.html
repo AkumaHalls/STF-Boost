@@ -28,6 +28,7 @@
 
         <form id="registerForm" class="space-y-6">
             <input type="hidden" id="refInput" name="ref" value="">
+            <div>
                 <label for="username" class="block text-sm font-medium text-gray-300">Usuário</label>
                 <input type="text" id="username" name="username" required minlength="3" maxlength="20"
                     class="w-full px-3 py-2 mt-1 bg-gray-900 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -79,11 +80,13 @@
             generateCaptcha();
 
             const params = new URLSearchParams(window.location.search);
-            const ref = params.get('ref');
-            if (ref) {
+            const refFromUrl = params.get('ref');
+            if (refFromUrl) {
                 const r = document.getElementById('refInput');
-                if (r) r.value = ref.slice(0, 32);
+                if (r) r.value = refFromUrl.slice(0, 32);
             }
+
+            document.getElementById('registerForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
 
                 const username = document.getElementById('username').value.trim();
@@ -106,11 +109,11 @@
                 message.classList.add('hidden');
 
                 try {
-                    const ref = document.getElementById('refInput') ? document.getElementById('refInput').value.trim() : '';
+                    const refValue = document.getElementById('refInput') ? document.getElementById('refInput').value.trim() : '';
                     const response = await fetch('/api/register', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, email, password, ref })
+                        body: JSON.stringify({ username, email, password, ref: refValue })
                     });
 
                     const result = await response.json();

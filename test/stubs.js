@@ -22,26 +22,66 @@ class FakeCollection {
     _match(doc, filter = {}) {
         for (const k of Object.keys(filter)) {
             if (k === '_id') {
-                const want = String(filter[k]);
-                const got = doc._id !== undefined ? String(doc._id) : '';
-                if (want !== got) return false;
+                const want = filter[k];
+                if (want && typeof want === 'object' && !Array.isArray(want) && '$in' in want) {
+                    if (!want.$in.map(String).includes(String(doc._id))) return false;
+                } else {
+                    const wantS = String(want);
+                    const gotS = doc._id !== undefined ? String(doc._id) : '';
+                    if (wantS !== gotS) return false;
+                }
                 continue;
             }
             if (k === '$or') {
                 if (!filter.$or.some(cond => this._match(doc, cond))) return false;
                 continue;
             }
+            if (k === '$expr') {
+                if (!this._evalExpr(doc, filter.$expr)) return false;
+                continue;
+            }
             const v = filter[k];
             if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) {
+                const cmp = (a, b) => {
+                    const norm = x => (x instanceof Date) ? x.getTime() : x;
+                    const na = norm(a), nb = norm(b);
+                    return na < nb ? -1 : na > nb ? 1 : 0;
+                };
                 if ('$in' in v && !v.$in.map(String).includes(String(doc[k]))) return false;
-                if ('$lt' in v && !(doc[k] && new Date(doc[k]) < new Date(v.$lt))) return false;
-                if ('$gte' in v && !(doc[k] && new Date(doc[k]) >= new Date(v.$gte))) return false;
+                if ('$lt' in v && !(cmp(doc[k], v.$lt) < 0)) return false;
+                if ('$lte' in v && !(cmp(doc[k], v.$lte) <= 0)) return false;
+                if ('$gt' in v && !(cmp(doc[k], v.$gt) > 0)) return false;
+                if ('$gte' in v && !(cmp(doc[k], v.$gte) >= 0)) return false;
                 if ('$ne' in v && (String(doc[k]) === String(v.$ne))) return false;
                 continue;
             }
             if (String(doc[k]) !== String(v)) return false;
         }
         return true;
+    }
+    _evalExpr(doc, expr) {
+        if (expr === null || typeof expr !== 'object' || Array.isArray(expr)) return false;
+        const keys = Object.keys(expr);
+        if (keys.length !== 1) return false;
+        const op = keys[0];
+        const args = expr[op];
+        const resolve = (v) => {
+            if (typeof v === 'string' && v.startsWith('$')) return doc[v.slice(1)];
+            if (v && typeof v === 'object' && !Array.isArray(v)) return this._evalExpr(doc, v);
+            return v;
+        };
+        switch (op) {
+            case '$and': return args.every(a => this._evalExpr(doc, a));
+            case '$or': return args.some(a => this._evalExpr(doc, a));
+            case '$not': return !this._evalExpr(doc, args);
+            case '$eq': return resolve(args[0]) === resolve(args[1]);
+            case '$lt': return resolve(args[0]) < resolve(args[1]);
+            case '$lte': return resolve(args[0]) <= resolve(args[1]);
+            case '$gt': return resolve(args[0]) > resolve(args[1]);
+            case '$gte': return resolve(args[0]) >= resolve(args[1]);
+            case '$ifNull': { const r = resolve(args[0]); return (r === null || r === undefined) ? resolve(args[1]) : r; }
+            default: return false;
+        }
     }
     async find(filter = {}) {
         const docs = this.docs.filter(d => this._match(d, filter));
@@ -51,11 +91,16 @@ class FakeCollection {
         const d = this.docs.find(x => this._match(x, filter));
         return d ? { ...d } : null;
     }
-    async findOneAndUpdate(filter, update) {
+    async findOneAndUpdate(filter, update, options = {}) {
+        // Espelha o driver real do Mongo (v6): por padrão retorna o documento (ou null);
+        // com includeResultMetadata:true retorna { value, ok } (value = doc 'after'/'before').
         const idx = this.docs.findIndex(x => this._match(x, filter));
-        if (idx === -1) return null;
+        if (idx === -1) return options.includeResultMetadata ? { ok: 1, value: null } : null;
+        const before = { ...this.docs[idx] };
         this._applyUpdate(this.docs[idx], update);
-        return { ...this.docs[idx] };
+        const after = { ...this.docs[idx] };
+        const doc = options.returnDocument === 'after' ? after : before;
+        return options.includeResultMetadata ? { ok: 1, value: doc } : doc;
     }
     async insertOne(doc) {
         const d = { ...doc };
@@ -68,6 +113,13 @@ class FakeCollection {
         if (idx === -1) return { matchedCount: 0, modifiedCount: 0 };
         this._applyUpdate(this.docs[idx], update);
         return { matchedCount: 1, modifiedCount: 1 };
+    }
+    async updateMany(filter, update) {
+        let matched = 0;
+        for (const d of this.docs) {
+            if (this._match(d, filter)) { this._applyUpdate(d, update); matched++; }
+        }
+        return { matchedCount: matched, modifiedCount: matched };
     }
     async deleteOne(filter) {
         const idx = this.docs.findIndex(x => this._match(x, filter));
@@ -132,7 +184,7 @@ FakeObjectId.createFromHexString = (v) => v;
 
 const MODULE_STUBS = {
     'mongodb': { MongoClient: FakeMongoClientClass, ObjectId: FakeObjectId },
-    'mercadopago': { MercadoPagoConfig: function () {}, Preference: class { async create() { return { body: { init_point: 'https://mp.test/init' } }; } } },
+    'mercadopago': { MercadoPagoConfig: function () {}, Preference: class { async create() { return { id: 'pref_1', init_point: 'https://mp.test/init' }; } } },
     'steam-user': function () {}, // fake ctor; será spin-up somente se testes de worker existirem
     'steam-totp': { generateAuthCode: () => '12345' },
     'geoip-lite': { lookup: () => ({ country: 'BR' }) },
