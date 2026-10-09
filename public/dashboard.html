@@ -137,9 +137,7 @@
                 <div class="settings-form-row"><label>Aparecer Offline:</label><label class="switch"><input type="checkbox" id="appearOfflineToggle"><span class="slider"></span></label></div>
                 <div class="settings-form-row"><label>Aceitar Amigos:</label><label class="switch"><input type="checkbox" id="autoAcceptFriendsToggle"><span class="slider"></span></label></div>
                 <div class="settings-form-row"><label>Reconectar Auto:</label><label class="switch"><input type="checkbox" id="autoReloginToggle"><span class="slider"></span></label></div>
-                <div class="settings-form-row"><label>Shared Secret:</label><input type="password" id="sharedSecretInput"></div>
-                <div class="settings-form-row separator"><label>Credenciais</label></div>
-                <div class="settings-form-row"><label>Nova Senha:</label><input type="password" id="newPasswordInput"></div>
+                <div class="settings-form-row"><label>Shared Secret:</label><input type="password" id="sharedSecretInput" maxlength="64"></div>
             </div>
             <p id="upgradeHint" style="color: var(--pending-color); font-size: 12px; display:none; text-align: center;">Algumas opções requerem plano superior.</p>
             <button id="saveSettingsButton">Salvar</button>
@@ -402,15 +400,15 @@
                         const btnStart = document.createElement('button');
                         if(acc.status==='Rodando'){ 
                             btnStart.innerHTML=icons.stop+"Parar"; btnStart.className='stop-btn'; 
-                            btnStart.onclick=()=>fetch(`/api/stop/${acc.username}`,{method:'POST'}).then(updateUI); 
+                            btnStart.onclick=()=>fetch(`/api/stop/${encodeURIComponent(acc.username)}`,{method:'POST'}).then(updateUI); 
                         } else { 
                             btnStart.innerHTML=icons.play+"Iniciar"; btnStart.className='start-btn'; 
-                            btnStart.onclick=()=>fetch(`/api/start/${acc.username}`,{method:'POST'}).then(res=>res.json()).then(d=>{showToast(d.message, res.ok?'info':'error'); updateUI();}); 
+                            btnStart.onclick=()=>fetch(`/api/start/${encodeURIComponent(acc.username)}`,{method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message, r.ok?'info':'error'); updateUI();}); 
                         }
                         
                         const btnGuard = document.createElement('button'); btnGuard.innerHTML=icons.guard+"Guard"; 
                         if (acc.status.includes("Guard")) btnGuard.classList.add('pulse-attention'); 
-                        btnGuard.onclick=()=>{const c=prompt('Código Steam Guard:');if(c)fetch(`/api/submit-guard/${acc.username}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:c})});};
+                        btnGuard.onclick=()=>{const c=prompt('Código Steam Guard:');if(c)fetch(`/api/submit-guard/${encodeURIComponent(acc.username)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:c})}).then(r=>r.json()).then(d=>showToast(d.message, r.ok?'info':'error'));};
                         
                         const btnGames = document.createElement('button'); btnGames.innerHTML=icons.games+"Jogos"; 
                         btnGames.onclick=()=>{ 
@@ -473,7 +471,7 @@
                         };
 
                         const btnDel = document.createElement('button'); btnDel.innerHTML=icons.remove+"Remover"; btnDel.className="remove-btn"; 
-                        btnDel.onclick=()=>{if(confirm('Remover?'))fetch(`/api/remove-account/${acc.username}`,{method:'DELETE'}).then(updateUI);};
+                        btnDel.onclick=()=>{if(confirm('Remover?'))fetch(`/api/remove-account/${encodeURIComponent(acc.username)}`,{method:'DELETE'}).then(r=>r.json()).then(d=>showToast(d.message, r.ok?'info':'error')).then(updateUI);};
 
                         actions.append(btnStart, btnGuard, btnGames, btnSettings, btnDel);
                         accountsTableBody.appendChild(row);
@@ -492,7 +490,7 @@
                 myGamesList.innerHTML = '<div style="text-align: center; padding: 20px; color: #888;">Carregando...</div>';
                 currentUserOwnedGames = [];
                 try {
-                    const res = await fetch(`/api/account-games/${username}`);
+                    const res = await fetch(`/api/account-games/${encodeURIComponent(username)}`);
                     const data = await res.json();
                     currentUserOwnedGames = data;
                     renderMyGamesList();
@@ -575,7 +573,7 @@
             document.getElementById('closeGamesModalButton').onclick = hideGamesModal;
             saveGamesButton.onclick = async () => {
                 const games = appIdsInput.value.split(',').map(s=>parseInt(s.trim())).filter(n=>!isNaN(n));
-                const res = await fetch(`/api/set-games/${currentlyEditingGamesFor}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({games})});
+                const res = await fetch(`/api/set-games/${encodeURIComponent(currentlyEditingGamesFor)}`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({games})});
                 const d = await res.json(); showToast(d.message, res.ok?'info':'error');
                 if(res.ok) hideGamesModal();
             };
@@ -585,17 +583,21 @@
             window.addEventListener('click', (event) => { if (event.target == settingsModal) hideSettingsModal(); });
             saveSettingsButton.addEventListener('click', () => {
                 if (!currentlyEditingSettingsFor) return;
-                const s = {
-                    customInGameTitle: document.getElementById('customTitleInput').value,
-                    customAwayMessage: document.getElementById('customAwayMessageInput').value,
-                    appearOffline: document.getElementById('appearOfflineToggle').checked,
-                    autoAcceptFriends: document.getElementById('autoAcceptFriendsToggle').checked,
-                    autoRelogin: document.getElementById('autoReloginToggle').checked,
-                    sharedSecret: document.getElementById('sharedSecretInput').value.trim()
-                };
-                const p = document.getElementById('newPasswordInput').value.trim();
-                const payload = { settings: s }; if (p) payload.newPassword = p;
-                fetch(`/api/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(res => res.json()).then(data => { showToast(data.message, data.ok !== false ? 'info' : 'error'); if (data.ok !== false) hideSettingsModal(); });
+                const s = {};
+                const elTitle = document.getElementById('customTitleInput');
+                const elAway = document.getElementById('customAwayMessageInput');
+                const elOffline = document.getElementById('appearOfflineToggle');
+                const elFriends = document.getElementById('autoAcceptFriendsToggle');
+                if (!elTitle.disabled) s.customInGameTitle = elTitle.value.slice(0, 128);
+                if (!elAway.disabled) s.customAwayMessage = elAway.value.slice(0, 128);
+                if (!elOffline.disabled) s.appearOffline = !!elOffline.checked;
+                if (!elFriends.disabled) s.autoAcceptFriends = !!elFriends.checked;
+                s.autoRelogin = !!document.getElementById('autoReloginToggle').checked;
+                const ss = document.getElementById('sharedSecretInput').value.trim();
+                s.sharedSecret = ss.slice(0, 64);
+                fetch(`/api/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: s }) })
+                    .then(r => r.json().then(data => ({ data, ok: r.ok })))
+                    .then(({ data, ok }) => { showToast(data.message, ok ? 'info' : 'error'); if (ok) hideSettingsModal(); });
             });
 
             let searchTimeout;
@@ -654,9 +656,10 @@
                 const cur = document.getElementById('currentPasswordInput').value;
                 const newP = document.getElementById('newPasswordInputModal').value;
                 const conf = document.getElementById('confirmPasswordInput').value;
+                if (newP !== conf) return showToast('Senhas não conferem.', 'error');
                 const res = await fetch('/api/change-password', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({currentPassword:cur, newPassword:newP, confirmPassword:conf})});
                 const d = await res.json(); showToast(d.message, res.ok?'info':'error');
-                if(res.ok) passwordModal.style.display = 'none';
+                if(res.ok) { passwordModal.style.display = 'none'; document.getElementById('currentPasswordInput').value=''; document.getElementById('newPasswordInputModal').value=''; document.getElementById('confirmPasswordInput').value=''; if (d.recoveryKey) showToast('NOVA chave de recuperação: ' + d.recoveryKey, 'info'); }
             };
 
             myKeysButton.onclick = async (e) => {

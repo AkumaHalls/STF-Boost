@@ -288,7 +288,7 @@
                         
                         const buttonText = planPrice === 0 ? 'Criar Conta Grátis' : (p.days === 0 ? 'Comprar Vitalício' : 'Assinar Agora');
                         const buttonLink = planPrice === 0 ? '/register' : `/checkout?plan=${safeId}`;
-                        const buttonClass = p.price === 0 ? 
+                        const buttonClass = planPrice === 0 ? 
                             "bg-gray-700 hover:bg-gray-600 text-gray-200" : 
                             "bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/30";
 

@@ -48,7 +48,7 @@ const SITE_URL = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 if (!process.env.SESSION_SECRET) console.warn("[AVISO] SESSION_SECRET não definida! Sessões serão perdidas ao reiniciar.");
 
-if (!MONGODB_URI || !ADMIN_PASSWORD || !MP_ACCESS_TOKEN || !SITE_URL) { 
+if (process.env.NODE_ENV !== 'test' && (!MONGODB_URI || !ADMIN_PASSWORD || !MP_ACCESS_TOKEN || !SITE_URL)) { 
     console.error("ERRO CRÍTICO: Variáveis de ambiente faltando! Necessário: MONGODB_URI, SITE_PASSWORD, MP_ACCESS_TOKEN"); 
     process.exit(1); 
 }
@@ -61,7 +61,7 @@ app.use(cors({ origin: SITE_URL, credentials: true }));
 const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { message: "Muitas tentativas de login." }});
 const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitos cadastros. Aguarde." }});
 const resetLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitas tentativas de recuperação. Aguarde." }});
-const apiLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 60, message: { message: "Muitas requisições. Aguarde." }});
+const apiLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 300, message: { message: "Muitas requisições. Aguarde." }});
 const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: { message: "Muitas ações sensíveis. Aguarde." }});
 const addAccountLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitas adições de conta por hora." }});
 const checkoutLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, message: { message: "Muitas verificações de pagamento. Aguarde." }});
@@ -84,6 +84,7 @@ const CUSTOM_PRICING_USD = { BASE: 2.00, DAY: 0.05, ACCOUNT: 1.00, GAME: 0.05 };
 const PLAN_LEVELS = { 'free': 0, 'basic': 1, 'plus': 2, 'premium': 3, 'ultimate': 4, 'lifetime': 5, 'halloween': 3, 'christmas': 4, 'newyear': 4, 'custom': 1 };
 let PLAN_LIMITS = { 'free': { accounts: 1, games: 1 }, 'basic': { accounts: 2, games: 6 }, 'plus': { accounts: 4, games: 12 }, 'premium': { accounts: 6, games: 24 }, 'ultimate': { accounts: 10, games: 33 }, 'lifetime': { accounts: 10, games: 33 }, 'custom': { accounts: 1, games: 10 } };
 let GLOBAL_PLANS = {}; 
+const hasPlan = (id) => typeof id === 'string' && Object.prototype.hasOwnProperty.call(GLOBAL_PLANS, id); 
 
 const mongoClient = new MongoClient(MONGODB_URI);
 let accountsCollection, siteSettingsCollection, usersCollection, licensesCollection, plansCollection, couponsCollection, purchasesCollection;
@@ -148,7 +149,7 @@ const isStrArray = (v, max) => Array.isArray(v) && v.length > 0 && v.length <= m
 
 function getIpAndCountry(req) {
     try {
-        const ip = (req.headers && req.headers['x-forwarded-for']) ? req.headers['x-forwarded-for'].split(',')[0].trim() : (req.socket ? req.socket.remoteAddress : '127.0.0.1');
+        const ip = String(req.ip || (req.socket ? req.socket.remoteAddress : '') || '127.0.0.1').replace(/^::ffff:/, '');
         if (!ip || ip === '127.0.0.1' || ip === '::1') return { ip: '127.0.0.1', country: 'BR' };
         const geo = geoip.lookup(ip);
         return { ip: ip, country: geo ? geo.country : 'US' };
@@ -163,7 +164,33 @@ function getCountryFromRequest(req) {
 
 function getUserLimits(user) { 
     if (user.customLimits && typeof user.customLimits.accounts === 'number') { return user.customLimits; } 
-    return GLOBAL_PLANS[user.plan] || PLAN_LIMITS['free'] || { accounts: 1, games: 1 }; 
+    return hasPlan(user.plan) ? GLOBAL_PLANS[user.plan] : ({ ...(PLAN_LIMITS['free'] || { accounts: 1, games: 1 }) }); 
+}
+
+// Rebaixa/limpa settings premium (gated) conforme o nível do usuário dono.
+// Chamado no start do worker e em mudanças/rebaixamentos de plano.
+async function sanitizeGatedSettingsForOwner(acc) {
+    if (!acc || !acc.ownerUserID || !ObjectId.isValid(acc.ownerUserID)) return acc;
+    try {
+        const user = await usersCollection.findOne({ _id: new ObjectId(acc.ownerUserID) });
+        if (!user) return acc;
+        const level = PLAN_LEVELS[user.plan] || 0;
+        const s = { ...(acc.settings || {}) };
+        let dirty = false;
+        if (level < 3) {
+            if (s.appearOffline) { s.appearOffline = false; dirty = true; }
+            if (s.customInGameTitle) { s.customInGameTitle = ''; dirty = true; }
+            if (s.customAwayMessage) { s.customAwayMessage = ''; dirty = true; }
+        }
+        if (level < 2) {
+            if (s.autoAcceptFriends) { s.autoAcceptFriends = false; dirty = true; }
+        }
+        if (dirty) {
+            acc.settings = s;
+            if (acc.username) await accountsCollection.updateOne({ username: acc.username }, { $set: { settings: s } });
+        }
+    } catch (e) { console.error("[PLAN] Erro sanitizeGatedSettingsForOwner:", e.message); }
+    return acc;
 }
 
 // --- FUNÇÕES DE LIMITES E PLANOS ---
@@ -274,7 +301,7 @@ function handleLoginError(acc, erroMsg, password) {
 function performLogin(acc, password) {
     if (acc.isLoggingIn || (acc.client && acc.client.steamID)) return;
     acc.isLoggingIn = true;
-    const logonOptions = { accountName: acc.username, password: password };
+    const logonOptions = { accountName: acc.username, password: password, autoRelogin: false };
     if (acc.sentryFileHash) logonOptions.shaSentryfile = Buffer.from(acc.sentryFileHash, 'base64');
     
     console.log(`[${acc.username}] Conectando...`);
@@ -407,6 +434,8 @@ async function startWorkerForAccount(accountData) {
     acc.retryCount = 0;
     acc.client = new SteamUser({ enablePicsCache: false });
 
+    await sanitizeGatedSettingsForOwner(acc);
+
     setupSteamListeners(acc, accountData.password);
     performLogin(acc, accountData.password);
 }
@@ -460,7 +489,7 @@ async function refreshPlansCache() {
     try {
         const plans = await plansCollection.find({}).toArray();
         GLOBAL_PLANS = {};
-        plans.forEach(p => { GLOBAL_PLANS[p.id] = p; PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games }; });
+        plans.forEach(p => { if (p && typeof p.id === 'string' && /^[a-z0-9_\-]{1,32}$/.test(p.id) && p.id !== '__proto__') { GLOBAL_PLANS[p.id] = p; PLAN_LIMITS[p.id] = { accounts: p.accounts, games: p.games }; } });
     } catch (e) { console.error("[PLANS] Erro ao atualizar cache:", e.message); }
 }
 
@@ -500,6 +529,19 @@ async function checkExpiredPlans() {
         const expired = await usersCollection.find({ plan: { $ne: 'free', $ne: 'lifetime' }, planExpiresAt: { $lt: now } }).toArray();
         for (const u of expired) {
             await usersCollection.updateOne({ _id: u._id }, { $set: { plan: 'free', planExpiresAt: null, freeHoursRemaining: 0 }, $unset: { customLimits: "" }});
+            const accs = await accountsCollection.find({ ownerUserID: u._id.toString() }).toArray();
+            for (const a of accs) {
+                const s = { ...(a.settings || {}) };
+                let dirty = false;
+                if (s.appearOffline) { s.appearOffline = false; dirty = true; }
+                if (s.customInGameTitle) { s.customInGameTitle = ''; dirty = true; }
+                if (s.customAwayMessage) { s.customAwayMessage = ''; dirty = true; }
+                if (s.autoAcceptFriends) { s.autoAcceptFriends = false; dirty = true; }
+                if (dirty) {
+                    await accountsCollection.updateOne({ _id: a._id }, { $set: { settings: s } });
+                    if (liveAccounts[a.username]) liveAccounts[a.username].settings = s;
+                }
+            }
             await enforceUserLimits(u._id.toString());
         }
     } catch(e) { console.error("[SYSTEM] Erro checkExpiredPlans:", e.message); }
@@ -527,7 +569,7 @@ async function loadAccountsIntoMemory() {
 async function generateLicenseForPurchase(purchase, userId) {
     try {
         const planId = purchase.planId;
-        const planDetails = GLOBAL_PLANS[planId];
+        const planDetails = hasPlan(planId) ? GLOBAL_PLANS[planId] : null;
         const durationDays = planDetails && planDetails.days > 0 ? planDetails.days : (purchase.customConfig ? purchase.customConfig.days : 30);
         const key = `${planId.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
         await licensesCollection.insertOne({
@@ -548,15 +590,19 @@ async function generateLicenseForPurchase(purchase, userId) {
 // --- FUNÇÃO DE ATIVAÇÃO DE PLANO ---
 async function activateUserPlan(userId, planId, customConfig) {
     try {
-        const planDetails = GLOBAL_PLANS[planId];
+        const planDetails = hasPlan(planId) ? GLOBAL_PLANS[planId] : null;
+        const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
         let newExpiry = null;
+        const isSamePlan = user && user.plan === planId && user.planExpiresAt && new Date(user.planExpiresAt) > new Date();
         if (planId === 'lifetime') {
             // Vitalício: sem expiração
         } else if (planId === 'custom' && customConfig) {
             const days = customConfig.days || 30;
-            const d = new Date(); d.setDate(d.getDate() + days); newExpiry = d;
+            const base = isSamePlan && new Date(user.planExpiresAt) > new Date() ? new Date(user.planExpiresAt) : new Date();
+            base.setDate(base.getDate() + days); newExpiry = base;
         } else if (planDetails && planDetails.days > 0) {
-            const d = new Date(); d.setDate(d.getDate() + planDetails.days); newExpiry = d;
+            const base = isSamePlan ? new Date(user.planExpiresAt) : new Date();
+            base.setDate(base.getDate() + planDetails.days); newExpiry = base;
         }
 
         const updateData = {
@@ -565,6 +611,13 @@ async function activateUserPlan(userId, planId, customConfig) {
             freeHoursRemaining: 0,
             customLimits: null
         };
+
+        const validLifetime = planId === 'lifetime';
+        const validCustom = planId === 'custom' && customConfig;
+        if (!validLifetime && !validCustom && newExpiry === null) {
+            console.error(`[PAGAMENTO] Plano sem duração válida (deletado/days<=0): ${planId}. Ativação bloqueada.`);
+            return false;
+        }
 
         if (planId === 'custom' && customConfig) {
             updateData.customLimits = {
@@ -583,6 +636,42 @@ async function activateUserPlan(userId, planId, customConfig) {
         console.error("[PAGAMENTO] Erro ao ativar plano:", e);
         return false;
     }
+}
+
+// Claim atômico de compra pendente — evita double-activation em webhook + polling concorrentes.
+// Regra: o primeiro findOneAndUpdate em status 'pending' ganha; concorrentes não casam mais
+// (status vira 'processing'), e nunca re-claim de um processing fresco — só stalled >10min.
+async function claimPendingPurchase(userId, preferenceId, paymentId) {
+    const staleAt = new Date(Date.now() - 10 * 60 * 1000);
+    const now = new Date();
+
+    // 1º: claim atômico em 'pending', priorizando a preferência correta
+    let purchase = await purchasesCollection.findOneAndUpdate(
+        preferenceId
+            ? { userId: userId, status: 'pending', preferenceId: preferenceId }
+            : { userId: userId, status: 'pending' },
+        { $set: { status: 'processing', claimedAt: now, paymentId: paymentId || null } },
+        { sort: { createdAt: 1 } }
+    );
+
+    if (purchase) return purchase;
+
+    // 2º: fallback para purchases legadas sem preferenceId (só pendente)
+    if (preferenceId) {
+        purchase = await purchasesCollection.findOneAndUpdate(
+            { userId: userId, status: 'pending' },
+            { $set: { status: 'processing', claimedAt: now, paymentId: paymentId || null } },
+            { sort: { createdAt: 1 } }
+        );
+        if (purchase) return purchase;
+    }
+
+    // 3º: recupera compra travada em 'processing' há >10min (crash/rede) — nunca um claim fresco
+    return purchasesCollection.findOneAndUpdate(
+        { userId: userId, status: 'processing', claimedAt: { $lt: staleAt } },
+        { $set: { status: 'processing', claimedAt: now, paymentId: paymentId || null } },
+        { sort: { claimedAt: 1 } }
+    );
 }
 
 // --- WEBHOOK MERCADO PAGO ---
@@ -642,10 +731,7 @@ app.post('/api/mercadopago-webhook', express.json(), ah(async (req, res) => {
 
         if (payment.status === 'approved' && payment.external_reference) {
             const userId = payment.external_reference;
-            const purchase = await purchasesCollection.findOneAndUpdate(
-                { userId: userId, status: 'pending' },
-                { $set: { status: 'processing' } }
-            );
+            const purchase = await claimPendingPurchase(userId, payment.preference_id, paymentId);
 
             if (purchase) {
                 console.log(`[WEBHOOK MP] Pagamento aprovado userId: ${userId}, plano: ${purchase.planId}`);
@@ -691,7 +777,8 @@ app.post('/api/mercadopago-webhook', express.json(), ah(async (req, res) => {
                     { _id: purchase._id },
                     {
                         $set: {
-                            status: completed ? 'completed' : 'failed',
+                            status: completed ? 'completed' : 'processing',
+                            claimedAt: new Date(),
                             paymentId: paymentId,
                             paidAt: new Date(),
                             paymentDetail: {
@@ -722,20 +809,23 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true })); 
 app.use(session({ secret: SESSION_SECRET, resave: false, saveUninitialized: false, store: MongoStore.create({ mongoUrl: MONGODB_URI, dbName: 'stf-saas-db' }), cookie: { secure: 'auto', httpOnly: true, maxAge: 24 * 60 * 60 * 1000, sameSite: 'lax' } })); 
 async function isAuthenticated(req, res, next) { 
+    const isApiReq = req.baseUrl.startsWith('/api') || req.originalUrl.startsWith('/api/');
     if (req.session.userId && ObjectId.isValid(req.session.userId)) { 
         try {
             const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
             if (user && !user.isBanned) return next();
-            if (user && user.isBanned) req.session.destroy(() => res.redirect('/banned'));
+            if (user && user.isBanned) req.session.destroy(() => { if (isApiReq) return res.status(401).json({ message: 'unauthorized' }); res.redirect('/banned'); });
         } catch (e) { console.error("[AUTH] Erro isAuthenticated:", e.message); }
     } 
+    if (isApiReq) return res.status(401).json({ message: 'unauthorized' });
     res.redirect('/login?error=unauthorized'); 
 }
 const isAdminAuthenticated = (req, res, next) => { 
-    if (!req.session.isAdmin) return res.redirect('/admin/login?error=unauthorized');
+    const denied = () => { if (req.baseUrl.startsWith('/api') || req.originalUrl.startsWith('/api/')) return res.status(401).json({ message: 'unauthorized' }); return res.redirect('/admin/login?error=unauthorized'); };
+    if (!req.session.isAdmin) return denied();
     const now = Date.now();
     if (req.session.adminLastActivity && (now - req.session.adminLastActivity) > 30 * 60 * 1000) {
-        return req.session.destroy(() => res.redirect('/admin/login?error=timeout'));
+        return req.session.destroy(() => denied());
     }
     req.session.adminLastActivity = now;
     next(); 
@@ -751,12 +841,15 @@ async function isMaintenanceMode() {
 // Maintenance middleware — BEFORE static files to catch index.html
 app.use(async (req, res, next) => {
     if (req.path.startsWith('/admin/') || req.path.startsWith('/api/admin/')) return next();
-    if (req.path === '/maintenance' || req.path === '/maintenance.html') return next();
-    if (req.path.startsWith('/api/')) return next();
+    if (req.path === '/maintenance' || req.path === '/maintenance.html' || req.path === '/health') return next();
+    if (req.path === '/api/global-alert' || req.path === '/api/auth-status' || req.path === '/api/geo-status') return next();
     // Let static assets through so maintenance page can load images/css
     if (/\.(png|jpg|jpeg|gif|ico|svg|css|js|woff2?|ttf|eot)$/i.test(req.path)) return next();
     const m = await isMaintenanceMode();
-    if (m) return res.sendFile(path.join(__dirname, 'public', 'maintenance.html'));
+    if (m) {
+        if (req.path.startsWith('/api/')) return res.status(503).json({ message: 'maintenance' });
+        return res.sendFile(path.join(__dirname, 'public', 'maintenance.html'));
+    }
     next();
 });
 
@@ -768,7 +861,10 @@ const PROTECTED_PUBLIC_PAGES = {
     '/admin/dashboard.html': '/admin/dashboard'
 };
 app.use((req, res, next) => {
-    if (PROTECTED_PUBLIC_PAGES[req.path]) return res.redirect(PROTECTED_PUBLIC_PAGES[req.path]);
+    let raw = req.path;
+    try { raw = decodeURIComponent(raw); } catch (e) { /* mantém raw se inválido */ }
+    const normalizedPath = path.posix.normalize(raw).replace(/\/+/g, '/');
+    if (PROTECTED_PUBLIC_PAGES[normalizedPath]) return res.redirect(PROTECTED_PUBLIC_PAGES[normalizedPath]);
     next();
 });
 
@@ -832,10 +928,7 @@ app.get('/api/checkout-success', checkoutLimiter, isAuthenticated, ah(async (req
         return res.json({ success: false, message: "Nenhuma compra pendente encontrada. Se você pagou, aguarde a confirmação automática (pode levar alguns minutos)." });
     }
 
-    const purchase = await purchasesCollection.findOneAndUpdate(
-        { userId: uid, status: 'pending' },
-        { $set: { status: 'processing' } }
-    );
+    const purchase = await claimPendingPurchase(uid, payment && payment.preference_id, payment_id ? String(payment_id) : null);
 
     if (!purchase) {
         const completed = await purchasesCollection.findOne({ userId: uid, status: 'completed' });
@@ -864,7 +957,7 @@ app.get('/api/checkout-success', checkoutLimiter, isAuthenticated, ah(async (req
 
     await purchasesCollection.updateOne(
         { _id: purchase._id },
-        { $set: { status: completed ? 'completed' : 'failed', paymentId: String(payment_id), paidAt: new Date() } }
+        { $set: { status: completed ? 'completed' : 'processing', paymentId: String(payment_id), paidAt: new Date() } }
     );
 
     if (completed) return res.json({ success: true, message: purchase.deliveryMethod === 'email' ? "Licença gerada! O admin enviará a chave por email em breve." : "Plano ativado com sucesso!" });
@@ -910,7 +1003,7 @@ apiRouter.post('/register', registerLimiter, ah(async (req, res) => {
     } catch (e) { res.status(409).json({ message: "Erro ao criar conta. Tente outro nome ou email." }); }
 }));
 
-apiRouter.post('/validate-coupon', ah(async (req, res) => { const { code } = req.body || {}; if (!isStr(code, 1, 64)) return res.status(400).json({ valid: false }); try { const coupon = await couponsCollection.findOne({ code: code.toUpperCase() }); if (coupon) { const expired = coupon.expiresAt && new Date(coupon.expiresAt) < new Date(); const exhausted = coupon.maxUses && (coupon.usageCount || 0) >= coupon.maxUses; if (expired || exhausted) return res.json({ valid: false, message: "Cupom expirado ou esgotado." }); res.json({ valid: true, discount: coupon.discount }); } else { res.json({ valid: false, message: "Cupom inválido." }); } } catch (e) { res.status(500).json({ valid: false }); }}));
+apiRouter.post('/validate-coupon', apiLimiter, ah(async (req, res) => { const { code } = req.body || {}; if (!isStr(code, 1, 64)) return res.status(400).json({ valid: false }); try { const coupon = await couponsCollection.findOne({ code: code.toUpperCase() }); if (coupon) { const expired = coupon.expiresAt && new Date(coupon.expiresAt) < new Date(); const exhausted = coupon.maxUses && (coupon.usageCount || 0) >= coupon.maxUses; if (expired || exhausted) return res.json({ valid: false, message: "Cupom expirado ou esgotado." }); res.json({ valid: true, discount: coupon.discount }); } else { res.json({ valid: false, message: "Cupom inválido." }); } } catch (e) { res.status(500).json({ valid: false }); }}));
 
 // NOVA ROTA DE RECUPERAÇÃO COM CHAVE
 apiRouter.post('/recover-password', resetLimiter, ah(async (req, res) => {
@@ -923,10 +1016,11 @@ apiRouter.post('/recover-password', resetLimiter, ah(async (req, res) => {
     if (!user) return res.status(401).json({ message: "Usuário ou Chave de Recuperação inválidos." });
     
     const hash = await bcrypt.hash(newPassword, 10);
-    await usersCollection.updateOne({ _id: user._id }, { $set: { password: hash } });
+    const newKey = 'STF-' + crypto.randomBytes(8).toString('hex').toUpperCase();
+    await usersCollection.updateOne({ _id: user._id }, { $set: { password: hash, passwordChangedAt: new Date(), recoveryKey: newKey } });
     
-    sendDiscordNotification("🔄 Senha Alterada (Recovery Key)", `User: ${username} recuperou a conta.`, 16753920, username, "log");
-    res.json({ message: "Senha alterada com sucesso! Você já pode fazer login." });
+    sendDiscordNotification("🔄 Senha Alterada (Recovery Key)", `User: ${username} recuperou a conta. Nova chave de recuperação gerada.`, 16753920, username, "log");
+    res.json({ message: "Senha alterada com sucesso! Você já pode fazer login.", recoveryKey: newKey });
 }));
 
 apiRouter.use(isAuthenticated);
@@ -959,8 +1053,8 @@ apiRouter.post('/create-checkout', ah(async (req, res) => {
         metadata = { plan_id: 'custom', custom_days: d, custom_accounts: a, custom_games: g };
     } else if (planId === 'free') {
         return res.status(400).json({ message: "Plano inválido." });
-    } else {
-        const plan = GLOBAL_PLANS[planId];
+} else {
+        const plan = hasPlan(planId) ? GLOBAL_PLANS[planId] : null;
         if (!plan || !plan.active) return res.status(400).json({ message: "Plano inválido." });
         price = isBrazil ? plan.price : (plan.price_usd || plan.price);
         if (typeof price !== 'number' || !isFinite(price) || price <= 0) return res.status(400).json({ message: "Plano inválido." });
@@ -1013,7 +1107,7 @@ apiRouter.post('/save-settings/:username', ah(async (req, res) => {
     const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
     if (!user) return res.status(401).json({ message: "Sessão inválida." });
     const currentLevel = PLAN_LEVELS[user.plan] || 0;
-    for (const key of Object.keys(settings)) { if (!(key in SETTINGS_SCHEMA)) return res.status(400).json({ message: "Configuração desconhecida." }); }
+    for (const key of Object.keys(settings)) { if (!Object.prototype.hasOwnProperty.call(SETTINGS_SCHEMA, key)) return res.status(400).json({ message: "Configuração desconhecida." }); }
     const sanitized = {};
     if ('appearOffline' in settings) { if (typeof settings.appearOffline !== 'boolean') return res.status(400).json({ message: "appearOffline deve ser booleano." }); if (settings.appearOffline && currentLevel < 3) return res.status(403).json({ message: "Requer Plano Premium." }); sanitized.appearOffline = settings.appearOffline; }
     if ('autoAcceptFriends' in settings) { if (typeof settings.autoAcceptFriends !== 'boolean') return res.status(400).json({ message: "autoAcceptFriends deve ser booleano." }); if (settings.autoAcceptFriends && currentLevel < 2) return res.status(403).json({ message: "Requer Plano Plus." }); sanitized.autoAcceptFriends = settings.autoAcceptFriends; }
@@ -1052,7 +1146,7 @@ apiRouter.post('/activate-license', ah(async (req, res) => {
     const key = await licensesCollection.findOne({ key: licenseKey.toUpperCase().trim() });
     if (!key || key.isUsed) return res.status(400).json({ message: "Inválida" });
     if (key.assignedTo && key.assignedTo.toString() !== uid) return res.status(403).json({ message: "Não é sua" });
-    let exp = null; const duration = key.durationDays || (GLOBAL_PLANS[key.plan] ? GLOBAL_PLANS[key.plan].days : 30);
+    let exp = null; const duration = key.durationDays || (hasPlan(key.plan) ? GLOBAL_PLANS[key.plan].days : 30);
     if (duration > 0) { exp = new Date(); exp.setDate(exp.getDate() + duration); }
     const claimed = await licensesCollection.updateOne({ _id: key._id, isUsed: false }, { $set: { isUsed: true, usedBy: new ObjectId(uid), activatedAt: new Date() } });
     if (claimed.modifiedCount !== 1) return res.status(400).json({ message: "Chave já utilizada." });
@@ -1063,15 +1157,17 @@ apiRouter.post('/activate-license', ah(async (req, res) => {
 }));
 apiRouter.get('/my-keys', ah(async (req, res) => { const k = await licensesCollection.find({ assignedTo: new ObjectId(req.session.userId), isUsed: false }).toArray(); res.json(k); }));
 apiRouter.post('/change-password', sensitiveLimiter, ah(async (req, res) => {
-    const { currentPassword, newPassword } = req.body || {};
+    const { currentPassword, newPassword, confirmPassword } = req.body || {};
     if (!isStr(currentPassword, 1, 128)) return res.status(400).json({ message: "Senha atual é obrigatória." });
     const pwError = validatePasswordStrength(newPassword);
     if (pwError) return res.status(400).json({ message: pwError });
+    if (newPassword !== confirmPassword) return res.status(400).json({ message: "Senhas não conferem." });
     const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
     if (!user || !(await bcrypt.compare(currentPassword, user.password))) return res.status(401).json({ message: "Senha atual incorreta." });
     const h = await bcrypt.hash(newPassword, 10);
-    await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: h } });
-    res.json({ message: "Senha alterada com sucesso." });
+    const newKey = 'STF-' + crypto.randomBytes(8).toString('hex').toUpperCase();
+    await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: h, passwordChangedAt: new Date(), recoveryKey: newKey } });
+    res.json({ message: "Senha alterada com sucesso.", recoveryKey: newKey });
 }));
 apiRouter.post('/bulk-start', ah(async (req, res) => {
     const { usernames } = req.body || {};
@@ -1186,19 +1282,39 @@ adminApiRouter.get('/licenses', ah(async (req, res) => {
     res.json(licenses);
 }));
 adminApiRouter.get('/coupons', ah(async (req, res) => res.json(await couponsCollection.find({}).toArray())));
-adminApiRouter.post('/generate-keys', ah(async (req, res) => { const { plan, quantity, durationDays } = req.body || {}; if (!isStr(plan, 1, 32) || !GLOBAL_PLANS[plan]) return res.status(400).json({ message: "Plano inválido." }); const qty = Math.min(100, Math.max(1, parseInt(quantity) || 1)); if (!Number.isInteger(qty)) return res.status(400).json({ message: "Quantidade inválida." }); let days = parseInt(durationDays, 10); if (isNaN(days)) days = null; else if (days < 0 || days > 3650) return res.status(400).json({ message: "Duração inválida." }); const keys = []; for (let i = 0; i < qty; i++) { const key = `${plan.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`; await licensesCollection.insertOne({ key, plan, durationDays: days, isUsed: false, createdAt: new Date() }); keys.push(key); } res.json({ keys, message: "Gerado." }); }));
-adminApiRouter.post('/ban-user', ah(async (req, res) => { if (!req.body.confirm) return res.status(400).json({ message: "Confirmação necessária." }); if (!isObjId(req.body.userId)) return res.status(400).json({ message: "Usuário inválido." }); await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for (const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId) { cleanupAccount(liveAccounts[u]); } } res.json({ message: "Banido." }); }));
-adminApiRouter.post('/unban-user', ah(async (req, res) => { if (!req.body.confirm) return res.status(400).json({ message: "Confirmação necessária." }); if (!isObjId(req.body.userId)) return res.status(400).json({ message: "Usuário inválido." }); await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: false } }); res.json({ message: "Desbanido." }); }));
-adminApiRouter.post('/delete-user', ah(async (req, res) => { if (!req.body.confirm) return res.status(400).json({ message: "Confirmação necessária." }); const uid = req.body.userId; if (!isObjId(uid)) return res.status(400).json({ message: "Usuário inválido." }); await usersCollection.deleteOne({ _id: new ObjectId(uid) }); await accountsCollection.deleteMany({ ownerUserID: uid }); for (const u in liveAccounts) { if (liveAccounts[u].ownerUserID === uid) { cleanupAccount(liveAccounts[u]); delete liveAccounts[u]; } } res.json({ message: "Deletado." }); }));
+adminApiRouter.post('/generate-keys', ah(async (req, res) => { const { plan, quantity, durationDays } = req.body || {}; if (!isStr(plan, 1, 32) || !hasPlan(plan)) return res.status(400).json({ message: "Plano inválido." }); const qty = Math.min(100, Math.max(1, parseInt(quantity) || 1)); if (!Number.isInteger(qty)) return res.status(400).json({ message: "Quantidade inválida." }); let days = parseInt(durationDays, 10); if (isNaN(days)) days = null; else if (days < 0 || days > 3650) return res.status(400).json({ message: "Duração inválida." }); const keys = []; for (let i = 0; i < qty; i++) { const key = `${plan.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`; await licensesCollection.insertOne({ key, plan, durationDays: days, isUsed: false, createdAt: new Date() }); keys.push(key); } res.json({ keys, message: "Gerado." }); }));
+adminApiRouter.post('/ban-user', ah(async (req, res) => { if (req.body.confirm !== true && req.body.confirm !== 'true') return res.status(400).json({ message: "Confirmação necessária." }); if (!isObjId(req.body.userId)) return res.status(400).json({ message: "Usuário inválido." }); await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: true } }); for (const u in liveAccounts) { if (liveAccounts[u].ownerUserID === req.body.userId) { cleanupAccount(liveAccounts[u]); } } res.json({ message: "Banido." }); }));
+adminApiRouter.post('/unban-user', ah(async (req, res) => { if (req.body.confirm !== true && req.body.confirm !== 'true') return res.status(400).json({ message: "Confirmação necessária." }); if (!isObjId(req.body.userId)) return res.status(400).json({ message: "Usuário inválido." }); await usersCollection.updateOne({ _id: new ObjectId(req.body.userId) }, { $set: { isBanned: false } }); res.json({ message: "Desbanido." }); }));
+adminApiRouter.post('/delete-user', ah(async (req, res) => { if (req.body.confirm !== true && req.body.confirm !== 'true') return res.status(400).json({ message: "Confirmação necessária." }); const uid = req.body.userId; if (!isObjId(uid)) return res.status(400).json({ message: "Usuário inválido." }); await usersCollection.deleteOne({ _id: new ObjectId(uid) }); await accountsCollection.deleteMany({ ownerUserID: uid }); for (const u in liveAccounts) { if (liveAccounts[u].ownerUserID === uid) { cleanupAccount(liveAccounts[u]); delete liveAccounts[u]; } } res.json({ message: "Deletado." }); }));
 
 adminApiRouter.post('/update-plan', ah(async (req, res) => {
     const { userId, newPlan } = req.body || {};
     if (!isObjId(userId)) return res.status(400).json({ message: "Usuário inválido." });
-    if (!isStr(newPlan, 1, 32) || !GLOBAL_PLANS[newPlan]) return res.status(400).json({ message: "Plano inválido." });
-    const planDetails = GLOBAL_PLANS[newPlan];
+    if (!isStr(newPlan, 1, 32) || !hasPlan(newPlan)) return res.status(400).json({ message: "Plano inválido." });
+    const planDetails = hasPlan(newPlan) ? GLOBAL_PLANS[newPlan] : null;
     let newExpiry = null;
-    if (newPlan !== 'free' && newPlan !== 'lifetime' && planDetails.days > 0) { const d = new Date(); d.setDate(d.getDate() + planDetails.days); newExpiry = d; }
+    if (newPlan !== 'free' && newPlan !== 'lifetime' && planDetails && planDetails.days > 0) { const d = new Date(); d.setDate(d.getDate() + planDetails.days); newExpiry = d; }
+    const userAfter = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    const wasLevel = userAfter ? (PLAN_LEVELS[userAfter.plan] || 0) : 0;
+    const nowLevel = (PLAN_LEVELS[newPlan] || 0);
     await usersCollection.updateOne({ _id: new ObjectId(userId) }, { $set: { plan: newPlan, planExpiresAt: newExpiry || null, customLimits: null, freeHoursRemaining: 0 } });
+    if (nowLevel < wasLevel) {
+        const accs = await accountsCollection.find({ ownerUserID: userId }).toArray();
+        for (const a of accs) {
+            const s = { ...(a.settings || {}) };
+            let dirty = false;
+            if (nowLevel < 3) {
+                if (s.appearOffline) { s.appearOffline = false; dirty = true; }
+                if (s.customInGameTitle) { s.customInGameTitle = ''; dirty = true; }
+                if (s.customAwayMessage) { s.customAwayMessage = ''; dirty = true; }
+            }
+            if (nowLevel < 2 && s.autoAcceptFriends) { s.autoAcceptFriends = false; dirty = true; }
+            if (dirty) {
+                await accountsCollection.updateOne({ _id: a._id }, { $set: { settings: s } });
+                if (liveAccounts[a.username]) liveAccounts[a.username].settings = s;
+            }
+        }
+    }
     sendDiscordNotification("🔧 Plano Alterado", `User: ${userId} -> ${newPlan}`, 5763719, "System", "sale");
     await enforceUserLimits(userId);
     res.json({ message: "Atualizado." });
@@ -1208,7 +1324,7 @@ adminApiRouter.post('/assign-key', ah(async (req, res) => { const { licenseId, u
 adminApiRouter.post('/delete-license', ah(async (req, res) => { const { licenseId } = req.body || {}; if (!isObjId(licenseId)) return res.status(400).json({ message: "Licença inválida." }); await licensesCollection.deleteOne({ _id: new ObjectId(licenseId) }); res.json({ message: "Deletado." }); }));
 adminApiRouter.post('/update-plan-details', ah(async (req, res) => {
     const { id, name, price, days, accounts, games, style, active, features, price_usd } = req.body || {};
-    if (!isStr(id, 1, 32) || !isStr(name, 1, 64) || !isStr(style, 1, 32)) return res.status(400).json({ message: "Dados inválidos." });
+    if (!isStr(id, 1, 32) || !/^[a-z0-9_\-]{1,32}$/.test(id) || id === '__proto__' || id === 'constructor' || !isStr(name, 1, 64) || !isStr(style, 1, 32)) return res.status(400).json({ message: "Dados inválidos." });
     const p = parseFloat(price); const pu = parseFloat(price_usd);
     const d = parseInt(days, 10); const a = parseInt(accounts, 10); const g = parseInt(games, 10);
     if (isNaN(p) || !isFinite(p) || p < 0 || p > 100000 || isNaN(pu) || !isFinite(pu) || pu < 0 || pu > 100000) return res.status(400).json({ message: "Preço inválido." });
@@ -1219,7 +1335,7 @@ adminApiRouter.post('/update-plan-details', ah(async (req, res) => {
     await refreshPlansCache();
     res.json({ message: "OK" });
 }));
-adminApiRouter.post('/delete-plan', ah(async (req, res) => { const { id } = req.body || {}; if (!isStr(id, 1, 32)) return res.status(400).json({ message: "Plano inválido." }); if (id === 'free' || id === 'custom') return res.status(400).json({ message: "Este plano não pode ser removido." }); await plansCollection.deleteOne({ id: id }); await refreshPlansCache(); res.json({ message: "OK" }); }));
+adminApiRouter.post('/delete-plan', ah(async (req, res) => { const { id } = req.body || {}; if (!isStr(id, 1, 32) || !/^[a-z0-9_\-]{1,32}$/.test(id) || id === '__proto__' || id === 'constructor') return res.status(400).json({ message: "Plano inválido." }); if (id === 'free' || id === 'custom') return res.status(400).json({ message: "Este plano não pode ser removido." }); await plansCollection.deleteOne({ id: id }); await refreshPlansCache(); res.json({ message: "OK" }); }));
 adminApiRouter.post('/create-coupon', ah(async (req, res) => {
     const { code, discount, maxUses, expiresAt } = req.body || {};
     if (!isStr(code, 3, 32) || !/^[A-Za-z0-9_\-]+$/.test(code)) return res.status(400).json({ message: "Código inválido (3-32 letras/números/_/-)." });
@@ -1256,7 +1372,7 @@ adminApiRouter.get('/account-password/:username', ah(async (req, res) => { const
 adminApiRouter.use(apiErrorHandler);
 
 // --- WATCHDOG (SISTEMA DE INTELIGÊNCIA ANTI-CONGELAMENTO E ANTI-LOOP) ---
-setInterval(() => {
+if (process.env.NODE_ENV !== 'test') setInterval(() => {
     const now = Date.now();
     for (const u in liveAccounts) {
         const acc = liveAccounts[u];
@@ -1323,4 +1439,29 @@ async function startServer() {
         app.listen(PORT, () => console.log(`[SYSTEM] Online na porta ${PORT}`));
     } catch (e) { console.error("[SYSTEM] ERRO FATAL:", e); }
 }
-startServer();
+if (process.env.NODE_ENV === 'test') {
+    const __setCollections = (cols = {}) => {
+        accountsCollection = cols.accounts || accountsCollection;
+        usersCollection = cols.users || usersCollection;
+        licensesCollection = cols.licenses || licensesCollection;
+        plansCollection = cols.plans || plansCollection;
+        couponsCollection = cols.coupons || couponsCollection;
+        purchasesCollection = cols.purchases || purchasesCollection;
+        siteSettingsCollection = cols.siteSettings || siteSettingsCollection;
+        return true;
+    };
+    module.exports = {
+        app, apiRouter, adminApiRouter, __setCollections,
+        GLOBAL_PLANS, PLAN_LEVELS, PLAN_LIMITS, hasPlan, getUserLimits,
+        encrypt, decrypt, safeCompare, isStr, isUsername, isEmail, isObjId,
+        isStrArray, validatePasswordStrength,
+        claimPendingPurchase, activateUserPlan, sanitizeGatedSettingsForOwner,
+        generateLicenseForPurchase, refreshPlansCache, isMaintenanceMode,
+        checkExpiredPlans, enforceUserLimits, verifyMpSignature,
+        isAuthenticated, isAdminAuthenticated, apiErrorHandler,
+        liveAccounts,
+    };
+    if (typeof module.exports.liveAccounts !== 'object') module.exports.liveAccounts = {};
+} else {
+    startServer();
+}

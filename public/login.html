@@ -190,6 +190,7 @@
                         // Limpa os campos para ele logar normal
                         document.getElementById('username').value = u;
                         document.getElementById('password').value = p;
+                        if (data.recoveryKey) alert('Sua senha foi alterada!\n\nNOVA chave de recuperação (guarde em local seguro):\n\n' + data.recoveryKey);
                     }
                 } catch(e) {
                     alert("Erro de conexão.");

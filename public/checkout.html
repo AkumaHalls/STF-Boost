@@ -182,7 +182,7 @@
                     const plan = plans.find(p => p.id === planId);
                     if (!plan) { alert('Plano inválido.'); window.location.href = '/'; return; }
                     planName = plan.name;
-                    currentPrice = plan.price;
+                    currentPrice = typeof plan.price === 'number' && isFinite(plan.price) ? plan.price : 0;
                     features = [`${plan.days > 0 ? plan.days + ' Dias' : 'Vitalício'}`, `${plan.accounts} Contas`, `${plan.games} Jogos`];
                 }
 
@@ -226,12 +226,14 @@
 
                 // Lógica do Cupom
                 applyPromoBtn.onclick = async () => {
+                    if (applyPromoBtn.disabled) return;
                     const code = promoCodeInput.value.trim();
                     if (!code) return;
+                    if (currentPrice <= 0) { promoMessage.textContent = "Cupom não aplicável ao valor."; promoMessage.className = "text-xs mt-1 text-red-600"; return; }
                     // Limpa mensagens anteriores
                     promoMessage.textContent = "Verificando...";
                     promoMessage.className = "text-xs mt-1 text-gray-500";
-                    
+                    applyPromoBtn.disabled = true;
                     try {
                         const res = await fetch('/api/validate-coupon', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ code }) });
                         const data = await res.json();
@@ -242,13 +244,16 @@
                             updatePriceDisplay();
                             promoMessage.textContent = `Desconto de ${data.discount}% aplicado!`;
                             promoMessage.className = "text-xs mt-1 text-green-600";
-                            applyPromoBtn.disabled = true; promoCodeInput.disabled = true;
+                            promoCodeInput.disabled = true;
                         } else {
-                            promoMessage.textContent = "Cupom inválido.";
+                            promoMessage.textContent = data.message || "Cupom inválido.";
                             promoMessage.className = "text-xs mt-1 text-red-600";
+                            applyPromoBtn.disabled = false;
                         }
                     } catch (e) {
                          promoMessage.textContent = "Erro ao validar.";
+                         promoMessage.className = "text-xs mt-1 text-red-600";
+                         applyPromoBtn.disabled = false;
                     }
                 };
 
