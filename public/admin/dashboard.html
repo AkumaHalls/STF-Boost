@@ -371,7 +371,7 @@
                         <td><select class="plan-select" data-uid="${u._id}">${opts}</select></td>
                         <td>${accountsHtml}</td>
                         <td class="${u.isBanned ? 'status-banned' : 'status-unused'}">${u.isBanned ? 'BANIDO' : 'Ativo'}</td>
-                        <td><code style="color:#ffd700">${u.recoveryKey || 'N/A'}</code></td>
+                        <td><code style="color:#ffd700">${escapeHtml(u.recoveryKey || 'N/A')}</code></td>
                         <td class="actions-cell">
                             <button class="ban-btn" data-uid="${u._id}">${u.isBanned ? 'Desbanir' : 'Banir'}</button>
                             <button class="reset-key-btn" data-uid="${u._id}" style="border-color:#00ffff; color:#00ffff; margin-left:5px; font-size:12px; padding:5px 10px; background:transparent; border-width:1px; border-style:solid; border-radius:4px; cursor:pointer;">Nova Chave</button>

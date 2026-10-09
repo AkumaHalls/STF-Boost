@@ -282,11 +282,12 @@
                             titleColor = 'text-yellow-400'; 
                         }
 
-                        const priceDisplay = p.price === 0 ? 'Grátis' : `R$ ${p.price.toFixed(2).replace('.',',')}`;
-                        const periodDisplay = p.price === 0 ? '' : (p.days > 0 ? '/mês' : '<span class="text-xs align-top">único</span>');
+                        const planPrice = (typeof p.price === 'number' && isFinite(p.price)) ? p.price : 0;
+                        const priceDisplay = planPrice === 0 ? 'Grátis' : `R$ ${planPrice.toFixed(2).replace('.',',')}`;
+                        const periodDisplay = planPrice === 0 ? '' : (p.days > 0 ? '/mês' : '<span class="text-xs align-top">único</span>');
                         
-                        const buttonText = p.price === 0 ? 'Criar Conta Grátis' : (p.days === 0 ? 'Comprar Vitalício' : 'Assinar Agora');
-                        const buttonLink = p.price === 0 ? '/register' : `/checkout?plan=${safeId}`;
+                        const buttonText = planPrice === 0 ? 'Criar Conta Grátis' : (p.days === 0 ? 'Comprar Vitalício' : 'Assinar Agora');
+                        const buttonLink = planPrice === 0 ? '/register' : `/checkout?plan=${safeId}`;
                         const buttonClass = p.price === 0 ? 
                             "bg-gray-700 hover:bg-gray-600 text-gray-200" : 
                             "bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-900/30";

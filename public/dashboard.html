@@ -603,7 +603,7 @@
                 clearTimeout(searchTimeout);
                 if(gameSearchInput.value.length<3) { gameSearchResults.innerHTML=''; return; }
                 searchTimeout = setTimeout(async()=>{
-                    const res = await fetch(`/api/search-game?q=${gameSearchInput.value}`);
+                    const res = await fetch(`/api/search-game?q=${encodeURIComponent(gameSearchInput.value)}`);
                     const data = await res.json();
                     gameSearchResults.innerHTML='';
                     data.forEach(g=>{

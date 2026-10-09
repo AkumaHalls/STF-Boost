@@ -32,10 +32,10 @@ Esta não é uma ferramenta qualquer. É uma verdadeira suíte de automação co
 * **🔐 Segurança de Ponta:**
     * Acesso ao painel protegido por senha.
     * Todas as senhas das contas Steam são **encriptadas** na base de dados com uma chave mestra única e auto-gerida. Segurança em primeiro lugar!
-* **🧠 Arquitetura Imbatível (Gestor/Trabalhador):**
-    * Cada conta corre num processo isolado ("Trabalhador").
-    * **À prova de apocalipses:** Se uma conta tiver um erro crítico e crashar, ela **NÃO derruba o sistema**. As outras contas continuam a funcionar perfeitamente!
-    * O sistema principal ("Gestor") monitoriza tudo e reinicia automaticamente os trabalhadores que falham.
+* **🧠 Arquitetura Robusta (In-Process com Isolamento):**
+    * Cada conta Steam é gerida no próprio processo (`index.js`), via clientes `steam-user` isolados.
+    * **À prova de apocalipses:** Se uma conta tiver um erro e cair, ela **NÃO derruba o sistema**. As outras contas continuam a funcionar perfeitamente!
+    * O **Watchdog** monitoriza o estado de cada conta e tenta recuperá-las automaticamente quando necessário.
 * **✨ Inicialização Inteligente:**
     * Quando o servidor reinicia, todas as contas configuradas para tal iniciam sozinhas.
     * **Login Escalonado:** Para não irritar a Steam, cada conta espera alguns segundos antes de iniciar, simulando um comportamento humano e evitando bloqueios.
@@ -48,10 +48,10 @@ Como é que esta maravilha funciona sem nunca falhar? Com uma arquitetura profis
 
 Pense no nosso sistema como uma empresa:
 
-* **O Gestor (`index.js`):** É o "Chefe". Ele gere o site, o painel, fala consigo, e anota os pedidos. Ele não faz o trabalho sujo.
-* **Os Trabalhadores (`worker.js`):** Para cada conta que você inicia, o Gestor contrata um "Funcionário" novo e isolado. A única tarefa deste funcionário é cuidar de UMA conta Steam. Ele faz o login, mantém a conta online e reporta o status ao chefe.
+* **`index.js`:** É o "Chefe". Ele gere o site, o painel, o check de planos, os pagamentos e o estado de todas as contas Steam — tudo no mesmo processo.
+* **Clientes `steam-user` isolados:** Para cada conta que você inicia, o `index.js` cria um cliente Steam com estado próprio (login, status, jogos, guard). A falha de um cliente **não afeta os outros**.
 
-Se um funcionário tiver um problema e "desmaiar" (crashar), os outros funcionários nem reparam. O Chefe simplesmente vê o que aconteceu e contrata um novo funcionário para o substituir. É por isso que o nosso sistema é tão robusto!
+Se uma conta tiver um problema e "desmaiar", os outros clientes nem reparam. O **Watchdog** simplesmente vê o que aconteceu e tenta colocar a conta de volta ao ar. É por isso que o nosso sistema é tão robusto!
 
 ---
 
@@ -75,17 +75,21 @@ Levar o seu exército para a nuvem é fácil! Siga estes passos:
     * Conecte o seu repositório do GitHub.
     * Defina as seguintes configurações:
         * **Build Command:** `npm install`
-        * **Start Command:** `node index.js`
-    * Vá para a secção **Environment** (Variáveis de Ambiente) e adicione as seguintes variáveis:
-        * **Key:** `MONGODB_URI`
-        * **Value:** A sua string de conexão do MongoDB Atlas que você copiou.
-        * **Key:** `SITE_PASSWORD`
-        * **Value:** A senha que você quer usar para aceder ao seu painel.
+        * **Start Command:** `node --no-deprecation --max-old-space-size=400 index.js`
+    * Vá para a secção **Environment** (Variáveis de Ambiente) e adicione:
+        * **`MONGODB_URI`** (obrigatório) — string de conexão do MongoDB Atlas.
+        * **`SITE_PASSWORD`** (obrigatório) — senha do painel de administração.
+        * **`SITE_URL`** ou **`RENDER_EXTERNAL_URL`** (obrigatório) — URL público do site (usado no CORS e nos `back_urls` do Mercado Pago).
+        * **`MP_ACCESS_TOKEN`** (obrigatório para vendas) — Access Token do Mercado Pago.
+        * **`MP_WEBHOOK_SECRET`** (recomendado) — segredo para validação HMAC do webhook.
+        * **`SESSION_SECRET`** (recomendado) — segredo das sessões; se ausente, um valor aleatório é gerado a cada boot (invalida sessões ao reiniciar).
+        * **`DISCORD_WEBHOOK_LOGS`**, **`DISCORD_WEBHOOK_SALES`**, **`DISCORD_WEBHOOK_ALERTS`** (opcionais) — notificações.
+        * **`PORT`** (opcional) — porta do servidor.
     * Clique em **Create Web Service**. Espere o deploy terminar. Está no ar!
 
 4.  **Passo 3 (Opcional, mas recomendado): Manter o Serviço "Acordado"**
     * O plano gratuito do Render "dorme" após 15 minutos de inatividade. Para manter os seus bots a rodar 24/7, use um serviço como [Cron-Job.org](https://cron-job.org/).
-    * Crie um novo CronJob que faça um pedido `HTTP GET` ao endereço do seu painel, seguido de `/health` (ex: `https://seu-site.onrender.com/health`) a cada 10-15 minutos. Isto mantém o serviço sempre ativo!
+    * Crie um novo CronJob que faça um pedido `HTTP GET` a `https://seu-site.onrender.com/health` a cada 10-15 minutos. Este endpoint responde `200 {"status":"ok","mongo":true}` quando a base de dados está acessível, e `503` se o MongoDB estiver fora. Isto mantém o serviço sempre ativo!
 
 ---
 
@@ -109,6 +113,15 @@ Usar o painel é a parte mais fácil e divertida!
 * **Entrega por Email:** Planos podem ser entregues via chave de licença gerada automaticamente, sem ativação direta na conta.
 * **Criptografia AES-256-GCM:** Senhas Steam protegidas com o padrão mais seguro; fallback automático para CBC legado.
 * **Proteções:** Rate limiting por endpoint, CSP restritivo, validação de senha forte, sessão admin com timeout, confirmação em ações administrativas e muito mais.
+
+## Notas de dependências (riscos aceitos)
+
+Rodar `npm audit` — as vulnerabilidades restantes estão **documentadas e aceitas** nesta versão:
+
+* **`steam-user` (e `steam-appticket`/`adm-zip`/`protobufjs`):** as admissórias exigem *downgrade* do pacote para 3.15, que quebraria o core do serviço. O conteúdo processado vem exclusivamente dos servidores da Valve (app tickets/ZIPs de cache) — **não é alcançável via requisições ao site**. Fique de olho em um release do `steam-user` que atualize essas dependências.
+* **`mercadopago` (`uuid`):** falha de buffer dentro do SDK; não é alcançável pela rota de checkout. Migração para o SDK v3 fica para quando houver ambiente com token de teste.
+
+Decisão registrada em 2026-10-09 durante auditoria de produção.
 
 ## A Jornada Épica ✨
 
