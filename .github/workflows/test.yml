@@ -16,5 +16,8 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install dependencies
+        run: npm ci
+
       - name: Run unit tests (node:test, stubs sem rede/DB)
         run: node --test --test-reporter=spec test/*.test.js
