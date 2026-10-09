@@ -86,7 +86,35 @@
                         <tbody id="accountsTableBody"></tbody>
                     </table>
                 </div>
-            </div> 
+            </div>
+
+            <aside class="sidebar-right" style="margin-left: 20px; width: 320px; display: flex; flex-direction: column; gap: 20px;">
+                <div class="panel-card" style="background: rgba(10,10,20,0.8); border: 1px solid #00ffff; border-radius: 8px; padding: 16px;">
+                    <h3 style="color: #00ffff; margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase;">Indicações</h3>
+                    <div style="font-size: 12px; color: #bbb; margin-bottom: 8px;">Seu código</div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                        <input id="refCodeInput" type="text" readonly style="flex:1; background:#000; border:1px solid #333; color:#00ffff; padding:6px; border-radius:4px; font-family:monospace; font-size:12px;">
+                        <button id="copyRefBtn" class="start-btn" style="font-size:12px; padding:6px 10px;">Copiar</button>
+                    </div>
+                    <div style="font-size: 12px; color: #bbb; margin-bottom: 6px;">Link</div>
+                    <input id="refLinkInput" type="text" readonly style="width:100%; background:#000; border:1px solid #333; color:#bbb; padding:6px; border-radius:4px; font-family:monospace; font-size:11px; margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; font-size:12px; color:#ccc;">
+                        <span>Indicações: <span id="refCount">0</span></span>
+                        <span>Bônus: <span id="refBonus">+10h</span> por indicação</span>
+                    </div>
+                </div>
+                <div class="panel-card" style="background: rgba(10,10,20,0.8); border: 1px solid #00ffff; border-radius: 8px; padding: 16px;">
+                    <h3 style="color: #00ffff; margin: 0 0 12px 0; font-size: 14px; text-transform: uppercase;">Estatísticas</h3>
+                    <div style="font-size: 12px; color: #ccc; display:flex; justify-content:space-between; margin-bottom: 8px;">
+                        <span>Farmado (total)</span>
+                        <span id="statsTotal">0h 0m</span>
+                    </div>
+                    <div style="font-size: 12px; color: #666; display:flex; justify-content:space-between; margin-bottom: 8px;">
+                        <span>Uptime contas</span>
+                        <span id="statsUptime">0h 0m</span>
+                    </div>
+                </div>
+            </aside>
         </main> 
     </div> 
 
@@ -138,6 +166,7 @@
                 <div class="settings-form-row"><label>Aceitar Amigos:</label><label class="switch"><input type="checkbox" id="autoAcceptFriendsToggle"><span class="slider"></span></label></div>
                 <div class="settings-form-row"><label>Reconectar Auto:</label><label class="switch"><input type="checkbox" id="autoReloginToggle"><span class="slider"></span></label></div>
                 <div class="settings-form-row"><label>Shared Secret:</label><input type="password" id="sharedSecretInput" maxlength="64"></div>
+                <div class="settings-form-row"><label>Card Farmer:</label><label class="switch"><input type="checkbox" id="cardFarmerToggle"><span class="slider"></span></label></div>
             </div>
             <p id="upgradeHint" style="color: var(--pending-color); font-size: 12px; display:none; text-align: center;">Algumas opções requerem plano superior.</p>
             <button id="saveSettingsButton">Salvar</button>
@@ -400,10 +429,10 @@
                         const btnStart = document.createElement('button');
                         if(acc.status==='Rodando'){ 
                             btnStart.innerHTML=icons.stop+"Parar"; btnStart.className='stop-btn'; 
-                            btnStart.onclick=()=>fetch(`/api/stop/${encodeURIComponent(acc.username)}`,{method:'POST'}).then(updateUI); 
+                            btnStart.onclick=()=>{ btnStart.disabled=true; fetch(`/api/stop/${encodeURIComponent(acc.username)}`,{method:'POST'}).then(()=>{ setTimeout(updateUI,600); }).finally(()=>btnStart.disabled=false); }; 
                         } else { 
                             btnStart.innerHTML=icons.play+"Iniciar"; btnStart.className='start-btn'; 
-                            btnStart.onclick=()=>fetch(`/api/start/${encodeURIComponent(acc.username)}`,{method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message, r.ok?'info':'error'); updateUI();}); 
+                            btnStart.onclick=()=>{ btnStart.disabled=true; fetch(`/api/start/${encodeURIComponent(acc.username)}`,{method:'POST'}).then(r=>r.json()).then(d=>{showToast(d.message, r.ok?'info':'error'); setTimeout(updateUI,600);}).finally(()=>btnStart.disabled=false); }; 
                         }
                         
                         const btnGuard = document.createElement('button'); btnGuard.innerHTML=icons.guard+"Guard"; 
@@ -435,18 +464,21 @@
                             document.getElementById('autoAcceptFriendsToggle').checked = s.autoAcceptFriends;
                             document.getElementById('autoReloginToggle').checked = s.autoRelogin;
                             document.getElementById('sharedSecretInput').value = s.sharedSecret || '';
+                            const cf = document.getElementById('cardFarmerToggle');
+                            if (cf) cf.checked = !!s.cardFarmer;
                             
                             // Elementos a controlar
                             const elTitle = document.getElementById('customTitleInput');
                             const elAway = document.getElementById('customAwayMessageInput');
                             const elOffline = document.getElementById('appearOfflineToggle');
                             const elFriends = document.getElementById('autoAcceptFriendsToggle');
+                            const elCardFarmer = document.getElementById('cardFarmerToggle');
                             
                             // Reseta estados
-                            [elTitle, elAway, elOffline, elFriends].forEach(el => {
-                                el.disabled = false;
-                                if(el.type === 'text') el.placeholder = '';
+                            [elTitle, elAway, elOffline, elFriends, elCardFarmer].forEach(el => {
+                                if (el) { el.disabled = false; if(el.type === 'text') el.placeholder = ''; }
                             });
+                            
                             document.getElementById('upgradeHint').style.display = 'none';
 
                             // Lógica de Bloqueio Visual baseada no plano
@@ -454,19 +486,39 @@
                             const isPlus = isPremium || currentUserPlan === 'plus';
 
                             if (!isPremium) {
-                                elTitle.disabled = true; 
-                                elTitle.placeholder = "Requer Premium";
-                                elAway.disabled = true;
-                                elAway.placeholder = "Requer Premium";
-                                elOffline.disabled = true;
+                                if (elTitle) { elTitle.disabled = true; elTitle.placeholder = "Requer Premium"; }
+                                if (elAway) { elAway.disabled = true; elAway.placeholder = "Requer Premium"; }
+                                if (elOffline) elOffline.disabled = true;
                                 document.getElementById('upgradeHint').style.display = 'block';
-                            }
+            async function loadReferralAndStats(){
+                try {
+                    const [r1, r2] = await Promise.all([fetch('/api/referral-info'), fetch('/api/stats')]);
+                    if (r1.ok){
+                        const d = await r1.json();
+                        const c = document.getElementById('refCodeInput'); const l = document.getElementById('refLinkInput'); const n = document.getElementById('refCount'); const b = document.getElementById('refBonus');
+                        if (c) c.value = d.code || '';
+                        if (l) l.value = d.referralUrl || '';
+                        if (n) n.textContent = d.referralCount || 0;
+                        if (b) b.textContent = `+${d.bonusHours || 10}h`;
+                    }
+                    if (r2.ok){
+                        const d = await r2.json();
+                        const st = document.getElementById('statsTotal'); const su = document.getElementById('statsUptime');
+                        let tot = d.totalFarmedMs || 0; let upt = 0;
+                        if (d.accounts) for (const k in d.accounts) upt += d.accounts[k].uptime||0;
+                        const fmt = (ms)=>{ if(ms<=0) return '0h 0m'; const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000); return h+'h '+m+'m'; };
+                        if (st) st.textContent = fmt(tot); if (su) su.textContent = fmt(upt);
+                    }
+                } catch(e){}
+            }
                             
                             if (!isPlus) {
-                                elFriends.disabled = true;
+                                if (elFriends) elFriends.disabled = true;
+                                if (elCardFarmer) elCardFarmer.disabled = true;
                                 document.getElementById('upgradeHint').style.display = 'block';
+                            } else {
+                                if (elCardFarmer) elCardFarmer.disabled = false;
                             }
-
                             settingsModal.style.display = 'block';
                         };
 
@@ -480,6 +532,7 @@
                     if (summaryDiv) summaryDiv.innerHTML = `<div style="display: flex; gap: 20px;"><div style="color: #90ee90;">⚡ Farmando: <strong>${runningCount}</strong></div><div style="color: #ff6B6B;">🛑 Parados: <strong>${stoppedCount}</strong></div><div style="color: #ffd700;">⚠️ Atenção: <strong>${attentionCount}</strong></div></div>`;
                     if(document.getElementById('selectAllCheckbox')) document.getElementById('selectAllCheckbox').checked = selectAllState;
                     updateBulkButtons();
+                    loadReferralAndStats();
                 } catch(e){ console.error(e); }
             }
 
@@ -591,10 +644,12 @@
                 if (!elTitle.disabled) s.customInGameTitle = elTitle.value.slice(0, 128);
                 if (!elAway.disabled) s.customAwayMessage = elAway.value.slice(0, 128);
                 if (!elOffline.disabled) s.appearOffline = !!elOffline.checked;
-                if (!elFriends.disabled) s.autoAcceptFriends = !!elFriends.checked;
+                if (elFriends && !elFriends.disabled) s.autoAcceptFriends = !!elFriends.checked;
                 s.autoRelogin = !!document.getElementById('autoReloginToggle').checked;
                 const ss = document.getElementById('sharedSecretInput').value.trim();
                 s.sharedSecret = ss.slice(0, 64);
+                const cf = document.getElementById('cardFarmerToggle');
+                if (cf) s.cardFarmer = !!cf.checked;
                 fetch(`/api/save-settings/${currentlyEditingSettingsFor}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: s }) })
                     .then(r => r.json().then(data => ({ data, ok: r.ok })))
                     .then(({ data, ok }) => { showToast(data.message, ok ? 'info' : 'error'); if (ok) hideSettingsModal(); });
@@ -683,9 +738,15 @@
 
             fetchUserInfo();
             updateUI();
+            loadReferralAndStats();
             checkGlobalAlert(); 
-            setInterval(updateUI, 1000);
+            setInterval(updateUI, 5000);
             setInterval(fetchUserInfo, 60000);
+            setInterval(loadReferralAndStats, 10000);
+            const copyRefBtn = document.getElementById('copyRefBtn');
+            if (copyRefBtn) copyRefBtn.onclick = () => {
+                const c = document.getElementById('refCodeInput'); if (c) { navigator.clipboard.writeText(c.value).then(()=>showToast('Código copiado!','info')); }
+            };
         });
     </script>
 </body>

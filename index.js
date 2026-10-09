@@ -78,6 +78,11 @@ let steamAppListCache = { data: [{appid: 730, name: "Counter-Strike 2"}], timest
 const replyCooldowns = new Map();
 
 const FREE_HOURS_MS = 50 * 60 * 60 * 1000; 
+const REFERRAL_HOURS = 10; 
+const REFERRAL_BONUS_MS = REFERRAL_HOURS * 60 * 60 * 1000;
+const REFERRAL_COUPON_DISCOUNT = 15;
+const REFERRAL_COUPON_DAYS = 60;
+const REFERRAL_CODE_RE = /^[A-Z0-9]{8,12}$/;
 const CUSTOM_PRICING_BRL = { BASE: 5.00, DAY: 0.10, ACCOUNT: 2.00, GAME: 0.10 };
 const CUSTOM_PRICING_USD = { BASE: 2.00, DAY: 0.05, ACCOUNT: 1.00, GAME: 0.05 };
 
@@ -249,7 +254,67 @@ async function ensureUserPlanStatus(userId) {
 
 
 // --- LÓGICA STEAM UNIFICADA ---
+// --- SISTEMA DE INDICAÇÕES (REFERRAL) ---
+function generateReferralCode() {
+    // 8 caracteres alfanuméricos (sem caracteres ambíguos)
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = '';
+    for (let i = 0; i < 8; i++) out += alphabet[crypto.randomInt(0, alphabet.length)];
+    return out;
+}
+
+async function findReferralCode() {
+    // garante código único no BD (retry limitado)
+    for (let i = 0; i < 5; i++) {
+        const code = generateReferralCode();
+        if (typeof usersCollection !== 'undefined' && usersCollection) {
+            const existing = await usersCollection.findOne({ referralCode: code });
+            if (!existing) return code;
+        } else {
+            return code;
+        }
+    }
+    return generateReferralCode();
+}
+
+async function applyReferralBonus(referrerUsername, referredByCode) {
+    // Indicador: ganha horas bônus + cupom de desconto real
+    if (!isStr(referredByCode, 4, 32)) return;
+    try {
+        const referrer = await usersCollection.findOne({ referralCode: String(referredByCode).trim().toUpperCase() });
+        if (!referrer || referrer.username === referrerUsername) return;
+        await usersCollection.updateOne(
+            { _id: referrer._id },
+            { $inc: { referralCount: 1, freeHoursRemaining: REFERRAL_BONUS_MS } }
+        );
+        // Cupom automático por indicação concluída (1 uso, 60 dias)
+        const code = 'REF-' + String(referredByCode).trim().toUpperCase() + '-' + String(((referrer.referralCount || 0)) + 1).padStart(3, '0');
+        const existingCoupon = await couponsCollection.findOne({ code });
+        if (!existingCoupon) {
+            const expiresAt = new Date(Date.now() + REFERRAL_COUPON_DAYS * 24 * 60 * 60 * 1000);
+            await couponsCollection.insertOne({ code, discount: REFERRAL_COUPON_DISCOUNT, usageCount: 0, maxUses: 1, expiresAt, createdAt: new Date(), source: 'referral', ownerUserId: referrer._id.toString() });
+        }
+        sendDiscordNotification("🎁 Nova Indicação", `O usuário "${referrerUsername}" se cadastrou usando o código ${String(referredByCode).trim().toUpperCase()} do(a) ${referrer.username}.\nBônus: +${REFERRAL_HOURS}h e cupom REF-${String(referredByCode).trim().toUpperCase()}-...`, 15844367, referrer.username, "log");
+    } catch (e) { console.error("[REFERRAL] Erro ao aplicar bônus:", e.message); }
+}
+
 function cleanupAccount(acc) {
+    // acumula tempo farmado nesta sessão
+    try {
+        if (acc.farmStartTime) {
+            const ms = Date.now() - acc.farmStartTime;
+            if (ms > 0) {
+                acc.farmedMs = (acc.farmedMs || 0) + ms;
+                acc.totalFarmedMs = (acc.totalFarmedMs || 0) + ms;
+                if (acc.ownerUserID && usersCollection) {
+                    try {
+                        const oid = (typeof acc.ownerUserID === 'string' && ObjectId.isValid(acc.ownerUserID)) ? new ObjectId(acc.ownerUserID) : acc.ownerUserID;
+                        usersCollection.updateOne({ _id: oid }, { $inc: { totalFarmedMs: ms } }).catch(() => {});
+                    } catch (e) {}
+                }
+            }
+        }
+    } catch (e) {}
     if (acc.client) {
         try { acc.client.logOff(); } catch(e){}
         acc.client.removeAllListeners();
@@ -259,7 +324,8 @@ function cleanupAccount(acc) {
     if (acc.guardTimeout) clearTimeout(acc.guardTimeout);
     acc.steamGuardCallback = null;
     acc.isLoggingIn = false;
-    acc.sessionStartTime = null; 
+    acc.sessionStartTime = null;
+    acc.farmStartTime = null;
 }
 
 function farmGames(acc) {
@@ -338,6 +404,8 @@ function setupSteamListeners(acc, password) {
         } catch (e) {}
 
         if (acc.farmInterval) clearInterval(acc.farmInterval);
+        acc.farmStartTime = Date.now();
+        acc.farmedMs = 0;
         acc.farmInterval = setInterval(() => farmGames(acc), 5 * 60 * 1000);
     });
 
@@ -986,20 +1054,31 @@ function validatePasswordStrength(password) {
 }
 
 apiRouter.post('/register', registerLimiter, ah(async (req, res) => { 
-    const { username, email, password } = req.body || {}; 
+    const { username, email, password, ref } = req.body || {}; 
     if (!isUsername(username)) return res.status(400).json({ message: "Usuário deve ter 3-32 caracteres (letras, números, . _ -)." }); 
     if (!isEmail(email)) return res.status(400).json({ message: "E-mail válido é obrigatório." }); 
     const pwError = validatePasswordStrength(password);
     if (pwError) return res.status(400).json({ message: pwError });
+    if (ref !== undefined && ref !== null && ref !== '' && !isStr(ref, 4, 32)) return res.status(400).json({ message: "Código de indicação inválido." });
     const ip = String(req.ip || '').replace(/^::ffff:/, '') || 'unknown'; 
     const accountsFromIP = await usersCollection.countDocuments({ registrationIP: ip }); 
     if (accountsFromIP >= 5) return res.status(429).json({ message: "Limite atingido." }); 
     try { 
         const hash = await bcrypt.hash(password, 10); 
         const recoveryKey = 'STF-' + crypto.randomBytes(8).toString('hex').toUpperCase(); 
-        await usersCollection.insertOne({ username: username.trim(), email: email.trim().toLowerCase(), password: hash, recoveryKey, plan: 'free', freeHoursRemaining: FREE_HOURS_MS, isBanned: false, planExpiresAt: null, createdAt: new Date(), registrationIP: ip }); 
-        sendDiscordNotification("👤 Novo Registo", `User: ${username.trim()}\nIP: ${ip}`, 3447003, username.trim(), "log"); 
-        res.status(201).json({ message: "Conta criada!", recoveryKey }); 
+        const referralCode = await findReferralCode();
+        const invitedBy = (ref !== undefined && ref !== null && ref !== '') ? String(ref).trim().toUpperCase() : null;
+        let bonusHours = 0;
+        if (invitedBy) {
+            const referrer = await usersCollection.findOne({ referralCode: invitedBy });
+            if (referrer && referrer.username !== username.trim()) {
+                bonusHours = REFERRAL_HOURS;
+                await applyReferralBonus(username.trim(), invitedBy);
+            }
+        }
+        await usersCollection.insertOne({ username: username.trim(), email: email.trim().toLowerCase(), password: hash, recoveryKey, plan: 'free', freeHoursRemaining: FREE_HOURS_MS + (bonusHours * 60 * 60 * 1000), referralCode, referredBy: invitedBy, referralCount: 0, isBanned: false, planExpiresAt: null, createdAt: new Date(), registrationIP: ip }); 
+        sendDiscordNotification("👤 Novo Registo", `User: ${username.trim()}\nIP: ${ip}${bonusHours > 0 ? `\nIndicado por: ${invitedBy}` : ''}`, 3447003, username.trim(), "log"); 
+        res.status(201).json({ message: "Conta criada!", recoveryKey, referralCode, bonusHours }); 
     } catch (e) { res.status(409).json({ message: "Erro ao criar conta. Tente outro nome ou email." }); }
 }));
 
@@ -1098,7 +1177,7 @@ apiRouter.post('/start/:username', ah(async (req, res) => { const u = req.params
 apiRouter.post('/stop/:username', (req, res) => { const u = req.params.username; if (!isStr(u, 1, 64)) return res.status(404).json({ message: "Erro." }); const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { acc.manual_logout = true; cleanupAccount(acc); acc.status = "Parado"; res.json({ message: "OK" }); } else res.status(404).json({ message: "Erro." }); });
 apiRouter.delete('/remove-account/:username', ah(async (req, res) => { const u = req.params.username; if (!isStr(u, 1, 64)) return res.status(404).json({ message: "Erro." }); if (liveAccounts[u] && liveAccounts[u].ownerUserID === req.session.userId) { liveAccounts[u].manual_logout = true; cleanupAccount(liveAccounts[u]); delete liveAccounts[u]; } await accountsCollection.deleteOne({ username: u, ownerUserID: req.session.userId }); res.json({ message: "OK" }); }));
 
-const SETTINGS_SCHEMA = { appearOffline: 'bool', autoAcceptFriends: 'bool', autoRelogin: 'bool', customInGameTitle: 'str', customAwayMessage: 'str', sharedSecret: 'str' };
+const SETTINGS_SCHEMA = { appearOffline: 'bool', autoAcceptFriends: 'bool', autoRelogin: 'bool', customInGameTitle: 'str', customAwayMessage: 'str', sharedSecret: 'str', cardFarmer: 'bool' };
 apiRouter.post('/save-settings/:username', ah(async (req, res) => {
     const u = req.params.username;
     const { settings } = req.body || {};
@@ -1112,6 +1191,7 @@ apiRouter.post('/save-settings/:username', ah(async (req, res) => {
     if ('appearOffline' in settings) { if (typeof settings.appearOffline !== 'boolean') return res.status(400).json({ message: "appearOffline deve ser booleano." }); if (settings.appearOffline && currentLevel < 3) return res.status(403).json({ message: "Requer Plano Premium." }); sanitized.appearOffline = settings.appearOffline; }
     if ('autoAcceptFriends' in settings) { if (typeof settings.autoAcceptFriends !== 'boolean') return res.status(400).json({ message: "autoAcceptFriends deve ser booleano." }); if (settings.autoAcceptFriends && currentLevel < 2) return res.status(403).json({ message: "Requer Plano Plus." }); sanitized.autoAcceptFriends = settings.autoAcceptFriends; }
     if ('autoRelogin' in settings) { if (typeof settings.autoRelogin !== 'boolean') return res.status(400).json({ message: "autoRelogin deve ser booleano." }); sanitized.autoRelogin = settings.autoRelogin; }
+    if ('cardFarmer' in settings) { if (typeof settings.cardFarmer !== 'boolean') return res.status(400).json({ message: "cardFarmer deve ser booleano." }); if (settings.cardFarmer && currentLevel < 2) return res.status(403).json({ message: "Requer Plano Plus ou superior." }); sanitized.cardFarmer = settings.cardFarmer; }
     if ('customInGameTitle' in settings) { if (typeof settings.customInGameTitle !== 'string' || settings.customInGameTitle.length > 128) return res.status(400).json({ message: "Título inválido." }); if (settings.customInGameTitle.trim().length > 0 && currentLevel < 3) return res.status(403).json({ message: "Requer Plano Premium." }); sanitized.customInGameTitle = settings.customInGameTitle; }
     if ('customAwayMessage' in settings) { if (typeof settings.customAwayMessage !== 'string' || settings.customAwayMessage.length > 128) return res.status(400).json({ message: "Mensagem inválida." }); if (settings.customAwayMessage.trim().length > 0 && currentLevel < 3) return res.status(403).json({ message: "Requer Plano Premium." }); sanitized.customAwayMessage = settings.customAwayMessage; }
     if ('sharedSecret' in settings) { if (settings.sharedSecret !== '' && (typeof settings.sharedSecret !== 'string' || settings.sharedSecret.length < 8 || settings.sharedSecret.length > 64)) return res.status(400).json({ message: "Shared Secret inválido." }); sanitized.sharedSecret = settings.sharedSecret; }
@@ -1156,6 +1236,37 @@ apiRouter.post('/activate-license', ah(async (req, res) => {
     res.json({ message: "Ativado" });
 }));
 apiRouter.get('/my-keys', ah(async (req, res) => { const k = await licensesCollection.find({ assignedTo: new ObjectId(req.session.userId), isUsed: false }).toArray(); res.json(k); }));
+apiRouter.get('/referral-info', ah(async (req, res) => {
+    const uid = req.session.userId;
+    if (!uid) return res.status(401).json({ message: "Sessão inválida." });
+    const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
+    if (!user) return res.status(404).json({ message: "Erro." });
+    const code = user.referralCode || (await findReferralCode());
+    if (!user.referralCode) {
+        await usersCollection.updateOne({ _id: user._id }, { $set: { referralCode: code } });
+    }
+    const referralUrl = `${SITE_URL}/register?ref=${encodeURIComponent(code)}`;
+    const bonusHours = REFERRAL_HOURS;
+    res.json({ code, referralUrl, bonusHours, referralCount: user.referralCount || 0, bonusHoursTotalMs: user.freeHoursRemainingBonus || 0 });
+}));
+apiRouter.get('/stats', ah(async (req, res) => {
+    const uid = req.session.userId;
+    const user = await usersCollection.findOne({ _id: new ObjectId(uid) });
+    if (!user) return res.status(401).json({ message: "Sessão inválida." });
+    const stats = {};
+    for (const u in liveAccounts) {
+        if (liveAccounts[u].ownerUserID === uid) {
+            const a = liveAccounts[u];
+            stats[a.username] = {
+                username: a.username,
+                uptime: a.sessionStartTime ? Date.now() - a.sessionStartTime : 0,
+                farmedMs: a.farmedMs || 0,
+                totalFarmedMs: (a.totalFarmedMs || 0) + (a.farmedMs || 0)
+            };
+        }
+    }
+    res.json({ accounts: stats, totalFarmedMs: user.totalFarmedMs || 0 });
+}));
 apiRouter.post('/change-password', sensitiveLimiter, ah(async (req, res) => {
     const { currentPassword, newPassword, confirmPassword } = req.body || {};
     if (!isStr(currentPassword, 1, 128)) return res.status(400).json({ message: "Senha atual é obrigatória." });
