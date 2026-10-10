@@ -135,6 +135,46 @@
                         </table>
                     </div>
                 </div>
+
+                <div class="admin-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h2>Indicações</h2>
+                        <div id="referralStats" style="font-size: 12px; opacity: 0.85;">Carregando...</div>
+                    </div>
+                    <div class="admin-form" style="margin-bottom: 12px;">
+                        <label for="referralStatusFilter">Filtrar por status:</label>
+                        <select id="referralStatusFilter">
+                            <option value="">Todos</option>
+                            <option value="credited">Creditadas</option>
+                            <option value="suspicious">Suspeitas</option>
+                            <option value="pending">Pendentes</option>
+                        </select>
+                        <button id="refreshReferralsButton" class="assign-key-btn">Atualizar</button>
+                    </div>
+                    <div id="topReferrers" style="margin-bottom: 12px; font-size: 13px; opacity: 0.9;"></div>
+                    <div class="admin-table-wrapper">
+                        <table class="admin-table">
+                            <thead><tr><th>Indicador</th><th>Indicado</th><th>Código</th><th>IP</th><th>Status</th><th>Data</th></tr></thead>
+                            <tbody id="referralsTableBody"><tr><td colspan="6" style="text-align: center;">Carregando...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="admin-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h2>Alertas de Fraude</h2>
+                        <div id="fraudStats" style="font-size: 12px; opacity: 0.85;">Carregando...</div>
+                    </div>
+                    <div class="admin-form" style="margin-bottom: 12px;">
+                        <button id="refreshFraudButton" class="assign-key-btn">Atualizar</button>
+                    </div>
+                    <div class="admin-table-wrapper">
+                        <table class="admin-table">
+                            <thead><tr><th>Severidade</th><th>Tipo</th><th>Mensagem</th><th>IP</th><th>Status</th><th>Data</th><th>Ações</th></tr></thead>
+                            <tbody id="fraudTableBody"><tr><td colspan="7" style="text-align: center;">Carregando...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </main>
     </div> 
@@ -262,7 +302,82 @@
             
             async function fetchAll() {
                 await fetchPlans(); await fetchUsers(); await fetchLicenses(); await fetchCoupons(); await fetchGlobalAlert(); await fetchMaintenanceStatus();
+                await fetchReferralStats(); await fetchReferrals(); await fetchFraudAlerts();
             }
+
+            function fmtDate(v) {
+                if (!v) return '-';
+                const d = new Date(v);
+                return isNaN(d.getTime()) ? '-' : d.toLocaleString('pt-BR');
+            }
+
+            async function fetchReferralStats() {
+                try {
+                    const res = await fetch('/api/admin/referrals/stats');
+                    const data = await res.json();
+                    const el = document.getElementById('referralStats');
+                    if (el) el.textContent = `Total: ${data.total || 0} · Creditadas: ${data.credited || 0} · Suspeitas: ${data.suspicious || 0}`;
+                    const top = document.getElementById('topReferrers');
+                    if (top) {
+                        const list = (data.topReferrers || []).map(r => `${escapeHtml(r.username)} (${r.count})`).join(' · ');
+                        top.textContent = list ? `Top indicadores: ${list}` : '';
+                    }
+                } catch (e) {}
+            }
+
+            async function fetchReferrals() {
+                const tbody = document.getElementById('referralsTableBody');
+                if (!tbody) return;
+                try {
+                    const status = document.getElementById('referralStatusFilter') ? document.getElementById('referralStatusFilter').value : '';
+                    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+                    const res = await fetch('/api/admin/referrals' + qs);
+                    const data = await res.json();
+                    const items = data.referrals || [];
+                    if (!items.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Nenhuma indicação.</td></tr>'; return; }
+                    tbody.innerHTML = '';
+                    items.forEach(r => {
+                        const color = r.status === 'credited' ? '#4ade80' : r.status === 'suspicious' ? '#f87171' : '#fbbf24';
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td>${escapeHtml(r.referrerUsername)}</td><td>${escapeHtml(r.invitedUsername)}</td><td>${escapeHtml(r.code)}</td><td>${escapeHtml(r.ip || '-')}</td><td style="color:${color};font-weight:bold;">${escapeHtml(r.status)}</td><td>${fmtDate(r.createdAt)}</td>`;
+                        tbody.appendChild(row);
+                    });
+                } catch (e) { tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Erro ao carregar.</td></tr>'; }
+            }
+
+            async function fetchFraudAlerts() {
+                const tbody = document.getElementById('fraudTableBody');
+                if (!tbody) return;
+                try {
+                    const res = await fetch('/api/admin/fraud-alerts');
+                    const data = await res.json();
+                    const el = document.getElementById('fraudStats');
+                    if (el) el.textContent = `Abertos: ${data.totalOpen || 0} · Reconhecidos: ${data.totalAcked || 0}`;
+                    const items = data.alerts || [];
+                    if (!items.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Nenhum alerta.</td></tr>'; return; }
+                    tbody.innerHTML = '';
+                    items.forEach(a => {
+                        const sevColor = a.severity === 'high' ? '#f87171' : a.severity === 'medium' ? '#fbbf24' : '#60a5fa';
+                        const row = document.createElement('tr');
+                        const ackBtn = a.status === 'open' ? `<button class="ack-fraud-btn" data-id="${escapeHtml(a._id)}">Reconhecer</button>` : '<span style="opacity:0.5;">—</span>';
+                        row.innerHTML = `<td style="color:${sevColor};font-weight:bold;">${escapeHtml(a.severity)}</td><td>${escapeHtml(a.type)}</td><td>${escapeHtml(a.message)}</td><td>${escapeHtml(a.ip || '-')}</td><td>${escapeHtml(a.status)}</td><td>${fmtDate(a.createdAt)}</td><td class="actions-cell">${ackBtn}</td>`;
+                        tbody.appendChild(row);
+                    });
+                    tbody.querySelectorAll('.ack-fraud-btn').forEach(btn => {
+                        btn.onclick = async () => {
+                            await fetch('/api/admin/fraud-alerts/' + btn.dataset.id + '/ack', { method: 'POST', headers: {'Content-Type':'application/json'} });
+                            await fetchFraudAlerts();
+                        };
+                    });
+                } catch (e) { tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Erro ao carregar.</td></tr>'; }
+            }
+
+            const refreshReferralsBtn = document.getElementById('refreshReferralsButton');
+            if (refreshReferralsBtn) refreshReferralsBtn.onclick = () => { fetchReferralStats(); fetchReferrals(); };
+            const referralFilter = document.getElementById('referralStatusFilter');
+            if (referralFilter) referralFilter.onchange = () => fetchReferrals();
+            const refreshFraudBtn = document.getElementById('refreshFraudButton');
+            if (refreshFraudBtn) refreshFraudBtn.onclick = () => fetchFraudAlerts();
 
             async function fetchGlobalAlert() {
                 try {

@@ -30,6 +30,8 @@ function bindCollections(opts = {}) {
         coupons: opts.coupons || newCollection('coupons'),
         purchases: opts.purchases || newCollection('purchases'),
         siteSettings: opts.siteSettings || newCollection('siteSettings'),
+        referrals: opts.referrals || newCollection('referrals'),
+        fraudEvents: opts.fraudEvents || newCollection('fraudEvents'),
     };
     mod.__setCollections({
         users: collections.users,
@@ -39,6 +41,8 @@ function bindCollections(opts = {}) {
         coupons: collections.coupons,
         purchases: collections.purchases,
         siteSettings: collections.siteSettings,
+        referrals: collections.referrals,
+        fraudEvents: collections.fraudEvents,
     });
     return collections;
 }

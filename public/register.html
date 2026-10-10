@@ -43,6 +43,13 @@
                 <input type="password" id="password" name="password" required minlength="6"
                     class="w-full px-3 py-2 mt-1 bg-gray-900 border border-gray-700 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
             </div>
+
+            <div>
+                <label for="refInputVisible" class="block text-sm font-medium text-gray-300">Código de indicação <span class="text-gray-500">(opcional)</span></label>
+                <input type="text" id="refInputVisible" name="refVisible" maxlength="32" autocomplete="off" placeholder="Ex: ABCD1234"
+                    class="w-full px-3 py-2 mt-1 bg-gray-900 border border-gray-700 rounded-md text-white uppercase focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <p class="mt-1 text-xs text-gray-500">Receba +10h de bônus se alguém te indicou.</p>
+            </div>
             
             <div class="bg-gray-800 p-3 rounded border border-gray-600">
                 <label class="block text-sm font-medium text-gray-300 mb-1">Verificação Humana:</label>
@@ -82,8 +89,11 @@
             const params = new URLSearchParams(window.location.search);
             const refFromUrl = params.get('ref');
             if (refFromUrl) {
+                const code = refFromUrl.slice(0, 32);
                 const r = document.getElementById('refInput');
-                if (r) r.value = refFromUrl.slice(0, 32);
+                if (r) r.value = code;
+                const rv = document.getElementById('refInputVisible');
+                if (rv) rv.value = code.toUpperCase();
             }
 
             document.getElementById('registerForm').addEventListener('submit', async (e) => {
@@ -109,7 +119,9 @@
                 message.classList.add('hidden');
 
                 try {
-                    const refValue = document.getElementById('refInput') ? document.getElementById('refInput').value.trim() : '';
+                    const visibleRef = document.getElementById('refInputVisible') ? document.getElementById('refInputVisible').value.trim() : '';
+                    const hiddenRef = document.getElementById('refInput') ? document.getElementById('refInput').value.trim() : '';
+                    const refValue = (visibleRef || hiddenRef).toUpperCase();
                     const response = await fetch('/api/register', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },

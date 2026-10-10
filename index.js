@@ -61,14 +61,46 @@ app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", "'unsafe-inline'", "cdn.tailwindcss.com", "fonts.googleapis.com", "akuma-labs.duckdns.org", "https://*.mercadopago.com"], styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com", "cdn.tailwindcss.com"], fontSrc: ["'self'", "fonts.gstatic.com"], imgSrc: ["'self'", "data:", "https:"], connectSrc: ["'self'", "https://api.mercadopago.com", "https://api.ipify.org", "akuma-labs.duckdns.org"], frameSrc: ["'self'", "https://*.mercadopago.com.br", "https://*.mercadopago.com"] } } }));
 app.use(cors({ origin: SITE_URL, credentials: true }));
 
-const loginLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 10, message: { message: "Muitas tentativas de login." }});
-const registerLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitos cadastros. Aguarde." }});
-const resetLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitas tentativas de recuperação. Aguarde." }});
-const apiLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 300, message: { message: "Muitas requisições. Aguarde." }});
-const sensitiveLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, message: { message: "Muitas ações sensíveis. Aguarde." }});
-const addAccountLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitas adições de conta por hora." }});
-const checkoutLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30, message: { message: "Muitas verificações de pagamento. Aguarde." }});
-const webhookLimiter = rateLimit({ windowMs: 1 * 60 * 1000, max: 60, message: { message: "Muitas tentativas de webhook." }});
+// --- IP do cliente (NV-2): valida X-Forwarded-For para impedir bypass de rate-limit ---
+// Com trust proxy ligado, req.ip ecoa o XFF sem validar; um atacante rotaciona o header
+// e escapa de qualquer limiter. Aqui só aceitamos IPs sintaticamente válidos; se o XFF
+// vier presente mas malformado, caímos para o IP real do socket (peer do proxy).
+const IPV4_RE = /^(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])){3}$/;
+const IPV6_RE = /^[0-9a-fA-F:]{2,45}$/;
+function normalizeIp(raw) {
+    if (typeof raw !== 'string') return null;
+    let ip = raw.trim();
+    if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+    if (IPV4_RE.test(ip)) return ip;
+    if (IPV6_RE.test(ip) && ip.includes(':')) return ip.toLowerCase();
+    return null;
+}
+function getClientIp(req) {
+    try {
+        const headers = (req && req.headers) || {};
+        const xff = headers['x-forwarded-for'];
+        if (typeof xff === 'string' && xff.length) {
+            const valid = xff.split(',').map(normalizeIp).filter(Boolean);
+            if (valid.length) return valid[valid.length - 1];
+            const sock = normalizeIp(req && req.socket && req.socket.remoteAddress);
+            return sock || '127.0.0.1';
+        }
+        const fromReq = normalizeIp(req && req.ip);
+        if (fromReq) return fromReq;
+        const fromSock = normalizeIp(req && req.socket && req.socket.remoteAddress);
+        return fromSock || '127.0.0.1';
+    } catch (e) { return '127.0.0.1'; }
+}
+const makeLimiter = (opts) => rateLimit({ keyGenerator: (req) => getClientIp(req), ...opts });
+
+const loginLimiter = makeLimiter({ windowMs: 15 * 60 * 1000, max: 10, message: { message: "Muitas tentativas de login." }});
+const registerLimiter = makeLimiter({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitos cadastros. Aguarde." }});
+const resetLimiter = makeLimiter({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitas tentativas de recuperação. Aguarde." }});
+const apiLimiter = makeLimiter({ windowMs: 1 * 60 * 1000, max: 300, message: { message: "Muitas requisições. Aguarde." }});
+const sensitiveLimiter = makeLimiter({ windowMs: 15 * 60 * 1000, max: 20, message: { message: "Muitas ações sensíveis. Aguarde." }});
+const addAccountLimiter = makeLimiter({ windowMs: 60 * 60 * 1000, max: 5, message: { message: "Muitas adições de conta por hora." }});
+const checkoutLimiter = makeLimiter({ windowMs: 15 * 60 * 1000, max: 30, message: { message: "Muitas verificações de pagamento. Aguarde." }});
+const webhookLimiter = makeLimiter({ windowMs: 1 * 60 * 1000, max: 60, message: { message: "Muitas tentativas de webhook." }});
 
 let mpClient;
 if (MP_ACCESS_TOKEN) {
@@ -96,7 +128,7 @@ let GLOBAL_PLANS = {};
 const hasPlan = (id) => typeof id === 'string' && Object.prototype.hasOwnProperty.call(GLOBAL_PLANS, id); 
 
 const mongoClient = new MongoClient(MONGODB_URI);
-let accountsCollection, siteSettingsCollection, usersCollection, licensesCollection, plansCollection, couponsCollection, purchasesCollection;
+let accountsCollection, siteSettingsCollection, usersCollection, licensesCollection, plansCollection, couponsCollection, purchasesCollection, referralsCollection, fraudEventsCollection;
 let liveAccounts = {};
 
 // --- FUNÇÕES UTILITÁRIAS ---
@@ -198,7 +230,7 @@ const isStrArray = (v, max) => Array.isArray(v) && v.length > 0 && v.length <= m
 
 function getIpAndCountry(req) {
     try {
-        const ip = String(req.ip || (req.socket ? req.socket.remoteAddress : '') || '127.0.0.1').replace(/^::ffff:/, '');
+        const ip = getClientIp(req);
         if (!ip || ip === '127.0.0.1' || ip === '::1') return { ip: '127.0.0.1', country: 'BR' };
         const geo = geoip.lookup(ip);
         return { ip: ip, country: geo ? geo.country : 'US' };
@@ -322,12 +354,78 @@ async function findReferralCode() {
     return generateReferralCode();
 }
 
-async function applyReferralBonus(referrerUsername, referredByCode) {
-    // Indicador: ganha horas bônus + cupom de desconto real
-    if (!isStr(referredByCode, 4, 32)) return;
+// Avalia risco de fraude de uma indicação (NV-3). Retorna { blocked, flags }.
+// Regras: auto-indicação, indicador banido, mesmo IP do indicador (self-farming
+// por contas do mesmo host) e anel/encadeamento (IP já usado por outro indicado).
+async function evaluateReferralRisk({ referrer, ip, invitedUsername }) {
+    const flags = [];
+    if (!referrer || !referrer.username || referrer.username === invitedUsername) {
+        return { blocked: true, flags: ['self-referral'] };
+    }
+    if (referrer.isBanned) flags.push('referrer-banned');
+    const normIp = (ip && ip !== '127.0.0.1' && ip !== 'unknown') ? ip : null;
+    if (normIp && referrer.registrationIP && referrer.registrationIP === normIp) flags.push('same-ip');
+    if (normIp && referralsCollection) {
+        try {
+            const prior = await referralsCollection.findOne({ inviterUserId: referrer._id.toString(), ip: normIp });
+            if (prior) flags.push('ring-ip');
+        } catch (e) { console.error("[FRAUD] Erro na checagem de anel de IP:", e.message); }
+    }
+    return { blocked: flags.length > 0, flags };
+}
+
+// Grava um evento de fraude (com dedupe por assinatura enquanto estiver aberto) e alerta no Discord.
+async function emitFraudEvent({ evtSig, type, severity, message, refUser, refTarget, ip, riskFlags }) {
+    if (!fraudEventsCollection) return null;
+    try {
+        const existing = await fraudEventsCollection.findOne({ signature: evtSig, status: 'open' });
+        if (existing) return existing;
+        const evt = { type, severity, message, refUser: refUser || null, refTarget: refTarget || null, ip: ip || null, riskFlags: riskFlags || [], signature: evtSig, status: 'open', createdAt: new Date() };
+        let ins;
+        try {
+            ins = await fraudEventsCollection.insertOne(evt);
+        } catch (dup) {
+            // Índice único parcial { signature, status:'open' } protege contra corrida TOCTOU:
+            // se outro caller inseriu o mesmo evento aberto, reutiliza o existente.
+            if (dup && dup.code === 11000) {
+                const race = await fraudEventsCollection.findOne({ signature: evtSig, status: 'open' });
+                if (race) return race;
+            }
+            throw dup;
+        }
+        evt._id = ins.insertedId;
+        sendDiscordNotification("🚨 Alerta de Fraude (Sistema)", message, 15548997, refUser || "System", "alert");
+        return evt;
+    } catch (e) { console.error("[FRAUD] Erro ao emitir evento:", e.message); return null; }
+}
+
+// Registra uma indicação bloqueada no ledger (status suspicious) + evento de fraude.
+async function recordBlockedReferral(referrer, invitedUsername, code, ip, flags) {
+    try {
+        if (referralsCollection) {
+            await referralsCollection.insertOne({ inviterUserId: referrer._id.toString(), referrerUsername: referrer.username, invitedUserId: null, invitedUsername, code: String(code).trim().toUpperCase(), ip: ip || null, status: 'suspicious', riskFlags: flags || [], createdAt: new Date() });
+        }        await emitFraudEvent({ evtSig: `referral:${referrer.username}:${invitedUsername}`, type: 'referral', severity: 'high', message: `Indicação bloqueada: ${invitedUsername} → ${referrer.username} (${(flags || []).join(', ')})`, refUser: referrer.username, refTarget: invitedUsername, ip: ip || null, riskFlags: flags || [] });
+    } catch (e) { console.error("[FRAUD] Erro ao registrar indicação bloqueada:", e.message); }
+}
+
+async function applyReferralBonus(referrerUsername, referredByCode, opts = {}) {
+    // Indicador: ganha horas bônus + cupom de desconto real (após passar no anti-fraude).
+    if (!isStr(referredByCode, 4, 32)) return { credited: false, riskFlags: [] };
     try {
         const referrer = await usersCollection.findOne({ referralCode: String(referredByCode).trim().toUpperCase() });
-        if (!referrer || referrer.username === referrerUsername) return;
+        if (!referrer) return { credited: false, riskFlags: [] };
+        const invitedUsername = opts.invitedUsername || referrerUsername;
+        const ip = opts.ip || '';
+        const risk = opts.risk || await evaluateReferralRisk({ referrer, ip, invitedUsername });
+        if (referralsCollection) {
+            try {
+                await referralsCollection.insertOne({ inviterUserId: referrer._id.toString(), referrerUsername: referrer.username, invitedUserId: opts.invitedUserId || null, invitedUsername, code: String(referredByCode).trim().toUpperCase(), ip: ip || null, status: risk.blocked ? 'suspicious' : 'credited', riskFlags: risk.flags, createdAt: new Date() });
+            } catch (e) { console.error("[FRAUD] Erro ao gravar ledger de indicação:", e.message); }
+        }
+        if (risk.blocked) {
+            await emitFraudEvent({ evtSig: `referral:${referrer.username}:${invitedUsername}`, type: 'referral', severity: 'high', message: `Indicação bloqueada: ${invitedUsername} → ${referrer.username} (${risk.flags.join(', ')})`, refUser: referrer.username, refTarget: invitedUsername, ip: ip || null, riskFlags: risk.flags });
+            return { credited: false, riskFlags: risk.flags };
+        }
         // Incremento atômico: evita corrida no contador usado no código do cupom (REF-<código>-<n>).
         // O bônus vai para bonusHoursRemaining (campo separado) — compras/rebaixamentos NÃO zeram mais.
         const updated = await usersCollection.findOneAndUpdate(
@@ -345,7 +443,53 @@ async function applyReferralBonus(referrerUsername, referredByCode) {
             if (!dup || dup.code !== 11000) throw dup;
         }
         sendDiscordNotification("🎁 Nova Indicação", `O usuário "${referrerUsername}" se cadastrou usando o código ${String(referredByCode).trim().toUpperCase()} do(a) ${referrer.username}.\nBônus: +${REFERRAL_HOURS}h e cupom REF-${String(referredByCode).trim().toUpperCase()}-...`, 15844367, referrer.username, "log");
-    } catch (e) { console.error("[REFERRAL] Erro ao aplicar bônus:", e.message); }
+        return { credited: true, riskFlags: risk.flags, referralCount: newCount };
+    } catch (e) { console.error("[REFERRAL] Erro ao aplicar bônus:", e.message); return { credited: false, riskFlags: [] }; }
+}
+
+// Varredura de fraude em nível de sistema (watchdog): anel de IPs e pico de indicações.
+const FRAUD_IP_RING_MIN = 3;
+const FRAUD_REFERRAL_BURST_MAX = 10;
+let fraudScanRunning = false;
+async function runFraudScan() {
+    if (fraudScanRunning) return false; // evita empilhar execuções se uma varredura anterior ainda não terminou
+    fraudScanRunning = true;
+    try {
+        if (usersCollection) {
+            const all = await (await usersCollection.find({})).toArray();
+            const byIp = new Map();
+            for (const u of all) {
+                const ip = u.registrationIP;
+                if (!ip || ip === '127.0.0.1' || ip === 'unknown') continue;
+                const arr = byIp.get(ip) || [];
+                arr.push(u);
+                byIp.set(ip, arr);
+            }
+            for (const [ip, users] of byIp) {
+                if (users.length >= FRAUD_IP_RING_MIN) {
+                    await emitFraudEvent({ evtSig: `system:ip-ring:${ip}`, type: 'system', severity: 'medium', message: `${users.length} contas criadas do mesmo IP ${ip}: ${users.map(u => u.username).join(', ')}`, refUser: users.map(u => u.username).join(', '), refTarget: null, ip, riskFlags: ['ip-ring'] });
+                }
+            }
+        }
+        if (referralsCollection) {
+            const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            const recents = await (await referralsCollection.find({ status: 'credited', createdAt: { $gte: since } })).toArray();
+            const byInviter = new Map();
+            for (const r of recents) {
+                const key = r.referrerUsername || r.inviterUserId;
+                const arr = byInviter.get(key) || [];
+                arr.push(r);
+                byInviter.set(key, arr);
+            }
+            for (const [key, list] of byInviter) {
+                if (list.length >= FRAUD_REFERRAL_BURST_MAX) {
+                    await emitFraudEvent({ evtSig: `system:referral-burst:${key}`, type: 'system', severity: 'medium', message: `${key} acumulou ${list.length} indicações creditadas em 24h`, refUser: key, refTarget: null, ip: null, riskFlags: ['referral-burst'] });
+                }
+            }
+        }
+        return true;
+    } catch (e) { console.error("[FRAUD] Erro no scan:", e.message); return false; }
+    finally { fraudScanRunning = false; }
 }
 
 function cleanupAccount(acc) {
@@ -577,6 +721,8 @@ async function connectToDB() {
         plansCollection = db.collection("plans"); 
         couponsCollection = db.collection("coupons");
         purchasesCollection = db.collection("purchases");
+        referralsCollection = db.collection("referrals");
+        fraudEventsCollection = db.collection("fraud_events");
         
         await usersCollection.createIndex({ username: 1 }, { unique: true });
         await usersCollection.createIndex({ email: 1 }, { unique: true });
@@ -587,6 +733,9 @@ async function connectToDB() {
         await purchasesCollection.createIndex({ userId: 1, status: 1 }); 
         await purchasesCollection.createIndex({ paymentId: 1 }, { sparse: true }); 
         await accountsCollection.createIndex({ ownerUserID: 1 }); 
+        await referralsCollection.createIndex({ inviterUserId: 1, ip: 1 }); 
+        await referralsCollection.createIndex({ status: 1, createdAt: 1 }); 
+        await fraudEventsCollection.createIndex({ signature: 1, status: 1 }, { unique: true, partialFilterExpression: { status: 'open' } }); 
     } catch (e) { console.error("[DB] Erro fatal:", e); process.exit(1); } 
 }
 
@@ -954,8 +1103,20 @@ async function isAuthenticated(req, res, next) {
     if (req.session.userId && ObjectId.isValid(req.session.userId)) { 
         try {
             const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) });
-            if (user && !user.isBanned) return next();
-            if (user && user.isBanned) req.session.destroy(() => { if (isApiReq) return res.status(401).json({ message: 'unauthorized' }); res.redirect('/banned'); });
+            if (user) {
+                if (user.isBanned) return req.session.destroy(() => { if (isApiReq) return res.status(401).json({ message: 'unauthorized' }); res.redirect('/banned'); });
+                // NV-1: invalida sessões abertas antes da última troca de senha.
+                const changedAt = user.passwordChangedAt ? new Date(user.passwordChangedAt).getTime() : null;
+                if (!req.session.pwdIssuedAt) {
+                    // Sessão anterior a este deploy não tem snapshot. Ancoramos em createdAt (nunca em
+                    // passwordChangedAt) para que uma troca de senha feita antes do deploy ainda invalide.
+                    req.session.pwdIssuedAt = user.createdAt ? new Date(user.createdAt).getTime() : (changedAt || Date.now());
+                }
+                if (changedAt && req.session.pwdIssuedAt && changedAt > req.session.pwdIssuedAt) {
+                    return req.session.destroy(() => { if (isApiReq) return res.status(401).json({ message: 'unauthorized' }); res.redirect('/login?error=unauthorized'); });
+                }
+                return next();
+            }
         } catch (e) { console.error("[AUTH] Erro isAuthenticated:", e.message); }
     } 
     if (isApiReq) return res.status(401).json({ message: 'unauthorized' });
@@ -1113,7 +1274,7 @@ const adminApiRouter = express.Router();
 apiRouter.get('/global-alert', ah(async (req, res) => { try { const alert = await siteSettingsCollection.findOne({ _id: 'global_alert' }); res.json(alert || { active: false }); } catch (e) { res.status(500).json({}); } }));
 apiRouter.get('/account-games/:username', isAuthenticated, ah(async (req, res) => { const u = req.params.username; if (!isStr(u, 1, 64)) return res.json([]); const acc = liveAccounts[u]; if (acc && acc.ownerUserID === req.session.userId) { res.json(acc.ownedGames || []); } else { const dbAcc = await accountsCollection.findOne({ username: u, ownerUserID: req.session.userId }); res.json(dbAcc ? (dbAcc.ownedGames || []) : []); } }));
 
-apiRouter.post('/login', loginLimiter, ah(async (req, res) => { const { username, password } = req.body || {}; if (!isStr(username, 1, 64) || !isStr(password, 1, 128)) return res.status(401).json({ message: "Credenciais inválidas." }); const user = await usersCollection.findOne({ username: username.trim() }); if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Credenciais inválidas." }); if (user.isBanned) return res.status(403).json({ message: "Conta banida." }); req.session.regenerate((err) => { if (err) return res.status(500).json({ message: "Erro interno." }); req.session.userId = user._id.toString(); req.session.username = user.username; res.json({ message: "Login OK" }); }); }));
+apiRouter.post('/login', loginLimiter, ah(async (req, res) => { const { username, password } = req.body || {}; if (!isStr(username, 1, 64) || !isStr(password, 1, 128)) return res.status(401).json({ message: "Credenciais inválidas." }); const user = await usersCollection.findOne({ username: username.trim() }); if (!user || !(await bcrypt.compare(password, user.password))) return res.status(401).json({ message: "Credenciais inválidas." }); if (user.isBanned) return res.status(403).json({ message: "Conta banida." }); req.session.regenerate((err) => { if (err) return res.status(500).json({ message: "Erro interno." }); req.session.userId = user._id.toString(); req.session.username = user.username; req.session.pwdIssuedAt = user.passwordChangedAt ? new Date(user.passwordChangedAt).getTime() : (user.createdAt ? new Date(user.createdAt).getTime() : Date.now()); res.json({ message: "Login OK" }); }); }));
 apiRouter.get('/auth-status', ah(async (req, res) => { if (req.session.userId) { if (!req.session.username) { try { const user = await usersCollection.findOne({ _id: new ObjectId(req.session.userId) }); if (user) req.session.username = user.username; } catch(e) {} } res.json({ loggedIn: true, username: req.session.username || 'Usuário' }); } else { res.json({ loggedIn: false }); }}));
 apiRouter.get('/geo-status', (req, res) => { const country = getCountryFromRequest(req); res.json({ country: country, currency: country === 'BR' ? 'BRL' : 'USD' });});
 apiRouter.get('/plans', async (req, res) => { try { const plans = await plansCollection.find({ active: true }).toArray(); plans.sort((a, b) => (a.id === 'free' ? -1 : b.id === 'free' ? 1 : a.price - b.price)); res.json(plans); } catch(e) { res.status(500).json([]); }});
@@ -1134,7 +1295,7 @@ apiRouter.post('/register', registerLimiter, ah(async (req, res) => {
     const pwError = validatePasswordStrength(password);
     if (pwError) return res.status(400).json({ message: pwError });
     if (ref !== undefined && ref !== null && ref !== '' && !REFERRAL_CODE_RE.test(String(ref).trim().toUpperCase())) return res.status(400).json({ message: "Código de indicação inválido." });
-    const ip = String(req.ip || '').replace(/^::ffff:/, '') || 'unknown'; 
+    const ip = getClientIp(req); 
     const accountsFromIP = await usersCollection.countDocuments({ registrationIP: ip }); 
     if (accountsFromIP >= 5) return res.status(429).json({ message: "Limite atingido." }); 
     try { 
@@ -1142,14 +1303,28 @@ apiRouter.post('/register', registerLimiter, ah(async (req, res) => {
         const recoveryKey = 'STF-' + crypto.randomBytes(8).toString('hex').toUpperCase(); 
         const referralCode = await findReferralCode();
         const invitedBy = (ref !== undefined && ref !== null && ref !== '') ? String(ref).trim().toUpperCase() : null;
+        let referrer = null;
         let referrerValid = false;
         if (invitedBy) {
-            const referrer = await usersCollection.findOne({ referralCode: invitedBy });
+            referrer = await usersCollection.findOne({ referralCode: invitedBy });
             if (referrer && referrer.username !== username.trim()) referrerValid = true;
         }
-        const bonusHours = referrerValid ? REFERRAL_HOURS : 0;
-        await usersCollection.insertOne({ username: username.trim(), email: email.trim().toLowerCase(), password: hash, recoveryKey, plan: 'free', freeHoursRemaining: FREE_HOURS_MS, bonusHoursRemaining: (bonusHours * 60 * 60 * 1000), referralCode, referredBy: invitedBy, referralCount: 0, isBanned: false, planExpiresAt: null, createdAt: new Date(), registrationIP: ip }); 
-        if (referrerValid) await applyReferralBonus(username.trim(), invitedBy);
+        // NV-3: anti-fraude — auto-indicação, mesmo IP, anel de IP e indicador banido não rendem bônus.
+        let bonusHours = 0;
+        let referralRisk = null;
+        if (referrerValid && referrer) {
+            referralRisk = await evaluateReferralRisk({ referrer, ip, invitedUsername: username.trim() });
+            if (!referralRisk.blocked) bonusHours = REFERRAL_HOURS;
+        }
+        const inserted = await usersCollection.insertOne({ username: username.trim(), email: email.trim().toLowerCase(), password: hash, recoveryKey, plan: 'free', freeHoursRemaining: FREE_HOURS_MS, bonusHoursRemaining: (bonusHours > 0 ? REFERRAL_BONUS_MS : 0), referralCode, referredBy: invitedBy, referralCount: 0, isBanned: false, planExpiresAt: null, createdAt: new Date(), registrationIP: ip }); 
+        const newUserId = inserted && inserted.insertedId ? String(inserted.insertedId) : null;
+        if (referrerValid && referrer) {
+            if (referralRisk && referralRisk.blocked) {
+                await recordBlockedReferral(referrer, username.trim(), invitedBy, ip, referralRisk.flags);
+            } else {
+                await applyReferralBonus(username.trim(), invitedBy, { ip, invitedUsername: username.trim(), invitedUserId: newUserId, risk: referralRisk });
+            }
+        }
         sendDiscordNotification("👤 Novo Registo", `User: ${username.trim()}\nIP: ${ip}${bonusHours > 0 ? `\nIndicado por: ${invitedBy}` : ''}`, 3447003, username.trim(), "log"); 
         res.status(201).json({ message: "Conta criada!", recoveryKey, referralCode, bonusHours }); 
     } catch (e) { res.status(409).json({ message: "Erro ao criar conta. Tente outro nome ou email." }); }
@@ -1382,7 +1557,11 @@ apiRouter.post('/change-password', sensitiveLimiter, ah(async (req, res) => {
     if (!user || !(await bcrypt.compare(currentPassword, user.password))) return res.status(401).json({ message: "Senha atual incorreta." });
     const h = await bcrypt.hash(newPassword, 10);
     const newKey = 'STF-' + crypto.randomBytes(8).toString('hex').toUpperCase();
-    await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: h, passwordChangedAt: new Date(), recoveryKey: newKey } });
+    // NV-1: grava o instante exato da troca e realinha a sessão atual p/ que ela sobreviva,
+    // enquanto todas as outras sessões (pwdIssuedAt anterior) são invalidadas no isAuthenticated.
+    const changedAtMs = Date.now();
+    await usersCollection.updateOne({ _id: new ObjectId(req.session.userId) }, { $set: { password: h, passwordChangedAt: new Date(changedAtMs), recoveryKey: newKey } });
+    req.session.pwdIssuedAt = changedAtMs;
     res.json({ message: "Senha alterada com sucesso.", recoveryKey: newKey });
 }));
 apiRouter.post('/bulk-start', ah(async (req, res) => {
@@ -1455,6 +1634,8 @@ adminApiRouter.get('/users', ah(async (req, res) => {
                 freeHoursRemaining: 1,
                 planExpiresAt: 1,
                 createdAt: 1,
+                referralCount: 1,
+                referredBy: 1,
                 steamAccounts: 1
             }
         }
@@ -1474,6 +1655,64 @@ adminApiRouter.get('/users', ah(async (req, res) => {
         limit,
         totalPages: Math.ceil(total / limit)
     });
+}));
+
+// Admin: progressão de indicações por indicador (ledger) — lista paginada.
+adminApiRouter.get('/referrals', ah(async (req, res) => {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    const filter = {};
+    if (req.query.status && ['pending', 'credited', 'suspicious'].includes(String(req.query.status))) filter.status = String(req.query.status);
+    const total = await referralsCollection.countDocuments(filter);
+    let items = [];
+    try {
+        items = await (await referralsCollection.find(filter)).toArray();
+        items.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        items = items.slice(skip, skip + limit);
+    } catch (e) { console.error("[ADMIN] Erro ao listar indicações:", e.message); }
+    res.json({ referrals: items, total, page, limit, totalPages: Math.ceil(total / limit) || 1 });
+}));
+
+// Admin: estatísticas agregadas de indicações (top indicadores + contagens por status).
+adminApiRouter.get('/referrals/stats', ah(async (req, res) => {
+    let all = [];
+    try { all = await (await referralsCollection.find({})).toArray(); } catch (e) { console.error("[ADMIN] Erro nas estatísticas de indicações:", e.message); }
+    const byStatus = { pending: 0, credited: 0, suspicious: 0 };
+    const byInviter = new Map();
+    for (const r of all) {
+        const st = r.status || 'pending';
+        if (byStatus[st] !== undefined) byStatus[st]++;
+        const key = r.referrerUsername || r.inviterUserId || 'desconhecido';
+        byInviter.set(key, (byInviter.get(key) || 0) + 1);
+    }
+    const topReferrers = Array.from(byInviter.entries())
+        .map(([username, count]) => ({ username, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+    res.json({ total: all.length, pending: byStatus.pending, credited: byStatus.credited, suspicious: byStatus.suspicious, byStatus, topReferrers });
+}));
+
+// Admin: eventos de fraude (open + histórico ack), mais recentes primeiro.
+adminApiRouter.get('/fraud-alerts', ah(async (req, res) => {
+    const page = Math.max(1, parseInt(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+    let all = [];
+    try { all = await (await fraudEventsCollection.find({})).toArray(); } catch (e) { console.error("[ADMIN] Erro ao listar alertas de fraude:", e.message); }
+    all.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    const totalOpen = all.filter(e => e.status === 'open').length;
+    const totalAcked = all.filter(e => e.status === 'acked').length;
+    const items = all.slice(skip, skip + limit);
+    res.json({ alerts: items, total: all.length, totalOpen, totalAcked, page, limit });
+}));
+
+// Admin: reconhece (ack) um alerta de fraude.
+adminApiRouter.post('/fraud-alerts/:id/ack', ah(async (req, res) => {
+    if (!isObjId(req.params.id)) return res.status(400).json({ message: "Alerta inválido." });
+    const updated = await fraudEventsCollection.updateOne({ _id: new ObjectId(req.params.id) }, { $set: { status: 'acked', ackedAt: new Date(), ackedBy: req.session.username || 'admin' } });
+    if (updated.matchedCount === 0) return res.status(404).json({ message: "Alerta não encontrado." });
+    res.json({ message: "Alerta reconhecido." });
 }));
 
 // NOVA ROTA: Reset da Key pelo Admin
@@ -1651,6 +1890,8 @@ async function startServer() {
         setInterval(deductFreeTime, 60000);
         setInterval(checkExpiredPlans, 60000);
         setInterval(releaseStaleCouponReservations, 10 * 60 * 1000);
+        setInterval(runFraudScan, 10 * 60 * 1000);
+        runFraudScan().catch(() => {});
         app.use('/api/admin', adminApiRouter);
         app.use('/api', apiRouter);
         app.use(apiErrorHandler);
@@ -1666,6 +1907,8 @@ if (process.env.NODE_ENV === 'test') {
         couponsCollection = cols.coupons || couponsCollection;
         purchasesCollection = cols.purchases || purchasesCollection;
         siteSettingsCollection = cols.siteSettings || siteSettingsCollection;
+        referralsCollection = cols.referrals || referralsCollection;
+        fraudEventsCollection = cols.fraudEvents || fraudEventsCollection;
         return true;
     };
     const __setAppSecretKey = (key) => { appSecretKey = key; return true; };
@@ -1681,6 +1924,7 @@ if (process.env.NODE_ENV === 'test') {
         releaseCouponReservation, releaseStaleCouponReservations,
         publicSettings, accountTotalFarmedMs, isEncryptedSecret,
         isAuthenticated, isAdminAuthenticated, apiErrorHandler,
+        getClientIp, evaluateReferralRisk, runFraudScan, emitFraudEvent, recordBlockedReferral,
         liveAccounts,
     };
     if (typeof module.exports.liveAccounts !== 'object') module.exports.liveAccounts = {};
